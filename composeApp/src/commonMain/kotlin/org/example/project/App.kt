@@ -1,43 +1,107 @@
 package org.example.project
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
+import AudioDevice
+import PlaybackSession
+import RecordingSession
+import SystemAudioSystem
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.safeContentPadding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import kodio.composeapp.generated.resources.Res
-import kodio.composeapp.generated.resources.compose_multiplatform
-import org.jetbrains.compose.resources.painterResource
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.ui.tooling.preview.Preview
-
 
 @Composable
 @Preview
 fun App() {
     MaterialTheme {
-        var showContent by remember { mutableStateOf(false) }
-        Column(
-            modifier = Modifier
-                .safeContentPadding()
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Button(onClick = { showContent = !showContent }) {
-                Text("Click me!")
+        var inputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
+        var outputDevice by remember { mutableStateOf<AudioDevice.Output?>(null) }
+        var recordingSession by remember { mutableStateOf<RecordingSession?>(null) }
+        var playbackSession by remember { mutableStateOf<PlaybackSession?>(null) }
+        val scope = rememberCoroutineScope()
+        Row {
+            Column {
+                Text("Input device: ${inputDevice?.name ?: "None"}")
+                HorizontalDivider()
+                InputDeviceListUi(onDeviceSelected = { inputDevice = it })
             }
-            AnimatedVisibility(showContent) {
-                val greeting = remember { Greeting().greet() }
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Image(painterResource(Res.drawable.compose_multiplatform), null)
-                    Text("Compose: $greeting")
+            Column {
+                Text("Output device: ${outputDevice?.name ?: "None"}")
+                HorizontalDivider()
+                OutputDeviceListUi(onDeviceSelected = { outputDevice = it })
+            }
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        recordingSession = SystemAudioSystem.createRecordingSession(inputDevice!!)
+                    }
+                },
+                enabled = inputDevice != null
+            ) {
+                if (recordingSession == null) {
+                    Text("Start Recording")
+                } else {
+                    Text("Stop Recording")
                 }
+            }
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        playbackSession = SystemAudioSystem.createPlaybackSession(outputDevice!!)
+                    }
+                },
+                enabled = outputDevice != null
+            ) {
+                if (playbackSession == null) {
+                    Text("Start Playback")
+                } else {
+                    Text("Stop Playback")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InputDeviceListUi(
+    onDeviceSelected: (AudioDevice.Input) -> Unit
+) {
+    var devices by remember { mutableStateOf(listOf<AudioDevice.Input>()) }
+    LaunchedEffect(true) {
+        devices = SystemAudioSystem.listInputDevices()
+    }
+    Column {
+        devices.forEach {
+            TextButton(
+                onClick = {
+                    onDeviceSelected(it)
+                }
+            ) {
+                Text(it.name)
+            }
+        }
+    }
+}
+@Composable
+fun OutputDeviceListUi(
+    onDeviceSelected: (AudioDevice.Output) -> Unit
+) {
+    var devices by remember { mutableStateOf(listOf<AudioDevice.Output>()) }
+    LaunchedEffect(true) {
+        devices = SystemAudioSystem.listOutputDevices()
+    }
+    Column {
+        devices.forEach {
+            TextButton(
+                onClick = {
+                    onDeviceSelected(it)
+                }
+            ) {
+                Text(it.name)
             }
         }
     }
