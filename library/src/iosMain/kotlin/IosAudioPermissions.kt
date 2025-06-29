@@ -9,7 +9,6 @@ import kotlin.coroutines.suspendCoroutine
  */
 suspend fun requestMicrophonePermission(): Boolean = suspendCoroutine { continuation ->
     AVAudioSession.sharedInstance().requestRecordPermission { granted ->
-        println("Permission granted: $granted")
         continuation.resume(granted)
     }
 }

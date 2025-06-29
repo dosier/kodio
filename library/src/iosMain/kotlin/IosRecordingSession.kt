@@ -1,6 +1,12 @@
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.pointed
+import kotlinx.cinterop.ptr
 import kotlinx.cinterop.readBytes
+import kotlinx.cinterop.value
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -12,9 +18,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import platform.AVFAudio.AVAudioEngine
 import platform.AVFAudio.AVAudioSession
+import platform.AVFAudio.AVAudioSessionCategoryOptions
 import platform.AVFAudio.AVAudioSessionCategoryPlayAndRecord
 import platform.AVFAudio.AVAudioSessionPortDescription
 import platform.AVFAudio.availableInputs
+import platform.AVFAudio.setActive
+import platform.Foundation.NSError
 
 class IosRecordingSession(private val device: AudioDevice.Input) : RecordingSession {
     private val _state = MutableStateFlow(RecordingState.IDLE)
@@ -26,13 +35,24 @@ class IosRecordingSession(private val device: AudioDevice.Input) : RecordingSess
     private val engine = AVAudioEngine()
     private val scope = CoroutineScope(Dispatchers.Default)
 
-    @OptIn(ExperimentalForeignApi::class)
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun start(format: AudioFormat) {
         if (_state.value == RecordingState.RECORDING) return
 
         try {
             val audioSession = AVAudioSession.Companion.sharedInstance()
-            audioSession.setCategory(AVAudioSessionCategoryPlayAndRecord, error = null)
+            memScoped {
+                val err1 = alloc<ObjCObjectVar<NSError?>>()
+                audioSession.setCategory(
+                    category = AVAudioSessionCategoryPlayAndRecord,
+                    withOptions = AVAudioSessionCategoryOptions.MAX_VALUE,
+                    error = err1.ptr
+                )
+                err1.value?.let { error("Failed to set category: ${it.localizedDescription}") }
+                val err2 = alloc<ObjCObjectVar<NSError?>>()
+                audioSession.setActive(true, error = err2.ptr)
+                err2.value?.let { error("Failed to activate session: ${it.localizedDescription}") }
+            }
 
             // Find the port description matching our device
             val portDescription = audioSession.availableInputs
@@ -43,7 +63,7 @@ class IosRecordingSession(private val device: AudioDevice.Input) : RecordingSess
             }
 
             val inputNode = engine.inputNode
-            val avFormat = format.toAVAudioFormat() ?: error("Unsupported format")
+            val avFormat = inputNode.outputFormatForBus(0u)
 
             inputNode.installTapOnBus(0u, 1024u, avFormat) { buffer, _ ->
                 buffer?.let {

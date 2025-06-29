@@ -44,26 +44,31 @@ class IosPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
             _state.value = PlaybackState.PLAYING
 
             playbackJob = scope.launch {
-                audioData.collect { bytes ->
-                    val streamDescription = avFormat.streamDescription?.pointed ?: error("No stream description")
-                    val buffer = AVAudioPCMBuffer(
-                        avFormat,
-                        bytes.size.toUInt() / streamDescription.mBytesPerFrame
-                    )
-                    val audioBufferList = buffer.audioBufferList?.pointed?: error("No audio buffer list")
-                    buffer.frameLength = buffer.frameCapacity
-                    bytes.usePinned { pinned ->
-                        memcpy(audioBufferList.mBuffers.pointed.mData, pinned.addressOf(0), bytes.size.toULong())
-                    }
+                runCatching {
+                    audioData.collect { bytes ->
+                        val streamDescription = avFormat.streamDescription?.pointed ?: error("No stream description")
+                        val buffer = AVAudioPCMBuffer(
+                            avFormat,
+                            bytes.size.toUInt() / streamDescription.mBytesPerFrame
+                        )
+                        val audioBufferList = buffer.audioBufferList?.pointed ?: error("No audio buffer list")
+                        buffer.frameLength = buffer.frameCapacity
+                        bytes.usePinned { pinned ->
+                            memcpy(audioBufferList.mBuffers.pointed.mData, pinned.addressOf(0), bytes.size.toULong())
+                        }
 
-                    // Schedule buffer in a coroutine to handle completion
-                    suspendCoroutine<Unit> { continuation ->
-                        playerNode.scheduleBuffer(buffer) {
-                            continuation.resume(Unit)
+                        // Schedule buffer in a coroutine to handle completion
+                        suspendCoroutine<Unit> { continuation ->
+                            playerNode.scheduleBuffer(buffer) {
+                                continuation.resume(Unit)
+                            }
                         }
                     }
+                    _state.value = PlaybackState.FINISHED
+                }.onFailure {
+                    _state.value = PlaybackState.ERROR
+                    it.printStackTrace()
                 }
-                _state.value = PlaybackState.FINISHED
             }
         } catch (e: Exception) {
             _state.value = PlaybackState.ERROR
