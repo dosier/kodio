@@ -16,6 +16,7 @@ import platform.AVFAudio.AVAudioPlayerNode
 import platform.posix.memcpy
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import kotlin.require
 
 class IosPlaybackSession(private val device: AudioDevice.Output) : PlaybackSession {
 
@@ -37,7 +38,7 @@ class IosPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
         if (_state.value == PlaybackState.PLAYING) return
 
         try {
-            val avFormat = format.toAVAudioFormat() ?: error("Unsupported format")
+            val avFormat = format.toIosAudioFormat() ?: error("Unsupported format")
             engine.prepare()
             engine.startAndReturnError(null)
             playerNode.play()
@@ -47,6 +48,9 @@ class IosPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
                 runCatching {
                     audioData.collect { bytes ->
                         val streamDescription = avFormat.streamDescription?.pointed ?: error("No stream description")
+                        require(streamDescription.mBytesPerFrame > 0u) {
+                            "Invalid bytes per frame for format: $format (description: $streamDescription)"
+                        }
                         val buffer = AVAudioPCMBuffer(
                             avFormat,
                             bytes.size.toUInt() / streamDescription.mBytesPerFrame

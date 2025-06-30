@@ -3,8 +3,6 @@ import platform.AVFAudio.AVAudioSessionPortDescription
 import platform.AVFAudio.availableInputs
 import platform.AVFAudio.currentRoute
 
-private val IOSAudioFormat = AudioFormat(44100, 32, 1)
-
 actual val SystemAudioSystem: AudioSystem = object  : SystemAudioSystemImpl() {
     private val audioSession = AVAudioSession.sharedInstance()
 
@@ -19,8 +17,8 @@ actual val SystemAudioSystem: AudioSystem = object  : SystemAudioSystemImpl() {
                 id = port.UID(),
                 name = port.portName(),
                 // Querying all formats is complex on iOS; provide common ones.
-                supportedFormats = listOf(IOSAudioFormat),
-                defaultFormat = IOSAudioFormat
+                supportedFormats = listOf(DefaultIosRecordingAudioFormat),
+                defaultFormat = DefaultIosRecordingAudioFormat
             )
         } ?: emptyList()
     }
@@ -30,8 +28,8 @@ actual val SystemAudioSystem: AudioSystem = object  : SystemAudioSystemImpl() {
             AudioDevice.Output(
                 id = port.UID(),
                 name = port.portName(),
-                supportedFormats = listOf(IOSAudioFormat),
-                defaultFormat = IOSAudioFormat
+                supportedFormats = listOf(DefaultIosRecordingAudioFormat),
+                defaultFormat = DefaultIosRecordingAudioFormat
             )
         }
     }
