@@ -1,7 +1,6 @@
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.sound.sampled.DataLine
-import javax.sound.sampled.Line
 import javax.sound.sampled.SourceDataLine
 import javax.sound.sampled.TargetDataLine
 import javax.sound.sampled.AudioSystem as JvmAudioSystem
@@ -23,7 +22,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
                 // For simplicity, we treat each mixer as one device.
                 // A more complex implementation could inspect individual lines.
                 val mixerInfo = mixer.mixerInfo
-                val supportedFormats = mixer.targetLineInfo.getSupportedFormats()
+                val supportedFormats = mixer.targetLineInfo.toCommonAudioFormats()
                 AudioDevice.Input(
                     id = mixerInfo.name, // Using mixer name as a unique ID
                     name = mixerInfo.description,
@@ -43,7 +42,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
             .filter { it.isLineSupported(DataLine.Info(SourceDataLine::class.java, null)) }
             .map { mixer ->
                 val mixerInfo = mixer.mixerInfo
-                val supportedFormats = mixer.sourceLineInfo.getSupportedFormats()
+                val supportedFormats = mixer.sourceLineInfo.toCommonAudioFormats()
                 AudioDevice.Output(
                     id = mixerInfo.name,
                     name = mixerInfo.description,
@@ -61,21 +60,3 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
         return JvmPlaybackSession(device)
     }
 }
-
-/**
- * Helper function to determine supported formats for a given line type on a mixer.
- * This implementation directly queries the DataLine.Info for its supported formats.
- */
-private fun Array<Line.Info>.getSupportedFormats() = filterIsInstance<DataLine.Info>()
-    .flatMap {
-        it.formats.map { jvmFormat ->
-            AudioFormat(
-                sampleRate = jvmFormat.sampleRate.toInt(),
-                bitDepth = jvmFormat.sampleSizeInBits,
-                channels = jvmFormat.channels
-            )
-        }
-    }
-    // Filter out formats with unspecified values (which can be returned as -1)
-    .filter { it.bitDepth > 0 && it.channels > 0 && it.sampleRate > 0 }
-    .distinct() // Remove any duplicate formats
