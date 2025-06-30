@@ -22,9 +22,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
                 AudioDevice.Input(
                     id = port.UID(),
                     name = port.portName(),
-                    // Querying all formats is complex on iOS; provide common ones.
-                    supportedFormats = listOf(DefaultIosRecordingAudioFormat),
-                    defaultFormat = DefaultIosRecordingAudioFormat
+                    formatSupport = AudioFormatSupport.Unknown
                 )
             }
             ?: emptyList()
@@ -37,8 +35,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
                 AudioDevice.Output(
                     id = port.UID(),
                     name = port.portName(),
-                    supportedFormats = listOf(DefaultIosPlaybackAudioFormat),
-                    defaultFormat = DefaultIosPlaybackAudioFormat
+                    formatSupport = AudioFormatSupport.Unknown
                 )
             }
     }

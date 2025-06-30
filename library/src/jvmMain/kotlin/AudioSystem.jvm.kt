@@ -29,8 +29,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
                 AudioDevice.Input(
                     id = mixerInfo.name, // Using mixer name as a unique ID
                     name = mixerInfo.description,
-                    supportedFormats = supportedFormats,
-                    defaultFormat = supportedFormats.firstOrNull() ?: AudioFormat(44100, 16, 2) // A sensible default
+                    formatSupport = toAudioFormatSupport(supportedFormats)
                 )
             }
     }
@@ -49,8 +48,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
                 AudioDevice.Output(
                     id = mixerInfo.name,
                     name = mixerInfo.description,
-                    supportedFormats = supportedFormats,
-                    defaultFormat = supportedFormats.firstOrNull() ?: AudioFormat(44100, 16, 2)
+                    formatSupport = toAudioFormatSupport(supportedFormats)
                 )
             }
     }
@@ -60,4 +58,15 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
     override fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
         JvmPlaybackSession(device)
+}
+
+private fun toAudioFormatSupport(supportedFormats: List<AudioFormat>): AudioFormatSupport = when {
+    supportedFormats.isNotEmpty() -> {
+        AudioFormatSupport.Known(
+            supportedFormats = supportedFormats,
+            defaultFormat = supportedFormats.first()
+        )
+    }
+    else ->
+        AudioFormatSupport.Unknown
 }

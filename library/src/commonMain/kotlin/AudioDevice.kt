@@ -9,10 +9,7 @@ sealed interface AudioDevice {
     val name: String
 
     /** The supported audio formats. */
-    val supportedFormats: List<AudioFormat>
-
-    /** The default audio format for this device. */
-    val defaultFormat: AudioFormat
+    val formatSupport: AudioFormatSupport
 
     /**
      * Represents an audio input device (e.g., a microphone).
@@ -20,8 +17,7 @@ sealed interface AudioDevice {
     class Input(
         override val id: String,
         override val name: String,
-        override val supportedFormats: List<AudioFormat>,
-        override val defaultFormat: AudioFormat
+        override val formatSupport: AudioFormatSupport
     ) : AudioDevice
 
     /**
@@ -30,7 +26,6 @@ sealed interface AudioDevice {
     class Output(
         override val id: String,
         override val name: String,
-        override val supportedFormats: List<AudioFormat>,
-        override val defaultFormat: AudioFormat
+        override val formatSupport: AudioFormatSupport
     ) : AudioDevice
 }

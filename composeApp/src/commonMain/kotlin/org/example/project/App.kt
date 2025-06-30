@@ -2,6 +2,7 @@ package org.example.project
 
 import AudioDataFlow
 import AudioDevice
+import AudioFormatSupport
 import SystemAudioSystem
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
@@ -44,7 +45,12 @@ fun App() {
                         else -> {
                             RecordingSessionUi(
                                 recordingSession = session,
-                                format = inputDevice?.defaultFormat!!,
+                                format = inputDevice?.formatSupport?.let {
+                                    if (it is AudioFormatSupport.Known)
+                                        it.defaultFormat
+                                    else
+                                        null
+                                }?:AudioFormat.DEFAULT,
                                 onStopRecording = { audioFrames ->
                                     playbackAudioDataFlow = audioFrames
                                 }
