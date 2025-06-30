@@ -13,6 +13,11 @@ import javax.sound.sampled.DataLine
 import javax.sound.sampled.TargetDataLine
 import javax.sound.sampled.AudioSystem as JvmAudioSystem
 
+/**
+ * JVM implementation for [RecordingSession].
+ *
+ * @param device The input device to record from.
+ */
 class JvmRecordingSession(private val device: AudioDevice.Input) : RecordingSession {
 
     private val _state = MutableStateFlow<RecordingState>(RecordingState.Idle)

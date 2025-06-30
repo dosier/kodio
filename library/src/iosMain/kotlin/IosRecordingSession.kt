@@ -25,6 +25,11 @@ import platform.AVFAudio.availableInputs
 import platform.AVFAudio.setActive
 import platform.Foundation.NSError
 
+/**
+ * IOS implementation for [RecordingSession].
+ *
+ * @param device The input device to record from.
+ */
 class IosRecordingSession(private val device: AudioDevice.Input) : RecordingSession {
 
     private val _state = MutableStateFlow<RecordingState>(RecordingState.Idle)

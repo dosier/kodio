@@ -5,6 +5,11 @@ import platform.AVFAudio.AVAudioEngine
 import platform.AVFAudio.AVAudioMixerNode
 import platform.AVFAudio.AVAudioPlayerNode
 
+/**
+ * IOS implementation for [PlaybackSession].
+ *
+ * In IOS, we cannot control the output device, so we ignore it.
+ */
 class IosPlaybackSession() : PlaybackSession {
 
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
@@ -76,9 +81,8 @@ class IosPlaybackSession() : PlaybackSession {
 
     override fun stop() {
         playbackJob?.cancel()
-        if (playerNode.isPlaying()) {
+        if (playerNode.isPlaying())
             playerNode.stop()
-        }
         engine.stop()
         engine.disconnectNodeOutput(playerNode)
         engine.disconnectNodeOutput(formatConverterMixer)

@@ -1,19 +1,26 @@
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.DataLine
 import javax.sound.sampled.SourceDataLine
 
-// --- JVM PLAYBACK SESSION IMPLEMENTATION ---
+/**
+ * JVM implementation for [PlaybackSession].
+ *
+ * @param device The output device to play to.
+ */
 class JvmPlaybackSession(private val device: AudioDevice.Output) : PlaybackSession {
+
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
     override val state: StateFlow<PlaybackState> = _state.asStateFlow()
+
+    private val isPaused = MutableStateFlow(false)
 
     private var playbackJob: Job? = null
     private var dataLine: SourceDataLine? = null
@@ -39,6 +46,7 @@ class JvmPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
 
                 playbackJob = scope.launch {
                     audioDataFlow.collect { buffer ->
+                        isPaused.first { !it } // blocks until false
                         line.write(buffer, 0, buffer.size)
                     }
                     line.drain()
@@ -49,18 +57,19 @@ class JvmPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
             }
         } catch (e: Exception) {
             _state.value = PlaybackState.Error(e)
-            e.printStackTrace()
         }
     }
 
     override fun pause() {
         if (_state.value != PlaybackState.Playing) return
         dataLine?.stop()
+        isPaused.value = true
         _state.value = PlaybackState.Paused
     }
 
     override fun resume() {
         if (_state.value != PlaybackState.Paused) return
+        isPaused.value = false
         dataLine?.start()
         _state.value = PlaybackState.Playing
     }
@@ -68,6 +77,7 @@ class JvmPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
     override fun stop() {
         if (_state.value == PlaybackState.Idle || _state.value == PlaybackState.Finished) return
         playbackJob?.cancel()
+        isPaused.value = false
         dataLine?.stop()
         dataLine?.flush()
         dataLine?.close()

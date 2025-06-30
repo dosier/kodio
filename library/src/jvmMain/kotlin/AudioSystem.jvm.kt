@@ -6,7 +6,10 @@ import javax.sound.sampled.TargetDataLine
 import javax.sound.sampled.AudioSystem as JvmAudioSystem
 
 /**
- * JVM implementation for AudioSystem using javax.sound.sampled.
+ * JVM implementation for [AudioSystem] using javax.sound.sampled.
+ *
+ * @see JvmPlaybackSession for playback session implementation.
+ * @see JvmRecordingSession for recording session implementation.
  */
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
@@ -52,11 +55,9 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
             }
     }
 
-    override fun createRecordingSession(device: AudioDevice.Input): RecordingSession {
-        return JvmRecordingSession(device)
-    }
+    override fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
+        JvmRecordingSession(device)
 
-    override fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession {
-        return JvmPlaybackSession(device)
-    }
+    override fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
+        JvmPlaybackSession(device)
 }

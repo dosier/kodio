@@ -3,6 +3,12 @@ import platform.AVFAudio.AVAudioSessionPortDescription
 import platform.AVFAudio.availableInputs
 import platform.AVFAudio.currentRoute
 
+/**
+ * IOS implementation for [AudioSystem].
+ *
+ * @see IosPlaybackSession for playback session implementation.
+ * @see IosRecordingSession for recording session implementation.
+ */
 actual val SystemAudioSystem: AudioSystem = object  : SystemAudioSystemImpl() {
 
     private val audioSession = AVAudioSession.sharedInstance()
