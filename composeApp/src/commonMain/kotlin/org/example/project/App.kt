@@ -146,7 +146,7 @@ fun RecordingSessionUi(
     Row {
         AnimatedContent(state) {
             when (it) {
-                RecordingState.RECORDING -> {
+                RecordingState.Recording -> {
                     TextButton(
                         onClick = {
                             recordingSession.stop()
@@ -157,8 +157,8 @@ fun RecordingSessionUi(
                     }
                 }
 
-                RecordingState.IDLE,
-                RecordingState.STOPPED -> {
+                RecordingState.Idle,
+                RecordingState.Stopped -> {
                     TextButton(
                         onClick = {
                             scope.launch {
@@ -170,8 +170,19 @@ fun RecordingSessionUi(
                         Text("Start Recording")
                     }
                 }
-
-                RecordingState.ERROR -> Text("Error")
+                is RecordingState.Error -> {
+                    Column {
+                        Text("Error: ${it.error.message}")
+                        TextButton(onClick = {
+                            scope.launch {
+                                audioFrames = emptyList()
+                                recordingSession.start(format)
+                            }
+                        }) {
+                            Text("Start Recording")
+                        }
+                    }
+                }
             }
         }
     }

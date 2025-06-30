@@ -15,7 +15,7 @@ import javax.sound.sampled.AudioSystem as JvmAudioSystem
 
 class JvmRecordingSession(private val device: AudioDevice.Input) : RecordingSession {
 
-    private val _state = MutableStateFlow(RecordingState.IDLE)
+    private val _state = MutableStateFlow(RecordingState.Idle)
     override val state: StateFlow<RecordingState> = _state.asStateFlow()
 
     private val _audioDataFlow = MutableSharedFlow<ByteArray>()
@@ -26,7 +26,7 @@ class JvmRecordingSession(private val device: AudioDevice.Input) : RecordingSess
     private val scope = CoroutineScope(Dispatchers.IO)
 
     override suspend fun start(format: AudioFormat) {
-        if (_state.value == RecordingState.RECORDING) return
+        if (_state.value == RecordingState.Recording) return
 
         try {
             // Correctly get the Mixer instance first
@@ -40,7 +40,7 @@ class JvmRecordingSession(private val device: AudioDevice.Input) : RecordingSess
             dataLine?.let { line ->
                 line.open(format.toJvmAudioFormat())
                 line.start()
-                _state.value = RecordingState.RECORDING
+                _state.value = RecordingState.Recording
 
                 recordingJob = scope.launch {
                     val buffer = ByteArray(line.bufferSize / 5)
@@ -53,18 +53,18 @@ class JvmRecordingSession(private val device: AudioDevice.Input) : RecordingSess
                 }
             }
         } catch (e: Exception) {
-            _state.value = RecordingState.ERROR
+            _state.value = RecordingState.Error
             // Optionally handle the exception (e.g., logging)
             e.printStackTrace()
         }
     }
 
     override fun stop() {
-        if (_state.value != RecordingState.RECORDING) return
+        if (_state.value != RecordingState.Recording) return
         recordingJob?.cancel()
         dataLine?.stop()
         dataLine?.close()
-        _state.value = RecordingState.STOPPED
+        _state.value = RecordingState.Stopped
     }
 }
 

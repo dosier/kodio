@@ -3,7 +3,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -81,14 +80,14 @@ class AudioSystemTest {
             }
         }
 
-        assertEquals(RecordingState.IDLE, recordingSession.state.value)
+        assertEquals(RecordingState.Idle, recordingSession.state.value)
         recordingSession.start(format)
 
         // Wait until recording starts
         withTimeout(1.seconds) {
-            recordingSession.state.first { it == RecordingState.RECORDING }
+            recordingSession.state.first { it == RecordingState.Recording }
         }
-        assertEquals(RecordingState.RECORDING, recordingSession.state.value)
+        assertEquals(RecordingState.Recording, recordingSession.state.value)
 
         // Let it record for 2 seconds
         withContext(Dispatchers.Default.limitedParallelism(1)) {
@@ -96,7 +95,7 @@ class AudioSystemTest {
         }
         recordingSession.stop()
 
-        assertEquals(RecordingState.STOPPED, recordingSession.state.value)
+        assertEquals(RecordingState.Stopped, recordingSession.state.value)
 
         // 5. Play back the recorded audio
         val playbackStateChanges = mutableListOf<PlaybackState>()
@@ -120,7 +119,7 @@ class AudioSystemTest {
         }
 
         // 6. Verify state transitions
-        assertEquals(listOf(RecordingState.IDLE, RecordingState.RECORDING, RecordingState.STOPPED), recordingStateChanges)
+        assertEquals(listOf(RecordingState.Idle, RecordingState.Recording, RecordingState.Stopped), recordingStateChanges)
 
         // The last state might be PLAYING if the flow finishes fast
         val expectedPlaybackStates = listOf(PlaybackState.Idle, PlaybackState.Playing, PlaybackState.Finished)
