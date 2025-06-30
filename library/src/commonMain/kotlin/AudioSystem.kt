@@ -29,6 +29,4 @@ public sealed interface AudioSystem {
     fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession
 }
 
-abstract class SystemAudioSystemImpl : AudioSystem {
-
-}
+abstract class SystemAudioSystemImpl : AudioSystem
