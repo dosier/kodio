@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import platform.AVFAudio.AVAudioConverter
+import platform.AVFAudio.AVAudioConverterInputStatus_HaveData
 import platform.AVFAudio.AVAudioEngine
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryOptions
@@ -26,6 +28,7 @@ import platform.AVFAudio.setActive
 import platform.Foundation.NSError
 
 class IosRecordingSession(private val device: AudioDevice.Input) : RecordingSession {
+
     private val _state = MutableStateFlow(RecordingState.IDLE)
     override val state: StateFlow<RecordingState> = _state.asStateFlow()
 
@@ -34,6 +37,7 @@ class IosRecordingSession(private val device: AudioDevice.Input) : RecordingSess
 
     private val engine = AVAudioEngine()
     private val scope = CoroutineScope(Dispatchers.Default)
+
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun start(format: AudioFormat) {
@@ -63,15 +67,27 @@ class IosRecordingSession(private val device: AudioDevice.Input) : RecordingSess
             }
 
             val inputNode = engine.inputNode
-            val avFormat = inputNode.outputFormatForBus(0u)
 
-            inputNode.installTapOnBus(0u, 1024u, avFormat) { buffer, _ ->
-                buffer?.let {
-                    val audioBuffer = it.audioBufferList?.pointed?.mBuffers?.pointed
-                    val data = audioBuffer?.mData?.readBytes(audioBuffer.mDataByteSize.toInt())
-                    if (data != null) {
-                        scope.launch { _audioDataFlow.emit(data) }
-                    }
+            val hardwareIosAudioFormat = inputNode.outputFormatForBus(0u)
+            val targetIosAudioFormat = format.toIosAudioFormat()
+
+            val converter = AVAudioConverter(hardwareIosAudioFormat, targetIosAudioFormat)
+
+            inputNode.installTapOnBus(
+                bus = 0u,
+                bufferSize = 1024u, // A common buffer size
+                format = hardwareIosAudioFormat // Tap in the hardware's native format
+            ) { buffer, _ ->
+                if (buffer == null) return@installTapOnBus
+                try {
+                    val bufferInTargetFormat = converter.convert(buffer, targetIosAudioFormat)
+                    val bufferData = bufferInTargetFormat.toByteArray()
+                    if (bufferData != null)
+                        scope.launch { _audioDataFlow.emit(bufferData) }
+                    else
+                        println("Buffer data is null?")
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
 

@@ -1,6 +1,7 @@
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
@@ -103,20 +104,18 @@ class AudioSystemTest {
             playbackSession.state.toList(playbackStateChanges)
         }
 
-        assertEquals(PlaybackState.IDLE, playbackSession.state.value)
+        assertEquals(PlaybackState.Idle, playbackSession.state.value)
 
         // Ensure we actually recorded something
         assertTrue(recordedData.isNotEmpty(), "No audio data was recorded.")
 
         // Play the collected data
-        playbackSession.play(flow {
-            recordedData.forEach { emit(it) }
-        }, format)
+        playbackSession.play(recordedData.asFlow().asAudioDataFlow(format))
 
         // Wait until it's finished playing
         withContext(Dispatchers.Default.limitedParallelism(1)) {
             withTimeout(5.seconds) {
-                playbackSession.state.first { it == PlaybackState.FINISHED }
+                playbackSession.state.first { it == PlaybackState.Finished }
             }
         }
 
@@ -124,7 +123,7 @@ class AudioSystemTest {
         assertEquals(listOf(RecordingState.IDLE, RecordingState.RECORDING, RecordingState.STOPPED), recordingStateChanges)
 
         // The last state might be PLAYING if the flow finishes fast
-        val expectedPlaybackStates = listOf(PlaybackState.IDLE, PlaybackState.PLAYING, PlaybackState.FINISHED)
+        val expectedPlaybackStates = listOf(PlaybackState.Idle, PlaybackState.Playing, PlaybackState.Finished)
         assertEquals(expectedPlaybackStates, playbackStateChanges)
 
         // Clean up jobs

@@ -1,81 +1,61 @@
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.pointed
-import kotlinx.cinterop.usePinned
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import platform.AVFAudio.AVAudioEngine
-import platform.AVFAudio.AVAudioPCMBuffer
+import platform.AVFAudio.AVAudioMixerNode
 import platform.AVFAudio.AVAudioPlayerNode
-import platform.posix.memcpy
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
-import kotlin.require
 
-class IosPlaybackSession(private val device: AudioDevice.Output) : PlaybackSession {
+class IosPlaybackSession() : PlaybackSession {
 
-    private val _state = MutableStateFlow(PlaybackState.IDLE)
+    private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
     override val state: StateFlow<PlaybackState> = _state.asStateFlow()
 
     private val engine = AVAudioEngine()
     private val playerNode = AVAudioPlayerNode()
+    private val formatConverterMixer = AVAudioMixerNode()
     private var playbackJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
 
     init {
         engine.attachNode(playerNode)
-        engine.connect(playerNode, engine.mainMixerNode, null)
+        engine.attachNode(formatConverterMixer)
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    override suspend fun play(audioData: Flow<ByteArray>, format: AudioFormat) {
-        if (_state.value == PlaybackState.PLAYING) return
+    override suspend fun play(audioDataFlow: AudioDataFlow) {
+        if (_state.value == PlaybackState.Playing) return
 
         try {
-            val avFormat = format.toIosAudioFormat() ?: error("Unsupported format")
+            val iosAudioFormat = audioDataFlow.format.toIosAudioFormat()
+
+            engine.connect(playerNode, formatConverterMixer, iosAudioFormat)
+            engine.connect(formatConverterMixer, engine.mainMixerNode, null)
+
             engine.prepare()
             engine.startAndReturnError(null)
             playerNode.play()
-            _state.value = PlaybackState.PLAYING
+            _state.value = PlaybackState.Playing
 
             playbackJob = scope.launch {
                 runCatching {
-                    audioData.collect { bytes ->
-                        val streamDescription = avFormat.streamDescription?.pointed ?: error("No stream description")
-                        require(streamDescription.mBytesPerFrame > 0u) {
-                            "Invalid bytes per frame for format: $format (description: $streamDescription)"
+                    val lastCompletable = audioDataFlow.map { bytes ->
+                        val iosAudioBuffer = bytes.toIosAudioBuffer(iosAudioFormat)
+                        val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
+                        playerNode.scheduleBuffer(iosAudioBuffer) {
+                            // somehow indicate that the buffer has finished playing
+                            iosAudioBufferFinishedIndicator.complete(Unit)
                         }
-                        val buffer = AVAudioPCMBuffer(
-                            avFormat,
-                            bytes.size.toUInt() / streamDescription.mBytesPerFrame
-                        )
-                        val audioBufferList = buffer.audioBufferList?.pointed ?: error("No audio buffer list")
-                        buffer.frameLength = buffer.frameCapacity
-                        bytes.usePinned { pinned ->
-                            memcpy(audioBufferList.mBuffers.pointed.mData, pinned.addressOf(0), bytes.size.toULong())
-                        }
-
-                        // Schedule buffer in a coroutine to handle completion
-                        suspendCoroutine<Unit> { continuation ->
-                            playerNode.scheduleBuffer(buffer) {
-                                continuation.resume(Unit)
-                            }
-                        }
-                    }
-                    _state.value = PlaybackState.FINISHED
+                        iosAudioBufferFinishedIndicator
+                    }.lastOrNull()
+                    // The timeout is a safety measure in case something goes wrong with the audio engine
+                    lastCompletable?.await()
+                    _state.value = PlaybackState.Finished
                 }.onFailure {
-                    _state.value = PlaybackState.ERROR
-                    it.printStackTrace()
+                    _state.value = PlaybackState.Error(it)
                 }
             }
         } catch (e: Exception) {
-            _state.value = PlaybackState.ERROR
+            _state.value = PlaybackState.Error(e)
             e.printStackTrace()
         }
     }
@@ -83,14 +63,14 @@ class IosPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
     override fun pause() {
         if (playerNode.isPlaying()) {
             playerNode.pause()
-            _state.value = PlaybackState.PAUSED
+            _state.value = PlaybackState.Paused
         }
     }
 
     override fun resume() {
-        if (!playerNode.isPlaying() && _state.value == PlaybackState.PAUSED) {
+        if (!playerNode.isPlaying() && _state.value == PlaybackState.Paused) {
             playerNode.play()
-            _state.value = PlaybackState.PLAYING
+            _state.value = PlaybackState.Playing
         }
     }
 
@@ -100,6 +80,8 @@ class IosPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
             playerNode.stop()
         }
         engine.stop()
-        _state.value = PlaybackState.IDLE
+        engine.disconnectNodeOutput(playerNode)
+        engine.disconnectNodeOutput(formatConverterMixer)
+        _state.value = PlaybackState.Idle
     }
 }

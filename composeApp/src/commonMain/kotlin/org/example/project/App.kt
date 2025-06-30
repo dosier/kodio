@@ -1,9 +1,11 @@
 package org.example.project
 
+import AudioDataFlow
 import AudioDevice
 import AudioFormat
 import PlaybackSession
 import RecordingSession
+import RecordingState
 import SystemAudioSystem
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
@@ -13,9 +15,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
-import kotlinx.coroutines.Dispatchers
+import asAudioDataFlow
 import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
@@ -27,8 +28,7 @@ fun App() {
         var outputDevice by remember { mutableStateOf<AudioDevice.Output?>(null) }
         var recordingSession by remember { mutableStateOf<RecordingSession?>(null) }
         var playbackSession by remember { mutableStateOf<PlaybackSession?>(null) }
-        var recordedAudioFrames by remember { mutableStateOf(emptyList<ByteArray>()) }
-        val scope = rememberCoroutineScope()
+        var audioRecordingDataFlow by remember { mutableStateOf<AudioDataFlow?>(null) }
         Column {
             Column {
                 Text("Input device: ${inputDevice?.name ?: "None"}")
@@ -47,12 +47,7 @@ fun App() {
                 if (it == null) {
                     TextButton(
                         onClick = {
-                            scope.launch {
-                                recordingSession?.stop()
-                                inputDevice?.let {
-                                    recordingSession = SystemAudioSystem.createRecordingSession(it)
-                                }
-                            }
+                            recordingSession = SystemAudioSystem.createRecordingSession(inputDevice!!)
                         },
                         enabled = inputDevice != null
                     ) {
@@ -63,26 +58,27 @@ fun App() {
                         recordingSession = it,
                         format = inputDevice?.defaultFormat!!,
                         onStopRecording = { audioFrames ->
-                            recordedAudioFrames = audioFrames
+                            audioRecordingDataFlow = audioFrames
                         }
                     )
                 }
             }
 
-            TextButton(
-                onClick = {
-                    playbackSession?.stop()
-                    scope.launch {
-                        playbackSession = SystemAudioSystem.createPlaybackSession(outputDevice!!)
-                        playbackSession?.play(recordedAudioFrames.asFlow(), outputDevice!!.defaultFormat)
+            AnimatedContent(playbackSession) {
+                if (it == null) {
+                    TextButton(
+                        onClick = {
+                            playbackSession = SystemAudioSystem.createPlaybackSession(outputDevice!!)
+                        },
+                        enabled = outputDevice != null && audioRecordingDataFlow != null
+                    ) {
+                        Text("Create Playback Session")
                     }
-                },
-                enabled = outputDevice != null && recordedAudioFrames.isNotEmpty()
-            ) {
-                if (playbackSession == null) {
-                    Text("Start Playback")
                 } else {
-                    Text("Stop Playback")
+                    PlaybackSessionUi(
+                        playbackSession = it,
+                        audioDataFlow = audioRecordingDataFlow!!
+                    )
                 }
             }
         }
@@ -135,34 +131,34 @@ fun OutputDeviceListUi(
 fun RecordingSessionUi(
     recordingSession: RecordingSession,
     format: AudioFormat,
-    onStopRecording: (List<ByteArray>) -> Unit = {}
+    onStopRecording: (AudioDataFlow) -> Unit = {}
 ) {
     val state by recordingSession.state.collectAsState()
     var audioFrames by remember {
         mutableStateOf(emptyList<ByteArray>())
     }
     val scope = rememberCoroutineScope()
-    scope.launch {
+    LaunchedEffect(recordingSession) {
         recordingSession.audioDataFlow.collect {
             audioFrames = audioFrames + it
         }
     }
     Row {
-
         AnimatedContent(state) {
             when (it) {
                 RecordingState.RECORDING -> {
                     TextButton(
                         onClick = {
                             recordingSession.stop()
-                            onStopRecording(audioFrames)
+                            onStopRecording(audioFrames.asFlow().asAudioDataFlow(format))
                         }
                     ) {
                         Text("Stop Recording (${audioFrames.size} frames)")
                     }
                 }
+
                 RecordingState.IDLE,
-                RecordingState.STOPPED ->  {
+                RecordingState.STOPPED -> {
                     TextButton(
                         onClick = {
                             scope.launch {
@@ -174,7 +170,67 @@ fun RecordingSessionUi(
                         Text("Start Recording")
                     }
                 }
+
                 RecordingState.ERROR -> Text("Error")
+            }
+        }
+    }
+}
+
+@Composable
+fun PlaybackSessionUi(
+    playbackSession: PlaybackSession,
+    audioDataFlow: AudioDataFlow
+) {
+    val state by playbackSession.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    Row {
+        AnimatedContent(state) {
+            when (it) {
+                PlaybackState.Idle -> {
+                    TextButton(onClick = {
+                        scope.launch {
+                            playbackSession.play(audioDataFlow)
+                        }
+                    }) {
+                        Text("Start Playback")
+                    }
+                }
+
+                PlaybackState.Finished -> {
+                    TextButton(onClick = {
+                        scope.launch {
+                            playbackSession.play(audioDataFlow)
+                        }
+                    }) {
+                        Text("Restart Playback")
+                    }
+                }
+
+                PlaybackState.Paused -> {
+                    TextButton(onClick = playbackSession::resume) {
+                        Text("Resume Playback")
+                    }
+                }
+
+                PlaybackState.Playing -> {
+                    TextButton(onClick = playbackSession::pause) {
+                        Text("Pause Playback")
+                    }
+                }
+
+                is PlaybackState.Error -> {
+                    Column {
+                        Text("Error: ${it.error.message}")
+                        TextButton(onClick = {
+                            scope.launch {
+                                playbackSession.play(audioDataFlow)
+                            }
+                        }) {
+                            Text("Restart Playback")
+                        }
+                    }
+                }
             }
         }
     }

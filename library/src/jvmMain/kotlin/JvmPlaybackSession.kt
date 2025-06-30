@@ -12,64 +12,65 @@ import javax.sound.sampled.SourceDataLine
 
 // --- JVM PLAYBACK SESSION IMPLEMENTATION ---
 class JvmPlaybackSession(private val device: AudioDevice.Output) : PlaybackSession {
-    private val _state = MutableStateFlow(PlaybackState.IDLE)
+    private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
     override val state: StateFlow<PlaybackState> = _state.asStateFlow()
 
     private var playbackJob: Job? = null
     private var dataLine: SourceDataLine? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    override suspend fun play(audioData: Flow<ByteArray>, format: AudioFormat) {
-        if (_state.value == PlaybackState.PLAYING) return
+    override suspend fun play(audioDataFlow: AudioDataFlow) {
+        if (_state.value == PlaybackState.Playing) return
 
+        val jvmAudioFormat = audioDataFlow.format.toJvmAudioFormat()
         try {
             // Correctly get the Mixer instance first
             val mixerInfo = AudioSystem.getMixerInfo().first { it.name == device.id }
             val mixer = AudioSystem.getMixer(mixerInfo)
 
             // Then get the line from the specific mixer
-            val lineInfo = DataLine.Info(SourceDataLine::class.java, format.toJvmAudioFormat())
+            val lineInfo = DataLine.Info(SourceDataLine::class.java, jvmAudioFormat)
             dataLine = mixer.getLine(lineInfo) as SourceDataLine
 
             dataLine?.let { line ->
-                line.open(format.toJvmAudioFormat())
+                line.open(jvmAudioFormat)
                 line.start()
-                _state.value = PlaybackState.PLAYING
+                _state.value = PlaybackState.Playing
 
                 playbackJob = scope.launch {
-                    audioData.collect { buffer ->
+                    audioDataFlow.collect { buffer ->
                         line.write(buffer, 0, buffer.size)
                     }
                     line.drain()
                     line.stop()
                     line.close()
-                    _state.value = PlaybackState.FINISHED
+                    _state.value = PlaybackState.Finished
                 }
             }
         } catch (e: Exception) {
-            _state.value = PlaybackState.ERROR
+            _state.value = PlaybackState.Error(e)
             e.printStackTrace()
         }
     }
 
     override fun pause() {
-        if (_state.value != PlaybackState.PLAYING) return
+        if (_state.value != PlaybackState.Playing) return
         dataLine?.stop()
-        _state.value = PlaybackState.PAUSED
+        _state.value = PlaybackState.Paused
     }
 
     override fun resume() {
-        if (_state.value != PlaybackState.PAUSED) return
+        if (_state.value != PlaybackState.Paused) return
         dataLine?.start()
-        _state.value = PlaybackState.PLAYING
+        _state.value = PlaybackState.Playing
     }
 
     override fun stop() {
-        if (_state.value == PlaybackState.IDLE || _state.value == PlaybackState.FINISHED) return
+        if (_state.value == PlaybackState.Idle || _state.value == PlaybackState.Finished) return
         playbackJob?.cancel()
         dataLine?.stop()
         dataLine?.flush()
         dataLine?.close()
-        _state.value = PlaybackState.IDLE
+        _state.value = PlaybackState.Idle
     }
 }
