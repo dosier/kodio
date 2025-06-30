@@ -15,7 +15,7 @@ import javax.sound.sampled.AudioSystem as JvmAudioSystem
 
 class JvmRecordingSession(private val device: AudioDevice.Input) : RecordingSession {
 
-    private val _state = MutableStateFlow(RecordingState.Idle)
+    private val _state = MutableStateFlow<RecordingState>(RecordingState.Idle)
     override val state: StateFlow<RecordingState> = _state.asStateFlow()
 
     private val _audioDataFlow = MutableSharedFlow<ByteArray>()
@@ -53,9 +53,7 @@ class JvmRecordingSession(private val device: AudioDevice.Input) : RecordingSess
                 }
             }
         } catch (e: Exception) {
-            _state.value = RecordingState.Error
-            // Optionally handle the exception (e.g., logging)
-            e.printStackTrace()
+            _state.value = RecordingState.Error(e)
         }
     }
 
