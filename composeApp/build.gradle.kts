@@ -12,6 +12,9 @@ plugins {
     alias(libs.plugins.composeHotReload)
 }
 
+val jsAppName = project.name + "-js"
+val wasmAppName = project.name + "-wasm"
+
 kotlin {
     androidTarget {
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
@@ -32,22 +35,38 @@ kotlin {
     }
     
     jvm("desktop")
-    
+
+    js {
+        outputModuleName.set(jsAppName)
+        browser {
+            commonWebpackConfig {
+                outputFileName = "$jsAppName.js"
+                devServer = (devServer ?: KotlinWebpackConfig.DevServer()).apply {
+                    static = (static ?: mutableListOf()).apply {
+                        add(project.rootDir.path)
+                        add(project.projectDir.path)
+                    }
+                }
+            }
+        }
+        binaries.executable()
+    }
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         outputModuleName.set("composeApp")
         browser {
-            val rootDirPath = project.rootDir.path
-            val projectDirPath = project.projectDir.path
             commonWebpackConfig {
-                outputFileName = "composeApp.js"
+                outputFileName = "$wasmAppName.js"
                 devServer = (devServer ?: KotlinWebpackConfig.DevServer()).apply {
                     static = (static ?: mutableListOf()).apply {
                         // Serve sources to debug inside browser
-                        add(rootDirPath)
-                        add(projectDirPath)
+                        add(project.rootDir.path)
+                        add(project.projectDir.path)
                     }
                 }
+            }
+            compilerOptions {
+                freeCompilerArgs.add("-Xwasm-attach-js-exception")
             }
         }
         binaries.executable()
@@ -61,7 +80,7 @@ kotlin {
             implementation(libs.androidx.activity.compose)
         }
         commonMain.dependencies {
-            implementation(projects.library)
+            api(projects.library)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)

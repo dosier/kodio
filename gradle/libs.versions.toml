@@ -35,6 +35,7 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version.ref = "kotlinx-browser" }
 kotlin-browser-js = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser-js", version.ref = "kotlin-browser-js" }
+kotlin-browser-wasmjs = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser-wasm-js", version = "2025.6.15" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
@@ -43,4 +44,5 @@ composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "com
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlinJsPlainObjects = { id = "org.jetbrains.kotlin.plugin.js-plain-objects", version = "2.2.0" }
 vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version = "0.32.0" }

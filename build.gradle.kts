@@ -7,5 +7,6 @@ plugins {
     alias(libs.plugins.composeMultiplatform) apply false
     alias(libs.plugins.composeCompiler) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
+    alias(libs.plugins.kotlinJsPlainObjects) apply false
     alias(libs.plugins.vanniktech.mavenPublish) apply false
 }

@@ -7,6 +7,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.kotlinJsPlainObjects)
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.vanniktech.mavenPublish)
 }
@@ -26,6 +27,16 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
+
+    @OptIn(ExperimentalKotlinGradlePluginApi::class)
+    applyDefaultHierarchyTemplate {
+        common {
+            group("web") {
+                withJs()
+                withWasmJs()
+            }
+        }
+    }
     js {
         browser()
     }
@@ -54,6 +65,7 @@ kotlin {
         }
         wasmJsMain {
             dependencies {
+//                implementation(libs.kotlin.browser.wasmjs)
                 implementation(libs.kotlinx.browser)
             }
         }

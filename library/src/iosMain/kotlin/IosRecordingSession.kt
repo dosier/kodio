@@ -38,6 +38,9 @@ class IosRecordingSession(private val device: AudioDevice.Input) : RecordingSess
     private val _audioDataFlow = MutableSharedFlow<ByteArray>()
     override val audioDataFlow: Flow<ByteArray> = _audioDataFlow.asSharedFlow()
 
+    private val _actualFormat = MutableStateFlow<AudioFormat?>(null)
+    override val actualFormat: StateFlow<AudioFormat?> = _actualFormat.asStateFlow()
+
     private val engine = AVAudioEngine()
     private val scope = CoroutineScope(Dispatchers.Default)
 

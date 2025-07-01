@@ -65,7 +65,7 @@ class AudioSystemTest {
         val playbackSession = audioSystem.createPlaybackSession(outputDevice)
 
         // 3. Define the audio format
-        val format = inputDevice.defaultFormat
+        val format = inputDevice.formatSupport.defaultFormat
 
         // 4. Record audio for 2 seconds
         val recordedData = mutableListOf<ByteArray>()

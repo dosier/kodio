@@ -31,6 +31,7 @@ fun RecordingSessionUi(
     var audioFrames by remember {
         mutableStateOf(emptyList<ByteArray>())
     }
+    val audioFormat by recordingSession.actualFormat.collectAsState()
     val scope = rememberCoroutineScope()
     LaunchedEffect(recordingSession) {
         recordingSession.audioDataFlow.collect {
@@ -44,7 +45,7 @@ fun RecordingSessionUi(
                     TextButton(
                         onClick = {
                             recordingSession.stop()
-                            onStopRecording(audioFrames.asFlow().asAudioDataFlow(format))
+                            onStopRecording(audioFrames.asFlow().asAudioDataFlow(audioFormat?:format))
                         }
                     ) {
                         Text("Stop Recording (${audioFrames.size} frames)")

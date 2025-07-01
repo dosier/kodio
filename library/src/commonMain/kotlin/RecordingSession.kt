@@ -12,6 +12,9 @@ interface RecordingSession {
     /** A flow that emits audio data chunks as ByteArrays while recording. */
     val audioDataFlow: Flow<ByteArray>
 
+    /** The current format of the recorded audio. */
+    val actualFormat: StateFlow<AudioFormat?>
+
     /** Starts the recording. Sets the state to RECORDING. */
     suspend fun start(format: AudioFormat)
     

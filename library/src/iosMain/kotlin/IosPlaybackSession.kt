@@ -52,7 +52,6 @@ class IosPlaybackSession() : PlaybackSession {
                         }
                         iosAudioBufferFinishedIndicator
                     }.lastOrNull()
-                    // The timeout is a safety measure in case something goes wrong with the audio engine
                     lastCompletable?.await()
                     _state.value = PlaybackState.Finished
                 }.onFailure {

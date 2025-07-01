@@ -1,28 +1,16 @@
-import js.buffer.ArrayBufferLike
-import js.typedarrays.Float32Array
-import js.typedarrays.Int16Array
-import js.typedarrays.Int8Array
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.await
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import org.w3c.dom.MessageEvent
+import org.khronos.webgl.*
 import org.w3c.dom.url.URL
 import org.w3c.files.Blob
 import org.w3c.files.BlobPropertyBag
-import web.audio.AudioContext
-import web.audio.AudioContextOptions
-import web.audio.AudioWorkletNode
-import web.audio.MediaStreamAudioSourceNode
-import web.events.EventHandler
-import web.media.streams.MediaStream
-import web.navigator.navigator
-class JsRecordingSession(
+import kotlin.math.max
+import kotlin.math.min
+
+class WasmJsRecordingSession(
     private val device: AudioDevice.Input
 ) : RecordingSession {
 
@@ -44,8 +32,9 @@ class JsRecordingSession(
 
     private val blobUrl: String
     init {
+        @Suppress("UNCHECKED_CAST_TO_EXTERNAL_INTERFACE")
         val blob = Blob(
-            blobParts = arrayOf(AUDIO_PROCESSOR_CODE),
+            blobParts = arrayOf(AUDIO_PROCESSOR_CODE.toJsString() as JsAny?).toJsArray(),
             options = BlobPropertyBag(type = "application/javascript")
         )
         blobUrl = URL.createObjectURL(blob)
@@ -55,34 +44,47 @@ class JsRecordingSession(
         if (_state.value == RecordingState.Recording) return
 
         try {
+            println("Starting recording session...")
             val mediaConstraints = getMediaConstraints(device, format)
-            val stream = navigator.mediaDevices.getUserMedia(mediaConstraints)
+            println("mediaConstraints: $mediaConstraints")
+            val stream = navigator.mediaDevices.getUserMedia(mediaConstraints).await<MediaStream>()
+            println("stream: $stream")
             mediaStream = stream
 
-            val inputTrack = stream.getAudioTracks().first()
-            val settings = inputTrack.getSettings()
-            val actualSampleRate = settings.sampleRate ?: format.sampleRate
-
+            val inputTrack = stream.getAudioTracks()[0]
+            println("inputTrack: $inputTrack")
+            val settings = inputTrack?.getSettings()
+            println("settings: $settings")
+            val actualSampleRate = settings?.sampleRate ?: format.sampleRate
+            println("actualSampleRate: $actualSampleRate")
             // Our worklet downmixes to mono, so the output format is always 1 channel.
             val finalFormat = AudioFormat(
                 sampleRate = actualSampleRate,
                 bitDepth = 16, // We still convert to 16-bit PCM in Kotlin
                 channels = 1   // Worklet guarantees mono output
             )
+            println("finalFormat: $finalFormat")
             _actualFormat.value = finalFormat
 
-            val context = AudioContext(AudioContextOptions(sampleRate = finalFormat.sampleRate.toFloat()))
+            val context = AudioContext(
+                AudioContextOptions(
+                    latencyHint = AudioContextLatencyCategoryInteractive,
+                    sampleRate = finalFormat.sampleRate.toJsNumber()
+                )
+            )
+            println("context: $context")
             audioContext = context
 
             // 3. Load the worklet from our Blob URL.
-            context.audioWorklet.addModule(blobUrl)
+            context.audioWorklet.addModule(blobUrl).await<Unit>()
+            println("context.audioWorklet.addModule($blobUrl)")
 
             val workletNode = AudioWorkletNode(context, "pcm-recorder-processor")
+            println("workletNode: $workletNode")
             // 3. Set up the message listener to receive data from the worklet.
-            workletNode.port.onmessage = EventHandler { event ->
+            workletNode.port.onmessage = { event ->
 
-                event as MessageEvent
-                val pcmData = event.data as Float32Array<*>
+                val pcmData = event.data as Float32Array
                 // Convert to ByteArray and emit in a coroutine, off the .main thread.
                 val byteData = pcmData.to16BitPcmByteArray()
                 scope.launch {
@@ -114,7 +116,7 @@ class JsRecordingSession(
         audioWorkletNode?.port?.close() // Close the message port
 
         // Stop the microphone track
-        mediaStream?.getTracks()?.forEach { it.stop() }
+        mediaStream?.getTracks()?.toList()?.forEach { it.stop() }
 
         scope.launch {
             audioContext?.close()
@@ -125,14 +127,14 @@ class JsRecordingSession(
 }
 
 // Helper to convert Float32 PCM (-1.0 to 1.0) to 16-bit PCM ByteArray
-private fun<B : ArrayBufferLike> Float32Array<B>.to16BitPcmByteArray(): ByteArray {
-    val pcm16 = Int16Array<B>(this.length)
+private fun Float32Array.to16BitPcmByteArray(): ByteArray {
+    val pcm16 = Int16Array(this.length)
     for (i in 0 until this.length) {
-        val s = kotlin.math.max(-1.0f, kotlin.math.min(1.0f, this[i]))
+        val s = max(-1.0f, min(1.0f, get(i)))
         pcm16[i] = (s * 32767.0f).toInt().toShort()
     }
     return pcm16.buffer.toByteArray()
 }
 
-private fun ArrayBufferLike.toByteArray(): ByteArray =
-    Int8Array(this).unsafeCast<ByteArray>()
+private fun ArrayBuffer.toByteArray(): ByteArray =
+    Int8Array(this).toByteArray()

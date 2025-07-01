@@ -26,6 +26,9 @@ class JvmRecordingSession(private val device: AudioDevice.Input) : RecordingSess
     private val _audioDataFlow = MutableSharedFlow<ByteArray>()
     override val audioDataFlow: Flow<ByteArray> = _audioDataFlow.asSharedFlow()
 
+    private val _actualFormat = MutableStateFlow<AudioFormat?>(null)
+    override val actualFormat: StateFlow<AudioFormat?> = _actualFormat.asStateFlow()
+
     private var recordingJob: Job? = null
     private var dataLine: TargetDataLine? = null
     private val scope = CoroutineScope(Dispatchers.IO)

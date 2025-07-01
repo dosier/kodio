@@ -28,4 +28,5 @@ sealed interface AudioDevice {
         override val name: String,
         override val formatSupport: AudioFormatSupport
     ) : AudioDevice
+
 }
