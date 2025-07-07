@@ -79,16 +79,17 @@ fun main() = runBlocking {
 
 ### Android
 1. **Permissions**: Add the permission to your : `RECORD_AUDIO``AndroidManifest.xml`
-```xml
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
-```
-You are also responsible for handling the runtime permission request dialog. If permission is denied, the library will throw an . `AudioPermissionDeniedException`
+    ```xml
+        <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    ```
+    You are also responsible for handling the runtime permission request dialog. If permission is denied, the library will throw an . `AudioPermissionDeniedException`
 2. **Initialization**: Before using the library, you must initialize the with an application and an (which is used to launch the permission request dialog). This is typically done in your `Application` or 's `onCreate` method. `AndroidAudioSystem``Context``Activity``MainActivity`
-```Kotlin
-    // In your MainActivity or Application class
-    AndroidAudioSystem.setApplicationContext(applicationContext)
-    AndroidAudioSystem.setMicrophonePermissionRequestActivity(this)
-```
+    ```Kotlin
+        // In your MainActivity or Application class
+        AndroidAudioSystem.setApplicationContext(applicationContext)
+        AndroidAudioSystem.setMicrophonePermissionRequestActivity(this)
+    ```
+   
 ### iOS
 1. **Permissions**: You must provide a description for microphone usage in your file. Add the `NSMicrophoneUsageDescription` key with a string explaining why your app needs microphone access. `Info.plist`
 2. **Device Selection**: On iOS, it is not possible to programmatically select a specific audio output device. The will always use the system's current default output. `PlaybackSession`
