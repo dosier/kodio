@@ -27,11 +27,11 @@ class IosPlaybackSession() : PlaybackSession {
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    override suspend fun play(audioDataFlow: AudioDataFlow) {
+    override suspend fun play(dataFlow: Flow<ByteArray>, format: AudioFormat) {
         if (_state.value == PlaybackState.Playing) return
 
         try {
-            val iosAudioFormat = audioDataFlow.format.toIosAudioFormat()
+            val iosAudioFormat = format.toIosAudioFormat()
 
             engine.connect(playerNode, formatConverterMixer, iosAudioFormat)
             engine.connect(formatConverterMixer, engine.mainMixerNode, null)
@@ -43,7 +43,7 @@ class IosPlaybackSession() : PlaybackSession {
 
             playbackJob = scope.launch {
                 runCatching {
-                    val lastCompletable = audioDataFlow.map { bytes ->
+                    val lastCompletable = dataFlow.map { bytes ->
                         val iosAudioBuffer = bytes.toIosAudioBuffer(iosAudioFormat)
                         val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
                         playerNode.scheduleBuffer(iosAudioBuffer) {

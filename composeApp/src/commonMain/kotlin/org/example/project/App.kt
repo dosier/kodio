@@ -1,7 +1,7 @@
 package org.example.project
 
-import AudioDataFlow
 import AudioDevice
+import AudioFormat
 import AudioFormatSupport
 import PlaybackSession
 import RecordingSession
@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.Flow
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
@@ -51,7 +52,8 @@ fun App() {
                 outputDevice = null
             }
         }
-        var playbackAudioDataFlow by remember { mutableStateOf<AudioDataFlow?>(null) }
+        var playbackAudioDataFlow by remember { mutableStateOf<Flow<ByteArray>?>(null) }
+        var playbackAudioFormat by remember { mutableStateOf<AudioFormat?>(null) }
         Column(Modifier.safeContentPadding()) {
             Column {
                 Text("Input device: ${inputDevice?.name ?: "None"}")
@@ -78,21 +80,24 @@ fun App() {
                                     else
                                         null
                                 }?:AudioFormat.DEFAULT,
-                                onStopRecording = { audioFrames ->
+                                onStopRecording = { audioFrames, audioFormat ->
                                     playbackAudioDataFlow = audioFrames
+                                    playbackAudioFormat = audioFormat
                                 }
                             )
                         }
                     }
                 }
-                AnimatedContent(playbackSession to playbackAudioDataFlow) { (session, flow) ->
+                AnimatedContent(listOf(playbackSession, playbackAudioDataFlow, playbackAudioFormat)) { (session, flow, format) ->
                     when {
                         session == null -> Text("Please select an output device")
-                        flow == null -> Text("Please start recording before playing back")
+                        flow == null || format == null -> Text("Please start recording before playing back")
                         else -> {
+                            @Suppress("UNCHECKED_CAST")
                             PlaybackSessionUi(
-                                playbackSession = session,
-                                audioDataFlow = flow
+                                playbackSession = session as PlaybackSession,
+                                audioDataFlow = flow as Flow<ByteArray>,
+                                audioFormat = format as AudioFormat
                             )
                         }
                     }

@@ -1,22 +1,15 @@
 package org.example.project
 
-import AudioDataFlow
 import AudioFormat
 import RecordingSession
+import RecordingState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import asAudioDataFlow
+import androidx.compose.runtime.*
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.launch
 
@@ -25,7 +18,7 @@ import kotlinx.coroutines.launch
 fun RecordingSessionUi(
     recordingSession: RecordingSession,
     format: AudioFormat,
-    onStopRecording: (AudioDataFlow) -> Unit = {}
+    onStopRecording: (Flow<ByteArray>, AudioFormat) -> Unit = { data, format -> }
 ) {
     val state by recordingSession.state.collectAsState()
     var audioFrames by remember {
@@ -45,7 +38,7 @@ fun RecordingSessionUi(
                     TextButton(
                         onClick = {
                             recordingSession.stop()
-                            onStopRecording(audioFrames.asFlow().asAudioDataFlow(audioFormat?:format))
+                            onStopRecording(audioFrames.asFlow(), audioFormat?:format)
                         }
                     ) {
                         Text("Stop Recording (${audioFrames.size} frames)")

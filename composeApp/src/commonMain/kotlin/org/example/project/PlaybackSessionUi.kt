@@ -1,6 +1,6 @@
 package org.example.project
 
-import AudioDataFlow
+import AudioFormat
 import PlaybackSession
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
@@ -11,13 +11,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 
 @Composable
 fun PlaybackSessionUi(
     playbackSession: PlaybackSession,
-    audioDataFlow: AudioDataFlow
+    audioDataFlow: Flow<ByteArray>,
+    audioFormat: AudioFormat,
 ) {
     val state by playbackSession.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -27,7 +29,7 @@ fun PlaybackSessionUi(
                 PlaybackState.Idle -> {
                     TextButton(onClick = {
                         scope.launch {
-                            playbackSession.play(audioDataFlow)
+                            playbackSession.play(audioDataFlow, audioFormat)
                         }
                     }) {
                         Text("Start Playback")
@@ -37,7 +39,7 @@ fun PlaybackSessionUi(
                 PlaybackState.Finished -> {
                     TextButton(onClick = {
                         scope.launch {
-                            playbackSession.play(audioDataFlow)
+                            playbackSession.play(audioDataFlow, audioFormat)
                         }
                     }) {
                         Text("Restart Playback")
@@ -61,7 +63,7 @@ fun PlaybackSessionUi(
                         Text("Error: ${it.error.message}")
                         TextButton(onClick = {
                             scope.launch {
-                                playbackSession.play(audioDataFlow)
+                                playbackSession.play(audioDataFlow, audioFormat)
                             }
                         }) {
                             Text("Restart Playback")

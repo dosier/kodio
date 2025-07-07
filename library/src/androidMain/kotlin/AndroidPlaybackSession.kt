@@ -1,9 +1,10 @@
 import android.content.Context
 import android.media.*
-import android.media.AudioFormat
+import android.media.AudioFormat as AndroidAudioFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,11 +24,10 @@ internal class AndroidPlaybackSession(
     private val scope = CoroutineScope(Dispatchers.IO)
 
     @OptIn(ExperimentalTime::class)
-    override suspend fun play(audioDataFlow: AudioDataFlow) {
+    override suspend fun play(dataFlow: Flow<ByteArray>, format: AudioFormat) {
         if (_state.value == PlaybackState.Playing) return
 
         try {
-            val format = audioDataFlow.format
             val minBufferSize = AudioTrack.getMinBufferSize(
                 format.sampleRate,
                 format.channels.toAndroidChannelOutMask(),
@@ -45,13 +45,12 @@ internal class AndroidPlaybackSession(
                         .build()
                 )
                 .setAudioFormat(
-                    AudioFormat.Builder()
+                    AndroidAudioFormat.Builder()
                         .setSampleRate(format.sampleRate)
                         .setChannelMask(format.channels.toAndroidChannelOutMask())
                         .setEncoding(format.bitDepth.toAndroidFormatEncoding())
                         .build()
                 )
-//                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .setBufferSizeInBytes(playbackBufferSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
@@ -72,7 +71,7 @@ internal class AndroidPlaybackSession(
 
             playbackJob = scope.launch {
                 runCatching {
-                    audioDataFlow.collect { chunk ->
+                    dataFlow.collect { chunk ->
                         audioTrack?.write(chunk, 0, chunk.size)
                     }
                     _state.value = PlaybackState.Finished

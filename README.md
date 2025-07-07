@@ -7,26 +7,19 @@ The library is designed around a few central components:
 - **`AudioDevice`**: Represents hardware for audio input (microphones) and output (speakers). You can get a list of available devices from the . `AudioSystem`
 - **`RecordingSession`**: Manages a recording from a specific input device. It provides the captured audio as a and exposes its current state (e.g., , ). `Flow<ByteArray>``Recording``Stopped`
 - **`PlaybackSession`**: Manages playback on a specific output device. You can control it with , , , and , and observe its state (e.g., , , ). `play``pause``resume``stop``Playing``Paused``Finished`
-- **`AudioDataFlow`**: A convenient wrapper that bundles a raw with its . This ensures that a knows how to correctly interpret the audio data it receives. `Flow<ByteArray>``AudioFormat``PlaybackSession`
 - **`AudioFormat`**: A simple data class that defines the properties of an audio stream: , , and . `sampleRate``bitDepth``channels`
 
 ## Usage Example
 Here’s a complete example of a simple loopback that records audio from the default microphone and immediately plays it through the default speaker.
 
 ```Kotlin
-
 fun main() = runBlocking {
     val audioSystem = SystemAudioSystem
 
     // 1. Find an input and output device
-    val inputDevice = audioSystem.listInputDevices().firstOrNull()
-    val outputDevice = audioSystem.listOutputDevices().firstOrNull()
-
-    if (inputDevice == null || outputDevice == null) {
-        println("Default input/output devices not found.")
-        return@runBlocking
-    }
-
+    val inputDevice = audioSystem.listInputDevices().firstOrNull()?:error("No input device found")
+    val outputDevice = audioSystem.listOutputDevices().firstOrNull()?:error("No output device found")
+   
     println("Found input device: ${inputDevice.name}")
     println("Found output device: ${outputDevice.name}")
 
@@ -37,24 +30,15 @@ fun main() = runBlocking {
     // 3. Start recording with a desired format
     val audioFormat = inputDevice.formatSupport.defaultFormat
     recordingSession.start(audioFormat)
-
+   
     // 4. Pipe the recording flow into the playback session
-    // The .asAudioDataFlow() extension is used to package the flow with its format
-    val audioDataFlow = recordingSession.audioDataFlow.asAudioDataFlow(audioFormat)
-    playbackSession.play(audioDataFlow)
+    val audioDataFlow = recordingSession.audioDataFlow
+    playbackSession.play(audioDataFlow, audioFormat)
 
     // 5. Concurrently monitor the states of both sessions
     val job = launch {
-        launch {
-            recordingSession.state.collect { state ->
-                println("Recording state -> $state")
-            }
-        }
-        launch {
-            playbackSession.state.collect { state ->
-                println("Playback state -> $state")
-            }
-        }
+        launch { recordingSession.state.collect { state -> println("Recording state -> $state") } }
+        launch { playbackSession.state.collect { state -> println("Playback state -> $state") } }
     }
 
     // Let the loopback run for 10 seconds

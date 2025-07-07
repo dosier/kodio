@@ -1,6 +1,7 @@
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,10 +27,10 @@ class JvmPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
     private var dataLine: SourceDataLine? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    override suspend fun play(audioDataFlow: AudioDataFlow) {
+    override suspend fun play(dataFlow: Flow<ByteArray>, format: AudioFormat) {
         if (_state.value == PlaybackState.Playing) return
 
-        val jvmAudioFormat = audioDataFlow.format.toJvmAudioFormat()
+        val jvmAudioFormat = format.toJvmAudioFormat()
         try {
             // Correctly get the Mixer instance first
             val mixerInfo = AudioSystem.getMixerInfo().first { it.name == device.id }
@@ -45,7 +46,7 @@ class JvmPlaybackSession(private val device: AudioDevice.Output) : PlaybackSessi
                 _state.value = PlaybackState.Playing
 
                 playbackJob = scope.launch {
-                    audioDataFlow.collect { buffer ->
+                    dataFlow.collect { buffer ->
                         isPaused.first { !it } // blocks until false
                         line.write(buffer, 0, buffer.size)
                     }

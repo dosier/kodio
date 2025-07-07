@@ -109,7 +109,7 @@ class AudioSystemTest {
         assertTrue(recordedData.isNotEmpty(), "No audio data was recorded.")
 
         // Play the collected data
-        playbackSession.play(recordedData.asFlow().asAudioDataFlow(format))
+        playbackSession.play(recordedData.asFlow(), format)
 
         // Wait until it's finished playing
         withContext(Dispatchers.Default.limitedParallelism(1)) {

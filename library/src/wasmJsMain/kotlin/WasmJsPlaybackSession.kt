@@ -1,4 +1,5 @@
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,11 +18,10 @@ class WasmJsPlaybackSession(
     private var playbackJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
 
-    override suspend fun play(audioDataFlow: AudioDataFlow) {
+    override suspend fun play(dataFlow: Flow<ByteArray>, format: AudioFormat) {
         if (_state.value == PlaybackState.Playing) return
 
         try {
-            val format = audioDataFlow.format
             // Note: JS `deviceId` for output is often not directly settable on AudioContext.
             // The user typically selects the output from their system sound settings.
             // Some browsers allow it via `setSinkId()`, which is a newer API.
@@ -38,7 +38,7 @@ class WasmJsPlaybackSession(
             playbackJob = scope.launch {
                 runCatching {
                     _state.value = PlaybackState.Playing
-                    val lastCompletable = audioDataFlow.map { rawAudioData ->
+                    val lastCompletable = dataFlow.map { rawAudioData ->
 
                         val wasmJsAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
 
