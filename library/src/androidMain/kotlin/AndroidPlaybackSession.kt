@@ -81,7 +81,6 @@ internal class AndroidPlaybackSession(
                     }
                 }
             }
-
         } catch (e: Exception) {
             _state.value = PlaybackState.Error(e)
         }
