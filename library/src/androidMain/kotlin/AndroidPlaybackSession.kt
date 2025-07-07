@@ -72,7 +72,7 @@ internal class AndroidPlaybackSession(
             playbackJob = scope.launch {
                 runCatching {
                     dataFlow.collect { chunk ->
-                        audioTrack?.write(chunk, 0, chunk.size)
+                        audioTrack.write(chunk, 0, chunk.size)
                     }
                     _state.value = PlaybackState.Finished
                 }.onFailure {
