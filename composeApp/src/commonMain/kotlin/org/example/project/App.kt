@@ -6,10 +6,12 @@ import AudioFormatSupport
 import SystemAudioSystem
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
@@ -25,7 +27,7 @@ fun App() {
             outputDevice?.let(SystemAudioSystem::createPlaybackSession)
         }
         var playbackAudioDataFlow by remember { mutableStateOf<AudioDataFlow?>(null) }
-        Column {
+        Column(Modifier.safeContentPadding()) {
             Column {
                 Text("Input device: ${inputDevice?.name ?: "None"}")
                 HorizontalDivider()
