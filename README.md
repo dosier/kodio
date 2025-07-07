@@ -14,12 +14,6 @@ The library is designed around a few central components:
 Here’s a complete example of a simple loopback that records audio from the default microphone and immediately plays it through the default speaker.
 
 ```Kotlin
-import com.example.audio.SystemAudioSystem
-import com.example.audio.asAudioDataFlow
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 fun main() = runBlocking {
     val audioSystem = SystemAudioSystem
@@ -78,7 +72,7 @@ fun main() = runBlocking {
 ## Platform-Specific Setup
 
 ### Android
-1. **Permissions**: Add the permission to your : `RECORD_AUDIO``AndroidManifest.xml`
+1. **Manifest permission**: Add the permission to your : `RECORD_AUDIO``AndroidManifest.xml`
     ```xml
         <uses-permission android:name="android.permission.RECORD_AUDIO" />
     ```
@@ -89,6 +83,18 @@ fun main() = runBlocking {
         AndroidAudioSystem.setApplicationContext(applicationContext)
         AndroidAudioSystem.setMicrophonePermissionRequestActivity(this)
     ```
+3. **Handle runtime permission requests**: The library will automatically handle runtime permission requests when a `RecordingSession` is created. If the user denies the permission, the library will throw `AudioPermissionDeniedException`. In your MainActivity override the following:
+   ```Kotlin
+       override fun onRequestPermissionsResult(
+           requestCode: Int,
+           permissions: Array<out String?>,
+           grantResults: IntArray,
+           deviceId: Int
+       ) {
+           //...
+           AndroidAudioSystem.onRequestPermissionsResult(requestCode, grantResults)
+       }
+   ```
    
 ### iOS
 1. **Permissions**: You must provide a description for microphone usage in your file. Add the `NSMicrophoneUsageDescription` key with a string explaining why your app needs microphone access. `Info.plist`
