@@ -40,12 +40,12 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
             }
     }
 
-    override fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
+    override suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
         IosRecordingSession(device)
 
     /**
      * In IOS, there is no control over the output device, so we ignore it.
      */
-    override fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
+    override suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
         IosPlaybackSession()
 }

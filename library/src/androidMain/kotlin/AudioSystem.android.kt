@@ -1,9 +1,18 @@
+import android.Manifest.permission.RECORD_AUDIO
 import android.app.Activity
 import android.content.Context
-import android.media.AudioDeviceInfo
+import android.content.pm.PackageManager
 import android.media.AudioManager
+import androidx.core.app.ActivityCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
-
 
 /**
  * Android implementation for AudioSystem.
@@ -17,12 +26,31 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
     private lateinit var context : WeakReference<Context>
     private lateinit var activity : WeakReference<Activity>
 
+    private val _permissionState = MutableStateFlow(AndroidAudioPermissionState.Unknown)
+    private val permissionState = _permissionState.asStateFlow()
+
     fun setApplicationContext(appContext: Context) {
         this.context = WeakReference(appContext.applicationContext)
     }
 
     fun setMicrophonePermissionRequestActivity(activity: Activity) {
         this.activity = WeakReference(activity)
+    }
+
+    fun onRequestPermissionsResult(
+        requestCode: Int,
+        grantResults: IntArray
+    ) {
+        println("onRequestPermissionsResult($requestCode, ${grantResults.contentToString()})")
+        when(requestCode) {
+            REQUEST_PERMISSION_RECORD_AUDIO -> {
+                _permissionState.value = when(grantResults.getOrNull(0)) {
+                    PackageManager.PERMISSION_GRANTED -> AndroidAudioPermissionState.Granted
+                    PackageManager.PERMISSION_DENIED -> AndroidAudioPermissionState.Denied
+                    else -> AndroidAudioPermissionState.Unknown
+                }
+            }
+        }
     }
 
     override suspend fun listInputDevices(): List<AudioDevice.Input> {
@@ -35,19 +63,33 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
         return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.toOutputDevice() }
     }
 
-    override fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
-        withMicrophonePermission { AndroidRecordingSession(requireContext(), device) }
+    override suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession {
+        return withMicrophonePermission { AndroidRecordingSession(requireContext(), device) }
+    }
 
-    override fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
+    override suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
         AndroidPlaybackSession(requireContext(), device)
 
-    private fun<T> withMicrophonePermission(block: () -> T): T {
-        return if (!hasMicrophonePermission(requireContext()))
-            if (checkOrRequestMicrophonePermission(requireActivity(), requireContext()))
+    private suspend fun<T> withMicrophonePermission(block: () -> T): T {
+        val context = requireContext()
+        return if (!hasMicrophonePermission(context)) {
+            val activity = requireActivity()
+            _permissionState.value = AndroidAudioPermissionState.Requesting
+            println("Requesting microphone permission")
+            coroutineScope {
+                launch {
+                    activity.requestPermission(RECORD_AUDIO, REQUEST_PERMISSION_RECORD_AUDIO)
+                }
+                launch {
+                    permissionState.first { it != AndroidAudioPermissionState.Requesting }
+                }
+            }
+            println("Permission state: ${_permissionState.value}")
+            if (hasMicrophonePermission(context))
                 block()
             else
-                error("Failed to obtain microphone permission")
-        else
+                throw AudioPermissionDeniedException
+        } else
             block()
     }
 
@@ -61,5 +103,3 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
             "AudioSystem not initialized. Call AndroidAudioSystem.setMicrophonePermissionRequestActivity(activity) first."
         }
 }
-
-// --- Helper Extension Functions ---

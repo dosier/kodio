@@ -18,7 +18,7 @@ public sealed interface AudioSystem {
      * @param device The input device to record from.
      * @return A RecordingSession object.
      */
-    fun createRecordingSession(device: AudioDevice.Input): RecordingSession
+    suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession
 
     /**
      * Creates a playback session with the specified output device.
@@ -26,7 +26,7 @@ public sealed interface AudioSystem {
      * @param device The output device to play to.
      * @return A PlaybackSession object.
      */
-    fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession
+    suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession
 }
 
 abstract class SystemAudioSystemImpl : AudioSystem

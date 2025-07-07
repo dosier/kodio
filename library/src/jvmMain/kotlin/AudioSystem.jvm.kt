@@ -53,10 +53,10 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
             }
     }
 
-    override fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
+    override suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
         JvmRecordingSession(device)
 
-    override fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
+    override suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
         JvmPlaybackSession(device)
 }
 

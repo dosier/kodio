@@ -3,6 +3,8 @@ package org.example.project
 import AudioDataFlow
 import AudioDevice
 import AudioFormatSupport
+import PlaybackSession
+import RecordingSession
 import SystemAudioSystem
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
@@ -20,11 +22,34 @@ fun App() {
     MaterialTheme {
         var inputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
         var outputDevice by remember { mutableStateOf<AudioDevice.Output?>(null) }
-        val recordingSession = remember(inputDevice) {
-            inputDevice?.let(SystemAudioSystem::createRecordingSession)
+        var recordingSession : RecordingSession? by remember { mutableStateOf(null)}
+        var playbackSession : PlaybackSession? by remember { mutableStateOf(null)}
+        var error : Throwable? by remember { mutableStateOf(null)}
+        LaunchedEffect(inputDevice) {
+            runCatching {
+                recordingSession = inputDevice?.let {
+                    SystemAudioSystem
+                        .createRecordingSession(it)
+                        .also { error = null }
+                }
+            }.onFailure {
+                error = it
+                recordingSession = null
+                inputDevice = null
+            }
         }
-        val playbackSession = remember(outputDevice) {
-            outputDevice?.let(SystemAudioSystem::createPlaybackSession)
+        LaunchedEffect(outputDevice) {
+            runCatching {
+                playbackSession = outputDevice?.let {
+                    SystemAudioSystem
+                        .createPlaybackSession(it)
+                        .also { error = null }
+                }
+            }.onFailure {
+                error = it
+                playbackSession = null
+                outputDevice = null
+            }
         }
         var playbackAudioDataFlow by remember { mutableStateOf<AudioDataFlow?>(null) }
         Column(Modifier.safeContentPadding()) {
@@ -73,6 +98,8 @@ fun App() {
                     }
                 }
             }
+            if (error != null)
+                Text("Error: ${error?.message}", color = MaterialTheme.colorScheme.error)
         }
     }
 }

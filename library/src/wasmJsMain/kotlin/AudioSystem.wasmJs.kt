@@ -19,10 +19,10 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
         listDevices(MediaDeviceKindAudioOutput)
             .map(::toOutputDevice)
 
-    override fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
+    override suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
         WasmJsRecordingSession(device)
 
-    override fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
+    override suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
         WasmJsPlaybackSession(device)
 
     private suspend fun listDevices(type: MediaDeviceKind): List<MediaDeviceInfo> {
