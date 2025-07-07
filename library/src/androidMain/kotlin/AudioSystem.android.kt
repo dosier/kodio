@@ -63,15 +63,3 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
 }
 
 // --- Helper Extension Functions ---
-
-internal fun AudioDeviceInfo.toInputDevice(): AudioDevice.Input = AudioDevice.Input(
-    id = this.id.toString(),
-    name = this.productName.toString(),
-    formatSupport = AudioFormatSupport.Unknown // Android doesn't have a simple query API for this
-)
-
-internal fun AudioDeviceInfo.toOutputDevice(): AudioDevice.Output = AudioDevice.Output(
-    id = this.id.toString(),
-    name = this.productName.toString(),
-    formatSupport = AudioFormatSupport.Unknown
-)

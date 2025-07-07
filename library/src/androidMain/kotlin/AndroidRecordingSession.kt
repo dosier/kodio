@@ -47,8 +47,8 @@ internal class AndroidRecordingSession(
                 error("$format is not supported by the device")
             if (minBufferSize == AudioRecord.ERROR)
                 error("Failed to get min buffer size")
-            audioRecord = AudioRecord.Builder()
-                .setAudioSource(MediaRecorder.AudioSource.MIC)
+            val audioRecord = AudioRecord.Builder()
+                .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
                 .setAudioFormat(
                     android.media.AudioFormat.Builder()
                         .setSampleRate(format.sampleRate)
@@ -58,20 +58,23 @@ internal class AndroidRecordingSession(
                 )
                 .setBufferSizeInBytes(minBufferSize)
                 .build()
-            println("input_format: ${audioRecord?.format}")
+            this.audioRecord = audioRecord
+
+            println("audiotrack(device=${audioRecord.routedDevice.toOutputDevice()}, format=${audioRecord.format})")
             // Set the preferred device
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
             val selectedDevice = devices.firstOrNull { it.id.toString() == device.id }
-            selectedDevice?.let { audioRecord?.preferredDevice = it }
+            if (selectedDevice != null)
+                audioRecord.preferredDevice = selectedDevice
 
-            audioRecord?.startRecording()
+            audioRecord.startRecording()
             _state.value = RecordingState.Recording
 
             recordingJob = scope.launch {
                 val buffer = ByteArray(minBufferSize)
                 while (isActive) {
-                    val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
+                    val read = audioRecord.read(buffer, 0, buffer.size) ?: -1
                     if (read > 0)
                         _audioDataFlow.emit(buffer.copyOf(read))
                 }

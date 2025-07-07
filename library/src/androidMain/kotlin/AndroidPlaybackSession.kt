@@ -1,19 +1,13 @@
 import android.content.Context
-import android.media.AudioAttributes
+import android.media.*
 import android.media.AudioFormat
-import android.media.AudioManager
-import android.media.AudioRecord
-import android.media.AudioTrack
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 internal class AndroidPlaybackSession(
@@ -44,7 +38,7 @@ internal class AndroidPlaybackSession(
             if (minBufferSize == AudioRecord.ERROR)
                 error("Failed to get min buffer size")
             val playbackBufferSize = minBufferSize * 8
-            audioTrack = AudioTrack.Builder()
+            val audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -61,26 +55,26 @@ internal class AndroidPlaybackSession(
                 .setBufferSizeInBytes(playbackBufferSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
-
-            println(audioTrack?.format)
+            this.audioTrack = audioTrack
+            println("audiotrack(device=${audioTrack.routedDevice.toOutputDevice()}, format=${audioTrack.format}")
+            println(audioTrack.format)
             // Set the preferred device
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             val selectedDevice = devices.firstOrNull { it.id.toString() == device.id }
-            selectedDevice?.let { audioTrack?.preferredDevice = it }
+            if (selectedDevice != null)
+                audioTrack.preferredDevice = selectedDevice
+            audioTrack.playbackRate = format.sampleRate
+            audioTrack.play()
+            audioTrack.setVolume(AudioTrack.getMaxVolume())
 
-            audioTrack?.playbackRate = format.sampleRate
-            audioTrack?.play()
             _state.value = PlaybackState.Playing
 
             playbackJob = scope.launch {
                 runCatching {
-                    val audioData = audioDataFlow.toList()
-
-                    for (chunk in audioData) {
+                    audioDataFlow.collect { chunk ->
                         audioTrack?.write(chunk, 0, chunk.size)
                     }
-
                     _state.value = PlaybackState.Finished
                 }.onFailure {
                     if (it !is kotlinx.coroutines.CancellationException) {
