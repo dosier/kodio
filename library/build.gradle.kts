@@ -58,6 +58,11 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
+        androidMain {
+            dependencies {
+                implementation(libs.androidx.core.ktx)
+            }
+        }
         jsMain {
             dependencies {
                 implementation(libs.kotlin.browser.js)

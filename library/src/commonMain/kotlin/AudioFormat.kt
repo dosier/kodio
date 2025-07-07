@@ -8,6 +8,6 @@ data class AudioFormat(
 ) {
 
     companion object {
-        val DEFAULT = AudioFormat(44100, 16, 2)
+        val DEFAULT = AudioFormat(44100, 16, 1)
     }
 }

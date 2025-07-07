@@ -11,7 +11,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-
+        AndroidAudioSystem.setApplicationContext(applicationContext)
+        AndroidAudioSystem.setMicrophonePermissionRequestActivity(this)
         setContent {
             App()
         }
