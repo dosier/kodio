@@ -59,7 +59,7 @@ class JsPlaybackSession(
 
                         // 2. Create AudioBuffer
                         val buffer = context.createBuffer(
-                            numberOfChannels = format.channels,
+                            numberOfChannels = format.channels.count,
                             length = pcm32Data.length,
                             sampleRate = format.sampleRate.toFloat()
                         )

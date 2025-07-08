@@ -75,7 +75,6 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
         return if (!hasMicrophonePermission(context)) {
             val activity = requireActivity()
             _permissionState.value = AndroidAudioPermissionState.Requesting
-            println("Requesting microphone permission")
             coroutineScope {
                 launch {
                     activity.requestPermission(RECORD_AUDIO, REQUEST_PERMISSION_RECORD_AUDIO)
@@ -84,7 +83,6 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
                     permissionState.first { it != AndroidAudioPermissionState.Requesting }
                 }
             }
-            println("Permission state: ${_permissionState.value}")
             if (hasMicrophonePermission(context))
                 block()
             else

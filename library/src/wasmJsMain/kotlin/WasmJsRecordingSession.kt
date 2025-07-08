@@ -60,8 +60,8 @@ class WasmJsRecordingSession(
             // Our worklet downmixes to mono, so the output format is always 1 channel.
             val finalFormat = AudioFormat(
                 sampleRate = actualSampleRate,
-                bitDepth = 16, // We still convert to 16-bit PCM in Kotlin
-                channels = 1   // Worklet guarantees mono output
+                bitDepth = BitDepth.Sixteen, // We still convert to 16-bit PCM in Kotlin
+                channels = Channels.Mono   // Worklet guarantees mono output
             )
             println("finalFormat: $finalFormat")
             _actualFormat.value = finalFormat

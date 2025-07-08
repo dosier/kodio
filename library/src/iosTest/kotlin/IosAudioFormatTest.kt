@@ -9,8 +9,8 @@ internal class IosAudioFormatTest {
         val iosAudioFormat = DefaultIosRecordingAudioFormat.toIosAudioFormat()
         assertNotNull(iosAudioFormat)
         assertEquals(DefaultIosRecordingAudioFormat.sampleRate.toDouble(), iosAudioFormat.sampleRate)
-        assertEquals(DefaultIosRecordingAudioFormat.channels.toUInt(), iosAudioFormat.channelCount)
-        assertEquals(bitDepthToAVAudioCommonFormat(DefaultIosRecordingAudioFormat.bitDepth), iosAudioFormat.commonFormat)
+        assertEquals(DefaultIosRecordingAudioFormat.channels.count.toUInt(), iosAudioFormat.channelCount)
+        assertEquals(DefaultIosRecordingAudioFormat.bitDepth.toAVAudioCommonFormat(), iosAudioFormat.commonFormat)
     }
 
     @Test

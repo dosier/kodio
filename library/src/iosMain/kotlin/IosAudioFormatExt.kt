@@ -3,8 +3,8 @@ import platform.AVFAudio.AVAudioFormat
 import platform.AVFAudio.AVAudioPCMFormatFloat32
 import platform.AVFAudio.AVAudioPCMFormatFloat64
 
-val DefaultIosRecordingAudioFormat = AudioFormat(48000, 32, 1)
-val DefaultIosPlaybackAudioFormat = AudioFormat(44100, 32, 2)
+val DefaultIosRecordingAudioFormat = AudioFormat(48000, BitDepth.ThirtyTwo, Channels.Mono)
+val DefaultIosPlaybackAudioFormat = AudioFormat(44100, BitDepth.ThirtyTwo, Channels.Stereo)
 
 /**
  * Converts our common AudioFormat to an Apple AVAudioFormat.
@@ -12,9 +12,9 @@ val DefaultIosPlaybackAudioFormat = AudioFormat(44100, 32, 2)
 fun AudioFormat.toIosAudioFormat(): AVAudioFormat {
     // iOS commonly uses Float32 for processing, but we map to PCM formats for raw data.
     return AVAudioFormat(
-        commonFormat = bitDepthToAVAudioCommonFormat(bitDepth),
+        commonFormat = bitDepth.toAVAudioCommonFormat(),
         sampleRate = sampleRate.toDouble(),
-        channels = channels.toUInt(),
+        channels = channels.count.toUInt(),
         interleaved = false
     )
 }
@@ -25,23 +25,23 @@ fun AudioFormat.toIosAudioFormat(): AVAudioFormat {
 fun AVAudioFormat.toCommonAudioFormat(): AudioFormat {
     return AudioFormat(
         sampleRate = sampleRate.toInt(),
-        bitDepth = bitDepthFromAVAudioCommonFormat(commonFormat),
-        channels = channelCount.toInt()
+        bitDepth = commonFormat.toCommonBitDepth(),
+        channels = Channels.fromInt(channelCount.toInt())
     )
 }
 
-fun bitDepthToAVAudioCommonFormat(bitDepth: Int): AVAudioCommonFormat {
-    return when (bitDepth) {
-        64 -> AVAudioPCMFormatFloat64
-        32 -> AVAudioPCMFormatFloat32
-        else -> throw IosAudioFormatException.UnsupportedBitDepth(bitDepth)
+fun BitDepth.toAVAudioCommonFormat(): AVAudioCommonFormat {
+    return when (this) {
+        BitDepth.SixtyFour -> AVAudioPCMFormatFloat64
+        BitDepth.ThirtyTwo -> AVAudioPCMFormatFloat32
+        else -> throw IosAudioFormatException.UnsupportedBitDepth(this)
     }
 }
 
-fun bitDepthFromAVAudioCommonFormat(commonFormat: AVAudioCommonFormat): Int {
-    return when (commonFormat) {
-        AVAudioPCMFormatFloat64 -> 64
-        AVAudioPCMFormatFloat32 -> 32
-        else -> throw IosAudioFormatException.UnknownBitDepthForCommonFormat(commonFormat)
+fun AVAudioCommonFormat.toCommonBitDepth(): BitDepth {
+    return when (this) {
+        AVAudioPCMFormatFloat64 -> BitDepth.SixtyFour
+        AVAudioPCMFormatFloat32 -> BitDepth.ThirtyTwo
+        else -> throw IosAudioFormatException.UnknownBitDepthForCommonFormat(this)
     }
 }

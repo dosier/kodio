@@ -2,7 +2,7 @@ fun getMediaConstraints(device: AudioDevice, format: AudioFormat): MediaStreamCo
     audio = MediaTrackConstraints(
         deviceId = device.id.toJsString(),
         sampleRate = format.sampleRate.toJsNumber(),
-        sampleSize = format.bitDepth.toJsNumber(),
-        channelCount = format.channels.toJsNumber()
+        sampleSize = format.bitDepth.value.toJsNumber(),
+        channelCount = format.channels.count.toJsNumber()
     )
 )
