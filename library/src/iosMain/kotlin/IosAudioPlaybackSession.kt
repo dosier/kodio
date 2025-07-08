@@ -6,14 +6,14 @@ import platform.AVFAudio.AVAudioMixerNode
 import platform.AVFAudio.AVAudioPlayerNode
 
 /**
- * IOS implementation for [PlaybackSession].
+ * IOS implementation for [AudioPlaybackSession].
  *
  * In IOS, we cannot control the output device, so we ignore it.
  */
-class IosPlaybackSession() : PlaybackSession {
+class IosAudioPlaybackSession() : AudioPlaybackSession {
 
-    private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
-    override val state: StateFlow<PlaybackState> = _state.asStateFlow()
+    private val _state = MutableStateFlow<AudioPlaybackState>(AudioPlaybackState.Idle)
+    override val state: StateFlow<AudioPlaybackState> = _state.asStateFlow()
 
     private val engine = AVAudioEngine()
     private val playerNode = AVAudioPlayerNode()
@@ -27,9 +27,9 @@ class IosPlaybackSession() : PlaybackSession {
     }
 
     @OptIn(ExperimentalForeignApi::class)
-    override suspend fun play(dataFlow: Flow<ByteArray>, format: AudioFormat) {
-        if (_state.value == PlaybackState.Playing) return
-
+    override suspend fun play(audioFlow: AudioFlow) {
+        if (_state.value == AudioPlaybackState.Playing) return
+        val format = audioFlow.format
         try {
             val iosAudioFormat = format.toIosAudioFormat()
 
@@ -39,11 +39,11 @@ class IosPlaybackSession() : PlaybackSession {
             engine.prepare()
             engine.startAndReturnError(null)
             playerNode.play()
-            _state.value = PlaybackState.Playing
+            _state.value = AudioPlaybackState.Playing
 
             playbackJob = scope.launch {
                 runCatching {
-                    val lastCompletable = dataFlow.map { bytes ->
+                    val lastCompletable = audioFlow.map { bytes ->
                         val iosAudioBuffer = bytes.toIosAudioBuffer(iosAudioFormat)
                         val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
                         playerNode.scheduleBuffer(iosAudioBuffer) {
@@ -52,14 +52,15 @@ class IosPlaybackSession() : PlaybackSession {
                         }
                         iosAudioBufferFinishedIndicator
                     }.lastOrNull()
+                    println("boo")
                     lastCompletable?.await()
-                    _state.value = PlaybackState.Finished
+                    _state.value = AudioPlaybackState.Finished
                 }.onFailure {
-                    _state.value = PlaybackState.Error(it)
+                    _state.value = AudioPlaybackState.Error(it)
                 }
             }
         } catch (e: Exception) {
-            _state.value = PlaybackState.Error(e)
+            _state.value = AudioPlaybackState.Error(e)
             e.printStackTrace()
         }
     }
@@ -67,14 +68,14 @@ class IosPlaybackSession() : PlaybackSession {
     override fun pause() {
         if (playerNode.isPlaying()) {
             playerNode.pause()
-            _state.value = PlaybackState.Paused
+            _state.value = AudioPlaybackState.Paused
         }
     }
 
     override fun resume() {
-        if (!playerNode.isPlaying() && _state.value == PlaybackState.Paused) {
+        if (!playerNode.isPlaying() && _state.value == AudioPlaybackState.Paused) {
             playerNode.play()
-            _state.value = PlaybackState.Playing
+            _state.value = AudioPlaybackState.Playing
         }
     }
 
@@ -85,6 +86,6 @@ class IosPlaybackSession() : PlaybackSession {
         engine.stop()
         engine.disconnectNodeOutput(playerNode)
         engine.disconnectNodeOutput(formatConverterMixer)
-        _state.value = PlaybackState.Idle
+        _state.value = AudioPlaybackState.Idle
     }
 }

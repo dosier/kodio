@@ -1,0 +1,1 @@
+internal val DefaultWasmJsRecordingAudioFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono)

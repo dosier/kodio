@@ -1,10 +1,9 @@
 package org.example.project
 
 import AudioDevice
-import AudioFormat
-import AudioFormatSupport
-import PlaybackSession
-import RecordingSession
+import AudioFlow
+import AudioPlaybackSession
+import AudioRecordingSession
 import SystemAudioSystem
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
@@ -14,7 +13,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.flow.Flow
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
@@ -23,37 +21,42 @@ fun App() {
     MaterialTheme {
         var inputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
         var outputDevice by remember { mutableStateOf<AudioDevice.Output?>(null) }
-        var recordingSession : RecordingSession? by remember { mutableStateOf(null)}
-        var playbackSession : PlaybackSession? by remember { mutableStateOf(null)}
+        var audioRecordingSession : AudioRecordingSession? by remember { mutableStateOf(null)}
+        var audioPlaybackSession : AudioPlaybackSession? by remember { mutableStateOf(null)}
         var error : Throwable? by remember { mutableStateOf(null)}
+        var recordedAudioFlow by remember { mutableStateOf<AudioFlow?>(null) }
+
         LaunchedEffect(inputDevice) {
             runCatching {
-                recordingSession = inputDevice?.let {
+                audioRecordingSession = inputDevice?.let {
                     SystemAudioSystem
                         .createRecordingSession(it)
                         .also { error = null }
                 }
             }.onFailure {
                 error = it
-                recordingSession = null
+                audioRecordingSession = null
                 inputDevice = null
             }
         }
         LaunchedEffect(outputDevice) {
             runCatching {
-                playbackSession = outputDevice?.let {
+                audioPlaybackSession = outputDevice?.let {
                     SystemAudioSystem
                         .createPlaybackSession(it)
                         .also { error = null }
                 }
             }.onFailure {
                 error = it
-                playbackSession = null
+                audioPlaybackSession = null
                 outputDevice = null
             }
         }
-        var playbackAudioDataFlow by remember { mutableStateOf<Flow<ByteArray>?>(null) }
-        var playbackAudioFormat by remember { mutableStateOf<AudioFormat?>(null) }
+        LaunchedEffect(audioRecordingSession) {
+            audioRecordingSession?.audioFlow?.collect {
+                recordedAudioFlow = it
+            }
+        }
         Column(Modifier.safeContentPadding()) {
             Column {
                 Text("Input device: ${inputDevice?.name ?: "None"}")
@@ -68,36 +71,21 @@ fun App() {
             }
             HorizontalDivider()
             Column {
-                AnimatedContent(recordingSession) { session ->
+                AnimatedContent(audioRecordingSession) { session ->
                     when {
                         session == null -> Text("Please select an input device")
-                        else -> {
-                            RecordingSessionUi(
-                                recordingSession = session,
-                                format = inputDevice?.formatSupport?.let {
-                                    if (it is AudioFormatSupport.Known)
-                                        it.defaultFormat
-                                    else
-                                        null
-                                }?:AudioFormat.DEFAULT,
-                                onStopRecording = { audioFrames, audioFormat ->
-                                    playbackAudioDataFlow = audioFrames
-                                    playbackAudioFormat = audioFormat
-                                }
-                            )
-                        }
+                        else -> RecordingSessionUi(audioRecordingSession = session)
                     }
                 }
-                AnimatedContent(listOf(playbackSession, playbackAudioDataFlow, playbackAudioFormat)) { (session, flow, format) ->
+                AnimatedContent(audioPlaybackSession to recordedAudioFlow) { (playback, audioFlow) ->
                     when {
-                        session == null -> Text("Please select an output device")
-                        flow == null || format == null -> Text("Please start recording before playing back")
+                        playback == null -> Text("Please select an output device")
+                        audioFlow == null -> Text("Please start recording before playing back")
                         else -> {
                             @Suppress("UNCHECKED_CAST")
                             PlaybackSessionUi(
-                                playbackSession = session as PlaybackSession,
-                                audioDataFlow = flow as Flow<ByteArray>,
-                                audioFormat = format as AudioFormat
+                                audioPlaybackSession = playback,
+                                audioDataFlow = audioFlow,
                             )
                         }
                     }

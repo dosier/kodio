@@ -6,8 +6,8 @@ import platform.AVFAudio.currentRoute
 /**
  * IOS implementation for [AudioSystem].
  *
- * @see IosPlaybackSession for playback session implementation.
- * @see IosRecordingSession for recording session implementation.
+ * @see IosAudioPlaybackSession for playback session implementation.
+ * @see IosAudioRecordingSession for recording session implementation.
  */
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
@@ -40,12 +40,12 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
             }
     }
 
-    override suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
-        IosRecordingSession(device)
+    override suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession =
+        IosAudioRecordingSession(device)
 
     /**
      * In IOS, there is no control over the output device, so we ignore it.
      */
-    override suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
-        IosPlaybackSession()
+    override suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession =
+        IosAudioPlaybackSession()
 }

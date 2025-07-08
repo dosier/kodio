@@ -8,8 +8,8 @@ import javax.sound.sampled.AudioSystem as JvmAudioSystem
 /**
  * JVM implementation for [AudioSystem] using javax.sound.sampled.
  *
- * @see JvmPlaybackSession for playback session implementation.
- * @see JvmRecordingSession for recording session implementation.
+ * @see JvmAudioPlaybackSession for playback session implementation.
+ * @see JvmAudioRecordingSession for recording session implementation.
  */
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
@@ -53,11 +53,11 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
             }
     }
 
-    override suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
-        JvmRecordingSession(device)
+    override suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession =
+        JvmAudioRecordingSession(device)
 
-    override suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
-        JvmPlaybackSession(device)
+    override suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession =
+        JvmAudioPlaybackSession(device)
 }
 
 private fun toAudioFormatSupport(supportedFormats: List<AudioFormat>): AudioFormatSupport = when {

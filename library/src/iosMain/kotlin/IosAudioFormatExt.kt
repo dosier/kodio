@@ -4,7 +4,6 @@ import platform.AVFAudio.AVAudioPCMFormatFloat32
 import platform.AVFAudio.AVAudioPCMFormatFloat64
 
 val DefaultIosRecordingAudioFormat = AudioFormat(48000, BitDepth.ThirtyTwo, Channels.Mono)
-val DefaultIosPlaybackAudioFormat = AudioFormat(44100, BitDepth.ThirtyTwo, Channels.Stereo)
 
 /**
  * Converts our common AudioFormat to an Apple AVAudioFormat.

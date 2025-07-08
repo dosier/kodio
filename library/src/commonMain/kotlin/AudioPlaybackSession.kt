@@ -1,16 +1,15 @@
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Represents an active playback session.
  */
-interface PlaybackSession {
+interface AudioPlaybackSession {
 
     /** A flow that emits the current state of the playback. */
-    val state: StateFlow<PlaybackState>
+    val state: StateFlow<AudioPlaybackState>
     
     /** Starts playback of the given audio data. */
-    suspend fun play(dataFlow: Flow<ByteArray>, format: AudioFormat)
+    suspend fun play(audioFlow: AudioFlow)
     
     /** Pauses the playback. */
     fun pause()

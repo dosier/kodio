@@ -4,29 +4,28 @@ import android.media.AudioFormat as AndroidAudioFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlin.time.ExperimentalTime
 
-internal class AndroidPlaybackSession(
+internal class AndroidAudioPlaybackSession(
     private val context: Context,
     private val device: AudioDevice.Output
-) : PlaybackSession {
+) : AudioPlaybackSession {
 
-    private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
-    override val state: StateFlow<PlaybackState> = _state.asStateFlow()
+    private val _state = MutableStateFlow<AudioPlaybackState>(AudioPlaybackState.Idle)
+    override val state: StateFlow<AudioPlaybackState> = _state.asStateFlow()
 
     private var audioTrack: AudioTrack? = null
     private var playbackJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.IO)
 
     @OptIn(ExperimentalTime::class)
-    override suspend fun play(dataFlow: Flow<ByteArray>, format: AudioFormat) {
-        if (_state.value == PlaybackState.Playing) return
-
+    override suspend fun play(audioFlow: AudioFlow) {
+        if (_state.value == AudioPlaybackState.Playing) return
+        val format = audioFlow.format
         try {
             val minBufferSize = AudioTrack.getMinBufferSize(
                 format.sampleRate,
@@ -67,43 +66,43 @@ internal class AndroidPlaybackSession(
             audioTrack.play()
             audioTrack.setVolume(AudioTrack.getMaxVolume())
 
-            _state.value = PlaybackState.Playing
+            _state.value = AudioPlaybackState.Playing
 
             playbackJob = scope.launch {
                 runCatching {
-                    dataFlow.collect { chunk ->
+                    audioFlow.collect { chunk ->
                         audioTrack.write(chunk, 0, chunk.size)
                     }
-                    _state.value = PlaybackState.Finished
+                    _state.value = AudioPlaybackState.Finished
                 }.onFailure {
                     if (it !is kotlinx.coroutines.CancellationException) {
-                        _state.value = PlaybackState.Error(it)
+                        _state.value = AudioPlaybackState.Error(it)
                     }
                 }
             }
         } catch (e: Exception) {
-            _state.value = PlaybackState.Error(e)
+            _state.value = AudioPlaybackState.Error(e)
         }
     }
 
     override fun pause() {
-        if (_state.value != PlaybackState.Playing) return
+        if (_state.value != AudioPlaybackState.Playing) return
         audioTrack?.pause()
-        _state.value = PlaybackState.Paused
+        _state.value = AudioPlaybackState.Paused
     }
 
     override fun resume() {
-        if (_state.value != PlaybackState.Paused) return
+        if (_state.value != AudioPlaybackState.Paused) return
         audioTrack?.play()
-        _state.value = PlaybackState.Playing
+        _state.value = AudioPlaybackState.Playing
     }
 
     override fun stop() {
-        if (_state.value == PlaybackState.Idle || _state.value == PlaybackState.Finished) return
+        if (_state.value == AudioPlaybackState.Idle || _state.value == AudioPlaybackState.Finished) return
         playbackJob?.cancel()
         audioTrack?.stop()
         audioTrack?.release()
         audioTrack = null
-        _state.value = PlaybackState.Idle
+        _state.value = AudioPlaybackState.Idle
     }
 }

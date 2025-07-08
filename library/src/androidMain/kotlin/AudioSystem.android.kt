@@ -3,15 +3,11 @@ import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioManager
-import androidx.core.app.ActivityCompat
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
 
 /**
@@ -63,12 +59,12 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
         return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.toOutputDevice() }
     }
 
-    override suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession {
-        return withMicrophonePermission { AndroidRecordingSession(requireContext(), device) }
+    override suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession {
+        return withMicrophonePermission { AndroidAudioRecordingSession(requireContext(), device) }
     }
 
-    override suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
-        AndroidPlaybackSession(requireContext(), device)
+    override suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession =
+        AndroidAudioPlaybackSession(requireContext(), device)
 
     private suspend fun<T> withMicrophonePermission(block: () -> T): T {
         val context = requireContext()

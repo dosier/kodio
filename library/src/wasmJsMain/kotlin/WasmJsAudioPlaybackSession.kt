@@ -1,39 +1,34 @@
-import js.buffer.ArrayBuffer
-import js.buffer.ArrayBufferLike
-import js.typedarrays.Float32Array
-import js.typedarrays.Int16Array
-import js.typedarrays.toUint8Array
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.flow.map
-import web.audio.AudioContext
-import web.audio.AudioContextOptions
-import web.audio.AudioContextState
-import web.events.EventHandler
+import org.khronos.webgl.*
 
-class JsPlaybackSession(
+class WasmJsAudioPlaybackSession(
     private val device: AudioDevice.Output
-) : PlaybackSession {
+) : AudioPlaybackSession {
 
-    private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
-    override val state: StateFlow<PlaybackState> = _state.asStateFlow()
+    private val _state = MutableStateFlow<AudioPlaybackState>(AudioPlaybackState.Idle)
+    override val state: StateFlow<AudioPlaybackState> = _state.asStateFlow()
 
     private var audioContext: AudioContext? = null
     private var playbackJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
 
-    override suspend fun play(dataFlow: Flow<ByteArray>, format: AudioFormat) {
-        if (_state.value == PlaybackState.Playing) return
-
+    override suspend fun play(audioFlow: AudioFlow) {
+        if (_state.value == AudioPlaybackState.Playing) return
+        val format = audioFlow.format
         try {
             // Note: JS `deviceId` for output is often not directly settable on AudioContext.
             // The user typically selects the output from their system sound settings.
             // Some browsers allow it via `setSinkId()`, which is a newer API.
-            val contextOptions = AudioContextOptions(sampleRate = format.sampleRate.toFloat())
+
+            val contextOptions = AudioContextOptions(
+                latencyHint = AudioContextLatencyCategoryPlayback,
+                sampleRate = format.sampleRate.toJsNumber()
+            )
             val context = AudioContext(contextOptions)
             audioContext = context
 
@@ -41,16 +36,16 @@ class JsPlaybackSession(
 
             playbackJob = scope.launch {
                 runCatching {
-                    _state.value = PlaybackState.Playing
-                    val lastCompletable = dataFlow.map { rawAudioData ->
+                    _state.value = AudioPlaybackState.Playing
+                    val lastCompletable = audioFlow.map { rawAudioData ->
 
-                        val jsAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
+                        val wasmJsAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
 
                         // Ensure context is not closed and we are still playing
-                        if (context.state != AudioContextState.running || _state.value != PlaybackState.Playing) {
-                            jsAudioBufferFinishedIndicator.complete(Unit)
-                            this.coroutineContext.cancel()
-                            return@map jsAudioBufferFinishedIndicator
+                        if (context.state != AudioContextStateRunning || _state.value != AudioPlaybackState.Playing) {
+                            wasmJsAudioBufferFinishedIndicator.complete(Unit)
+                            coroutineContext.cancel()
+                            return@map wasmJsAudioBufferFinishedIndicator
                         }
 
                         // 1. Convert ByteArray to Float32Array
@@ -68,9 +63,10 @@ class JsPlaybackSession(
                         // 3. Create a source and play it
                         val source = context.createBufferSource()
                         source.buffer = buffer
-                        source.onended = EventHandler {
-                            jsAudioBufferFinishedIndicator.complete(Unit)
+                        source.onended = {
+                            wasmJsAudioBufferFinishedIndicator.complete(Unit)
                         }
+
                         source.connect(context.destination)
 
                         // Schedule playback. Wait if the context time hasn't caught up yet.
@@ -80,57 +76,65 @@ class JsPlaybackSession(
                         // Update the start time for the next buffer
                         nextStartTime = scheduleTime + buffer.duration
 
-                        jsAudioBufferFinishedIndicator
+                        wasmJsAudioBufferFinishedIndicator
                     }.lastOrNull()
                     lastCompletable?.await()
-                    _state.value = PlaybackState.Finished
+                    _state.value = AudioPlaybackState.Finished
                 }.onFailure {
                     if (it !is CancellationException) {
                         it.printStackTrace()
-                        _state.value = PlaybackState.Error(it)
+                        _state.value = AudioPlaybackState.Error(it)
                     }
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            _state.value = PlaybackState.Error(e)
+            _state.value = AudioPlaybackState.Error(e)
         }
     }
 
     override fun pause() {
-        if (_state.value != PlaybackState.Playing) return
+        if (_state.value != AudioPlaybackState.Playing) return
         scope.launch {
-            audioContext?.suspend()
-            _state.value = PlaybackState.Paused
+            audioContext?.suspend()?.await<Unit>()
+            _state.value = AudioPlaybackState.Paused
         }
     }
 
     override fun resume() {
-        if (_state.value != PlaybackState.Paused) return
+        if (_state.value != AudioPlaybackState.Paused) return
         scope.launch {
-            audioContext?.resume()
-            _state.value = PlaybackState.Playing
+            audioContext?.resume()?.await<Unit>()
+            _state.value = AudioPlaybackState.Playing
         }
     }
 
     override fun stop() {
-        if (_state.value == PlaybackState.Idle) return
+        if (_state.value == AudioPlaybackState.Idle) return
         playbackJob?.cancel()
         scope.launch {
-            audioContext?.close()
+            audioContext?.close()?.await<Unit>()
             audioContext = null
         }
-        _state.value = PlaybackState.Idle
+        _state.value = AudioPlaybackState.Idle
     }
 }
-private fun<B : ArrayBufferLike> Int16Array<B>.to32FloatArray(): Float32Array<B> {
-    val floatArray = Float32Array<B>(this.length)
+
+private fun Int16Array.to32FloatArray(): Float32Array {
+    val floatArray = Float32Array(this.length)
     for (i in 0 until this.length) {
-        floatArray[i] = this[i] / 32767.0f
+        floatArray[i] = get(i) / 32767.0f
     }
     return floatArray
 }
 // Helper extension is needed to convert a ByteArray to an ArrayBuffer
 private fun ByteArray.toJsArrayBuffer(): ArrayBuffer {
     return toUint8Array().buffer
+}
+private fun ByteArray.toUint8Array(): Uint8Array {
+    val result = Uint8Array(this.size)
+    for (index in this.indices) {
+        result[index] = this[index]
+    }
+    return result
 }

@@ -21,11 +21,11 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
         listDevices(MediaDeviceKind.audiooutput)
             .map(::toOutputDevice)
 
-    override suspend fun createRecordingSession(device: AudioDevice.Input): RecordingSession =
-        JsRecordingSession(device)
+    override suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession =
+        JsAudioRecordingSession(device)
 
-    override suspend fun createPlaybackSession(device: AudioDevice.Output): PlaybackSession =
-        JsPlaybackSession(device)
+    override suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession =
+        JsAudioPlaybackSession(device)
 
     private suspend fun listDevices(type: MediaDeviceKind): List<MediaDeviceInfo> {
         if (!ensurePermissions()) return emptyList()

@@ -1,7 +1,8 @@
 package org.example.project
 
-import AudioFormat
-import PlaybackSession
+import AudioFlow
+import AudioPlaybackSession
+import AudioPlaybackState
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,59 +12,57 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
 
 @Composable
 fun PlaybackSessionUi(
-    playbackSession: PlaybackSession,
-    audioDataFlow: Flow<ByteArray>,
-    audioFormat: AudioFormat,
+    audioPlaybackSession: AudioPlaybackSession,
+    audioDataFlow: AudioFlow,
 ) {
-    val state by playbackSession.state.collectAsState()
+    val state by audioPlaybackSession.state.collectAsState()
     val scope = rememberCoroutineScope()
     Row {
         AnimatedContent(state) {
             when (it) {
-                PlaybackState.Idle -> {
+                AudioPlaybackState.Idle -> {
                     TextButton(onClick = {
                         scope.launch {
-                            playbackSession.play(audioDataFlow, audioFormat)
+                            audioPlaybackSession.play(audioDataFlow)
                         }
                     }) {
                         Text("Start Playback")
                     }
                 }
 
-                PlaybackState.Finished -> {
+                AudioPlaybackState.Finished -> {
                     TextButton(onClick = {
                         scope.launch {
-                            playbackSession.play(audioDataFlow, audioFormat)
+                            audioPlaybackSession.play(audioDataFlow)
                         }
                     }) {
                         Text("Restart Playback")
                     }
                 }
 
-                PlaybackState.Paused -> {
-                    TextButton(onClick = playbackSession::resume) {
+                AudioPlaybackState.Paused -> {
+                    TextButton(onClick = audioPlaybackSession::resume) {
                         Text("Resume Playback")
                     }
                 }
 
-                PlaybackState.Playing -> {
-                    TextButton(onClick = playbackSession::pause) {
+                AudioPlaybackState.Playing -> {
+                    TextButton(onClick = audioPlaybackSession::pause) {
                         Text("Pause Playback")
                     }
                 }
 
-                is PlaybackState.Error -> {
+                is AudioPlaybackState.Error -> {
                     Column {
                         Text("Error: ${it.error.message}")
                         TextButton(onClick = {
                             scope.launch {
-                                playbackSession.play(audioDataFlow, audioFormat)
+                                audioPlaybackSession.play(audioDataFlow)
                             }
                         }) {
                             Text("Restart Playback")

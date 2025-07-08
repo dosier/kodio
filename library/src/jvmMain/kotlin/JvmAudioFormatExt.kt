@@ -2,6 +2,8 @@ import javax.sound.sampled.DataLine
 import javax.sound.sampled.Line
 import javax.sound.sampled.AudioFormat as JvmAudioFormat
 
+internal val DefaultJvmRecordingAudioFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono)
+
 internal fun AudioFormat.toJvmAudioFormat(): JvmAudioFormat =
     JvmAudioFormat(
         /* sampleRate = */ sampleRate.toFloat(),

@@ -10,7 +10,7 @@ class RecordingSessionTest {
             val a = SystemAudioSystem.listInputDevices().first()
             val s = SystemAudioSystem.createRecordingSession(a)
 
-            s.start(AudioFormat.DEFAULT)
+            s.start()
             s.audioDataFlow.collect {
                 println(it)
             }

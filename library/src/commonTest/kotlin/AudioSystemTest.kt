@@ -69,7 +69,7 @@ class AudioSystemTest {
 
         // 4. Record audio for 2 seconds
         val recordedData = mutableListOf<ByteArray>()
-        val recordingStateChanges = mutableListOf<RecordingState>()
+        val recordingStateChanges = mutableListOf<AudioRecordingState>()
 
         val collectRecordingStateJob = launch(UnconfinedTestDispatcher(testScheduler)) {
             recordingSession.state.toList(recordingStateChanges)
@@ -80,14 +80,14 @@ class AudioSystemTest {
             }
         }
 
-        assertEquals(RecordingState.Idle, recordingSession.state.value)
-        recordingSession.start(format)
+        assertEquals(AudioRecordingState.Idle, recordingSession.state.value)
+        recordingSession.start()
 
         // Wait until recording starts
         withTimeout(1.seconds) {
-            recordingSession.state.first { it == RecordingState.Recording }
+            recordingSession.state.first { it == AudioRecordingState.Recording }
         }
-        assertEquals(RecordingState.Recording, recordingSession.state.value)
+        assertEquals(AudioRecordingState.Recording, recordingSession.state.value)
 
         // Let it record for 2 seconds
         withContext(Dispatchers.Default.limitedParallelism(1)) {
@@ -95,35 +95,35 @@ class AudioSystemTest {
         }
         recordingSession.stop()
 
-        assertEquals(RecordingState.Stopped, recordingSession.state.value)
+        assertEquals(AudioRecordingState.Stopped, recordingSession.state.value)
 
         // 5. Play back the recorded audio
-        val playbackStateChanges = mutableListOf<PlaybackState>()
+        val audioPlaybackStateChanges = mutableListOf<AudioPlaybackState>()
         val collectPlaybackStateJob = launch(UnconfinedTestDispatcher(testScheduler)) {
-            playbackSession.state.toList(playbackStateChanges)
+            playbackSession.state.toList(audioPlaybackStateChanges)
         }
 
-        assertEquals(PlaybackState.Idle, playbackSession.state.value)
+        assertEquals(AudioPlaybackState.Idle, playbackSession.state.value)
 
         // Ensure we actually recorded something
         assertTrue(recordedData.isNotEmpty(), "No audio data was recorded.")
 
         // Play the collected data
-        playbackSession.play(recordedData.asFlow(), format)
+        playbackSession.play(recordedData.asFlow())
 
         // Wait until it's finished playing
         withContext(Dispatchers.Default.limitedParallelism(1)) {
             withTimeout(5.seconds) {
-                playbackSession.state.first { it == PlaybackState.Finished }
+                playbackSession.state.first { it == AudioPlaybackState.Finished }
             }
         }
 
         // 6. Verify state transitions
-        assertEquals(listOf(RecordingState.Idle, RecordingState.Recording, RecordingState.Stopped), recordingStateChanges)
+        assertEquals(listOf(AudioRecordingState.Idle, AudioRecordingState.Recording, AudioRecordingState.Stopped), recordingStateChanges)
 
         // The last state might be PLAYING if the flow finishes fast
-        val expectedPlaybackStates = listOf(PlaybackState.Idle, PlaybackState.Playing, PlaybackState.Finished)
-        assertEquals(expectedPlaybackStates, playbackStateChanges)
+        val expectedAudioPlaybackStates = listOf(AudioPlaybackState.Idle, AudioPlaybackState.Playing, AudioPlaybackState.Finished)
+        assertEquals(expectedAudioPlaybackStates, audioPlaybackStateChanges)
 
         // Clean up jobs
         collectRecordingStateJob.cancel()
