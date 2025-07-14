@@ -1,5 +1,14 @@
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.transform
+import kotlinx.io.Buffer
+import kotlinx.io.readByteArray
+import kotlinx.io.readIntLe
+import kotlinx.io.readLongLe
+import kotlinx.io.readShortLe
+import kotlinx.io.writeIntLe
+import kotlinx.io.writeLongLe
+import kotlinx.io.writeShortLe
+import kotlin.math.roundToLong
 
 class AudioFlow(
     val format: AudioFormat,
@@ -16,45 +25,20 @@ fun AudioFlow.convertAudio(
         throw UnsupportedOperationException("Sample rate conversion is not supported.")
     /**
      * Decodes a chunk of bytes into normalized Float samples ranging from -1.0 to 1.0.
-     * This platform-agnostic function reads bytes and converts them to integers for each sample.
+     * This function now uses kotlinx.io.Buffer for robust, platform-agnostic byte reading.
      */
     fun decode(chunk: ByteArray, format: AudioFormat): FloatArray {
+        val buffer = Buffer().apply { write(chunk) }
         val bytesPerSample = format.bitDepth.value / 8
         val numSamples = chunk.size / bytesPerSample
         val samples = FloatArray(numSamples)
 
         for (i in 0 until numSamples) {
-            val byteIndex = i * bytesPerSample
             samples[i] = when (format.bitDepth) {
-                is BitDepth.Eight -> {
-                    // Signed 8-bit, from -128 to 127
-                    chunk[byteIndex] / 128.0f
-                }
-                is BitDepth.Sixteen -> {
-                    // Little-endian 16-bit signed integer
-                    val value = ((chunk[byteIndex + 1].toInt() shl 8) or (chunk[byteIndex].toInt() and 0xFF)).toShort()
-                    value / 32768.0f
-                }
-                is BitDepth.ThirtyTwo -> {
-                    // Little-endian 32-bit signed integer
-                    val value = (chunk[byteIndex + 3].toInt() shl 24) or
-                            ((chunk[byteIndex + 2].toInt() and 0xFF) shl 16) or
-                            ((chunk[byteIndex + 1].toInt() and 0xFF) shl 8) or
-                            (chunk[byteIndex].toInt() and 0xFF)
-                    value / 2147483648.0f
-                }
-                is BitDepth.SixtyFour -> {
-                    // Little-endian 64-bit signed integer
-                    val value = (chunk[byteIndex + 7].toLong() shl 56) or
-                            ((chunk[byteIndex + 6].toLong() and 0xFF) shl 48) or
-                            ((chunk[byteIndex + 5].toLong() and 0xFF) shl 40) or
-                            ((chunk[byteIndex + 4].toLong() and 0xFF) shl 32) or
-                            ((chunk[byteIndex + 3].toLong() and 0xFF) shl 24) or
-                            ((chunk[byteIndex + 2].toLong() and 0xFF) shl 16) or
-                            ((chunk[byteIndex + 1].toLong() and 0xFF) shl 8) or
-                            (chunk[byteIndex].toLong() and 0xFF)
-                    (value / 9223372036854775808.0).toFloat()
-                }
+                is BitDepth.Eight -> buffer.readByte() / 128.0f
+                is BitDepth.Sixteen -> buffer.readShortLe() / 32768.0f
+                is BitDepth.ThirtyTwo -> buffer.readIntLe() / 2147483648.0f
+                is BitDepth.SixtyFour -> buffer.readLongLe() / 9223372036854775808.0f
             }
         }
         return samples
@@ -91,44 +75,32 @@ fun AudioFlow.convertAudio(
 
     /**
      * Encodes normalized Float samples back into a byte array according to the target format.
-     * This platform-agnostic function manually writes bytes for each sample value.
+     * This function now uses kotlinx.io.Buffer for robust, platform-agnostic byte writing.
      */
     fun encode(samples: FloatArray, format: AudioFormat): ByteArray {
-        val bytesPerSample = format.bitDepth.value / 8
-        val output = ByteArray(samples.size * bytesPerSample)
-        for (i in samples.indices) {
-            val sample = samples[i].coerceIn(-1.0f, 1.0f)
-            val byteIndex = i * bytesPerSample
+        val buffer = Buffer()
+        for (sample in samples) {
+            val clampedSample = sample.coerceIn(-1.0f, 1.0f)
             when (format.bitDepth) {
                 is BitDepth.Eight -> {
-                    output[byteIndex] = (sample * 127.0f).toInt().toByte()
+                    val value = (clampedSample * 128.0f).toInt()
+                    buffer.writeByte(value.coerceIn(Byte.MIN_VALUE.toInt(), Byte.MAX_VALUE.toInt()).toByte())
                 }
                 is BitDepth.Sixteen -> {
-                    val value = (sample * 32767.0f).toInt()
-                    output[byteIndex] = (value and 0xFF).toByte()
-                    output[byteIndex + 1] = (value shr 8 and 0xFF).toByte()
+                    val value = (clampedSample * 32768.0f).toInt()
+                    buffer.writeShortLe(value.coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort())
                 }
                 is BitDepth.ThirtyTwo -> {
-                    val value = (sample * 2147483647.0f).toInt()
-                    output[byteIndex] = (value and 0xFF).toByte()
-                    output[byteIndex + 1] = (value shr 8 and 0xFF).toByte()
-                    output[byteIndex + 2] = (value shr 16 and 0xFF).toByte()
-                    output[byteIndex + 3] = (value shr 24 and 0xFF).toByte()
+                    val value = (clampedSample * 2147483648.0).toLong()
+                    buffer.writeIntLe(value.coerceIn(Int.MIN_VALUE.toLong(), Int.MAX_VALUE.toLong()).toInt())
                 }
                 is BitDepth.SixtyFour -> {
-                    val value = (sample.toDouble() * 9223372036854775807.0).toLong()
-                    output[byteIndex] = (value and 0xFF).toByte()
-                    output[byteIndex + 1] = (value shr 8 and 0xFF).toByte()
-                    output[byteIndex + 2] = (value shr 16 and 0xFF).toByte()
-                    output[byteIndex + 3] = (value shr 24 and 0xFF).toByte()
-                    output[byteIndex + 4] = (value shr 32 and 0xFF).toByte()
-                    output[byteIndex + 5] = (value shr 40 and 0xFF).toByte()
-                    output[byteIndex + 6] = (value shr 48 and 0xFF).toByte()
-                    output[byteIndex + 7] = (value shr 56 and 0xFF).toByte()
+                    val value = (clampedSample * 9223372036854775808.0).roundToLong()
+                    buffer.writeLongLe(value.coerceIn(Long.MIN_VALUE, Long.MAX_VALUE))
                 }
             }
         }
-        return output
+        return buffer.readByteArray()
     }
 
     return AudioFlow(targetFormat, transform { chunk ->
