@@ -1,5 +1,6 @@
 package org.example.project
 
+import AudioPermissionDeniedException
 import AudioRecordingSession
 import AudioRecordingState
 import androidx.compose.animation.AnimatedContent
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @Composable
@@ -35,19 +37,29 @@ fun RecordingSessionUi(
                 }
                 AudioRecordingState.Idle,
                 is AudioRecordingState.Stopped -> {
-                    TextButton(onClick = { scope.launch { audioRecordingSession.start() } }) {
+                    TextButton(onClick = { audioRecordingSession.start(scope) }) {
                         Text("Start Recording")
                     }
                 }
                 is AudioRecordingState.Error -> {
                     Column {
                         Text("Error: ${it.error.message}")
-                        TextButton(onClick = { scope.launch { audioRecordingSession.start() } }) {
+                        TextButton(onClick = { audioRecordingSession.start(scope) }) {
                             Text("Start Recording")
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+private fun AudioRecordingSession.start(scope: CoroutineScope) {
+    scope.launch {
+        try {
+            start()
+        } catch (e: AudioPermissionDeniedException) {
+
         }
     }
 }

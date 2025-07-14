@@ -33,7 +33,8 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : AudioPla
             val playbackFormat = inputFormat
                 .takeIf { mixer.isSupported<SourceDataLine>(it) }
                 ?: device.formatSupport.defaultFormat
-
+//            PCM_SIGNED 48000.0 Hz, 16 bit, stereo, 4 bytes/frame, little-endian
+            println(playbackFormat.toJvmAudioFormat())
             val line = mixer.getLine<SourceDataLine>(playbackFormat)
             line.open(playbackFormat)
             line.start()

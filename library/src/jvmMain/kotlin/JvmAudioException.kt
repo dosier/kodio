@@ -7,8 +7,6 @@ sealed class JvmAudioException(message: String, cause: Throwable? = null) : Exce
 
     data class DeviceNotFound(val device: AudioDevice) : JvmAudioException("Device not found: $device.")
 
-    data class MixerNotFound(val mixerInfo: Mixer.Info) : JvmAudioException("Mixer not found: $mixerInfo")
-
     data class LineNotAvailable(val error: LineUnavailableException) : JvmAudioException("Line not available: ${error.message}.", error)
 
     data class UnsupportedLineType(val lineClass: KClass<*>) : JvmAudioException("Unsupported line type: $lineClass.")

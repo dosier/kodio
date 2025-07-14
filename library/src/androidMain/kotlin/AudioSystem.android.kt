@@ -1,8 +1,11 @@
 import android.Manifest.permission.RECORD_AUDIO
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioManager
+import android.net.Uri
+import android.provider.Settings
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,8 +22,8 @@ actual val SystemAudioSystem: AudioSystem = AndroidAudioSystem
 
 object AndroidAudioSystem : SystemAudioSystemImpl() {
 
-    private lateinit var context : WeakReference<Context>
-    private lateinit var activity : WeakReference<Activity>
+    private lateinit var context: WeakReference<Context>
+    private lateinit var activity: WeakReference<Activity>
 
     private val _permissionState = MutableStateFlow(AndroidAudioPermissionState.Unknown)
     private val permissionState = _permissionState.asStateFlow()
@@ -37,9 +40,9 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
         requestCode: Int,
         grantResults: IntArray
     ) {
-        when(requestCode) {
+        when (requestCode) {
             REQUEST_PERMISSION_RECORD_AUDIO -> {
-                _permissionState.value = when(grantResults.getOrNull(0)) {
+                _permissionState.value = when (grantResults.getOrNull(0)) {
                     PackageManager.PERMISSION_GRANTED -> AndroidAudioPermissionState.Granted
                     PackageManager.PERMISSION_DENIED -> AndroidAudioPermissionState.Denied
                     else -> AndroidAudioPermissionState.Unknown
@@ -65,7 +68,18 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
     override suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession =
         AndroidAudioPlaybackSession(requireContext(), device)
 
-    private suspend fun<T> withMicrophonePermission(block: () -> T): T {
+    override suspend fun openPermissionSettings() {
+        with(requireActivity()) {
+            startActivity(
+                Intent(
+                    /* action = */ Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    /* uri = */ Uri.fromParts("package", packageName, null)
+                )
+            )
+        }
+    }
+
+    private suspend fun <T> withMicrophonePermission(block: () -> T): T {
         val context = requireContext()
         return if (!hasMicrophonePermission(context)) {
             val activity = requireActivity()

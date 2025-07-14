@@ -8,11 +8,13 @@ import javax.sound.sampled.AudioSystem as JvmAudioSystem
 // AudioSystem extensions
 
 internal fun getMixer(device: AudioDevice) : Mixer {
-    val mixerInfo = JvmAudioSystem.getMixerInfo().firstOrNull { it.name == device.id }
-        ?: throw JvmAudioException.DeviceNotFound(device)
-    val mixer = JvmAudioSystem.getMixer(mixerInfo)
-        ?: throw JvmAudioException.MixerNotFound(mixerInfo)
-    return mixer
+    val mixers = JvmAudioSystem.getMixerInfo()
+        .filter { it.name == device.id }
+        .map { JvmAudioSystem.getMixer(it) }
+    return when(device) {
+        is AudioDevice.Input -> mixers.firstOrNull { it.isLineSupported(DataLine.Info(TargetDataLine::class.java, null)) }
+        is AudioDevice.Output -> mixers.firstOrNull { it.isLineSupported(DataLine.Info(SourceDataLine::class.java, null)) }
+    } ?: throw JvmAudioException.DeviceNotFound(device)
 }
 
 // Mixer extensions

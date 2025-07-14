@@ -19,9 +19,8 @@ fun AudioFlow.convertAudio(
         return this
     if (sourceFormat.sampleRate != targetFormat.sampleRate)
         throw UnsupportedOperationException("Sample rate conversion is not supported.")
-    if (sourceFormat.encoding is Encoding.Unknown || targetFormat.encoding is Encoding.Unknown) {
+    if (sourceFormat.encoding is Encoding.Unknown || targetFormat.encoding is Encoding.Unknown)
         throw IllegalArgumentException("Unknown encoding is not supported for conversion.")
-    }
 
     // Normalizes a sample to the range [-1.0, 1.0)
     fun getNormalizingDivisor(bitDepth: BitDepth): BigDecimal {

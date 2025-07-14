@@ -2,6 +2,7 @@ package org.example.project
 
 import AudioDevice
 import AudioFlow
+import AudioPermissionDeniedException
 import AudioPlaybackSession
 import AudioRecordingSession
 import SystemAudioSystem
@@ -11,8 +12,10 @@ import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.ui.tooling.preview.Preview
 
 @Composable
@@ -25,7 +28,7 @@ fun App() {
         var audioPlaybackSession : AudioPlaybackSession? by remember { mutableStateOf(null)}
         var error : Throwable? by remember { mutableStateOf(null)}
         var recordedAudioFlow by remember { mutableStateOf<AudioFlow?>(null) }
-
+        val scope = rememberCoroutineScope()
         LaunchedEffect(inputDevice) {
             runCatching {
                 audioRecordingSession = inputDevice?.let {
@@ -71,9 +74,17 @@ fun App() {
             }
             HorizontalDivider()
             Column {
-                AnimatedContent(audioRecordingSession) { session ->
+                AnimatedContent(audioRecordingSession to error) { (session, error) ->
                     when {
-                        session == null -> Text("Please select an input device")
+                        session == null -> {
+                            if (error is AudioPermissionDeniedException) {
+                                TextButton(onClick = { scope.launch { SystemAudioSystem.openPermissionSettings() } }) {
+                                    Text("Permission Required (Tap to open settings)")
+                                }
+                            } else {
+                                Text("Please select an input device")
+                            }
+                        }
                         else -> RecordingSessionUi(audioRecordingSession = session)
                     }
                 }

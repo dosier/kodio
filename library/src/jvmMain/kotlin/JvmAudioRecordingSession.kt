@@ -1,10 +1,6 @@
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.isActive
-import javax.sound.sampled.DataLine
-import javax.sound.sampled.LineUnavailableException
-import javax.sound.sampled.Mixer
 import javax.sound.sampled.TargetDataLine
-import javax.sound.sampled.AudioSystem as JvmAudioSystem
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -26,18 +22,21 @@ class JvmAudioRecordingSession(
             .takeIf { mixer.isSupported<TargetDataLine>(it) }
             ?: device.formatSupport.defaultFormat
         val line = mixer.getLine<TargetDataLine>(audioFormat)
-        line.open(audioFormat)
-        line.start()
+        if (!line.isOpen)
+            line.open(audioFormat)
         this.dataLine = line
-        return format
+        return audioFormat
     }
+
     override suspend fun startRecording(channel: SendChannel<ByteArray>) {
         val line = dataLine ?: return
+        if (!line.isRunning)
+            line.start()
         val buffer = ByteArray(line.bufferSize / 5)
         while (coroutineContext.isActive && line.isOpen) {
             val bytesRead = line.read(buffer, 0, buffer.size)
             if (bytesRead > 0) {
-                println("read $bytesRead bytes from line (sample = ${buffer.take(10)})")
+                println("read $bytesRead bytes from line (sample = ${buffer.copyOf(bytesRead).average()})")
                 channel.send(buffer.copyOf(bytesRead))
             }
         }

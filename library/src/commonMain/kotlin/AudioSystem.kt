@@ -27,6 +27,8 @@ public sealed interface AudioSystem {
      * @return A PlaybackSession object.
      */
     suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession
+
+    suspend fun openPermissionSettings() = Unit
 }
 
 abstract class SystemAudioSystemImpl : AudioSystem
