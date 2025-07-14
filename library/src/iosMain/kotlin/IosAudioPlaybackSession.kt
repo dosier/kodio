@@ -52,7 +52,6 @@ class IosAudioPlaybackSession() : AudioPlaybackSession {
                         }
                         iosAudioBufferFinishedIndicator
                     }.lastOrNull()
-                    println("boo")
                     lastCompletable?.await()
                     _state.value = AudioPlaybackState.Finished
                 }.onFailure {

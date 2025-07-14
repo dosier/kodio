@@ -2,14 +2,24 @@ import platform.AVFAudio.AVAudioCommonFormat
 import platform.AVFAudio.AVAudioFormat
 import platform.AVFAudio.AVAudioPCMFormatFloat32
 import platform.AVFAudio.AVAudioPCMFormatFloat64
+import platform.AVFAudio.AVAudioPCMFormatInt16
+import platform.AVFAudio.AVAudioPCMFormatInt32
 
-val DefaultIosRecordingAudioFormat = AudioFormat(48000, BitDepth.ThirtyTwo, Channels.Mono)
+val DefaultIosRecordingAudioFormat = AudioFormat(
+    sampleRate = 48000,
+    bitDepth = BitDepth.ThirtyTwo,
+    channels = Channels.Mono,
+    encoding = Encoding.Pcm.Signed
+)
 
 /**
  * Converts our common AudioFormat to an Apple AVAudioFormat.
  */
 fun AudioFormat.toIosAudioFormat(): AVAudioFormat {
     // iOS commonly uses Float32 for processing, but we map to PCM formats for raw data.
+    val encoding = encoding
+    if(encoding !is Encoding.Pcm || !encoding.signed)
+        throw IosAudioFormatException.UnsupportedCommonEncoding(encoding)
     return AVAudioFormat(
         commonFormat = bitDepth.toAVAudioCommonFormat(),
         sampleRate = sampleRate.toDouble(),
@@ -25,7 +35,8 @@ fun AVAudioFormat.toCommonAudioFormat(): AudioFormat {
     return AudioFormat(
         sampleRate = sampleRate.toInt(),
         bitDepth = commonFormat.toCommonBitDepth(),
-        channels = Channels.fromInt(channelCount.toInt())
+        channels = Channels.fromInt(channelCount.toInt()),
+        encoding = commonFormat.toCommonEncoding(),
     )
 }
 
@@ -41,6 +52,18 @@ fun AVAudioCommonFormat.toCommonBitDepth(): BitDepth {
     return when (this) {
         AVAudioPCMFormatFloat64 -> BitDepth.SixtyFour
         AVAudioPCMFormatFloat32 -> BitDepth.ThirtyTwo
+        AVAudioPCMFormatInt16 -> BitDepth.Sixteen
+        AVAudioPCMFormatInt32 -> BitDepth.ThirtyTwo
         else -> throw IosAudioFormatException.UnknownBitDepthForCommonFormat(this)
+    }
+}
+
+fun AVAudioCommonFormat.toCommonEncoding(): Encoding {
+    return when (this) {
+        AVAudioPCMFormatFloat64,
+        AVAudioPCMFormatFloat32 -> Encoding.Pcm.Unsigned
+        AVAudioPCMFormatInt32,
+        AVAudioPCMFormatInt16 -> Encoding.Pcm.Signed
+        else -> throw IosAudioFormatException.UnknownEncodingForCommonFormat(this)
     }
 }

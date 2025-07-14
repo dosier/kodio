@@ -1,6 +1,12 @@
 import android.media.AudioFormat as AndroidAudioFormat
 
-val DefaultAndroidRecordingAudioFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono)
+val DefaultAndroidRecordingAudioFormat = AudioFormat(
+    sampleRate = 44100,
+    bitDepth = BitDepth.Sixteen,
+    channels = Channels.Mono,
+    encoding = Encoding.Pcm.Signed,
+    endianness = Endianness.Little
+)
 
 internal fun Channels.toAndroidChannelInMask(): Int {
     return when (this) {
@@ -34,7 +40,14 @@ internal fun AndroidAudioFormat.toCommonAudioFormat(): AudioFormat {
             AndroidAudioFormat.ENCODING_PCM_FLOAT -> BitDepth.ThirtyTwo
             else -> throw AndroidAudioFormatException.UnsupportedEncoding(encoding)
         },
-        channels = Channels.fromInt(channelCount)
+        channels = Channels.fromInt(channelCount),
+        encoding = when(encoding) {
+            AndroidAudioFormat.ENCODING_PCM_8BIT -> Encoding.Pcm.Signed
+            AndroidAudioFormat.ENCODING_PCM_16BIT -> Encoding.Pcm.Signed
+            AndroidAudioFormat.ENCODING_PCM_FLOAT -> Encoding.Pcm.Signed
+            else -> throw AndroidAudioFormatException.UnsupportedEncoding(encoding)
+        },
+        endianness = Endianness.Little
     )
 }
 

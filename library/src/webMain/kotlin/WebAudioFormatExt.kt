@@ -1,1 +1,7 @@
-internal val DefaultWebRecordingAudioFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono)
+internal val DefaultWebRecordingAudioFormat = AudioFormat(
+    sampleRate = 44100,
+    bitDepth = BitDepth.Sixteen,
+    channels = Channels.Mono,
+    encoding = Encoding.Pcm.Signed,
+    endianness = Endianness.Little
+)

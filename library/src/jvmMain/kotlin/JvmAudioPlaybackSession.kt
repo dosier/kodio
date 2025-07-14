@@ -6,8 +6,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import javax.sound.sampled.AudioSystem
-import javax.sound.sampled.DataLine
 import javax.sound.sampled.SourceDataLine
 
 /**
@@ -28,31 +26,31 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : AudioPla
 
     override suspend fun play(audioFlow: AudioFlow) {
         if (_state.value == AudioPlaybackState.Playing) return
-        val format = audioFlow.format
-        val jvmAudioFormat = format.toJvmAudioFormat()
+        val inputFormat = audioFlow.format
         try {
             // Correctly get the Mixer instance first
-            val mixerInfo = AudioSystem.getMixerInfo().first { it.name == device.id }
-            val mixer = AudioSystem.getMixer(mixerInfo)
+            val mixer = getMixer(device)
+            val playbackFormat = inputFormat
+                .takeIf { mixer.isSupported<SourceDataLine>(it) }
+                ?: device.formatSupport.defaultFormat
 
-            // Then get the line from the specific mixer
-            val dataLineInfo = DataLine.Info(SourceDataLine::class.java, jvmAudioFormat)
-            val dataLine = mixer.getLine(dataLineInfo) as SourceDataLine
+            val line = mixer.getLine<SourceDataLine>(playbackFormat)
+            line.open(playbackFormat)
+            line.start()
+            this.dataLine = line
 
-            this.dataLine = dataLine
-
-            dataLine.open(jvmAudioFormat)
-            dataLine.start()
             _state.value = AudioPlaybackState.Playing
 
             playbackJob = scope.launch {
-                audioFlow.collect { buffer ->
-                    isPaused.first { !it } // blocks until false
-                    dataLine.write(buffer, 0, buffer.size)
-                }
-                dataLine.drain()
-                dataLine.stop()
-                dataLine.close()
+                audioFlow
+                    .convertAudio(playbackFormat)
+                    .collect { buffer ->
+                        isPaused.first { !it } // blocks until false
+                        line.write(buffer, 0, buffer.size)
+                    }
+                line.drain()
+                line.stop()
+                line.close()
                 _state.value = AudioPlaybackState.Finished
             }
         } catch (e: Exception) {

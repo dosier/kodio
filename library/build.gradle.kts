@@ -51,6 +51,7 @@ kotlin {
             dependencies {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.io)
+                implementation(libs.bignum)
             }
         }
         commonTest {

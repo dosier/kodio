@@ -38,6 +38,7 @@ kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version.re
 kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 kotlin-browser-js = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser-js", version.ref = "kotlin-browser-js" }
 kotlin-browser-wasmjs = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser-wasm-js", version = "2025.6.15" }
+bignum = { module = "com.ionspin.kotlin:bignum", version = "0.3.10" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

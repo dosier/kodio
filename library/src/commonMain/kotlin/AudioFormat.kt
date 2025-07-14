@@ -4,7 +4,9 @@
 data class AudioFormat(
     val sampleRate: Int,
     val bitDepth: BitDepth,
-    val channels: Channels
+    val channels: Channels,
+    val encoding: Encoding = Encoding.Unknown,
+    val endianness: Endianness = Endianness.Little,
 ) {
 
     companion object {
@@ -54,4 +56,17 @@ sealed class Channels(val count: Int) {
             }
         }
     }
+}
+
+sealed class Encoding {
+    sealed class Pcm(val signed: Boolean) : Encoding() {
+        data object Signed : Pcm(true)
+        data object Unsigned : Pcm(false)
+    }
+    data object Unknown : Encoding()
+}
+
+sealed class Endianness {
+    data object Little : Endianness()
+    data object Big : Endianness()
 }
