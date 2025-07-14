@@ -37,7 +37,6 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
         requestCode: Int,
         grantResults: IntArray
     ) {
-        println("onRequestPermissionsResult($requestCode, ${grantResults.contentToString()})")
         when(requestCode) {
             REQUEST_PERMISSION_RECORD_AUDIO -> {
                 _permissionState.value = when(grantResults.getOrNull(0)) {
