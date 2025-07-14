@@ -5,13 +5,13 @@ import android.content.pm.PackageManager.PERMISSION_GRANTED
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
-
 internal const val REQUEST_PERMISSION_RECORD_AUDIO = 1001
 
 internal fun Activity.requestPermission(permissionName: String?, permissionRequestCode: Int) {
     ActivityCompat.requestPermissions(
-        this,
-        arrayOf(permissionName), permissionRequestCode
+        /* activity = */ this,
+        /* permissions = */ arrayOf(permissionName),
+        /* requestCode = */ permissionRequestCode
     )
 }
 
