@@ -74,3 +74,6 @@ fun main() = runBlocking {
 
 ### JVM
 No special setup is required. The library should work out of the box on any system with available audio input and output devices.
+
+### Credits
+This project is inspired by https://github.com/theolm/kmp-record
