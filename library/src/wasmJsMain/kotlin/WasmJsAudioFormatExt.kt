@@ -1,1 +1,0 @@
-internal val DefaultWasmJsRecordingAudioFormat get() = DefaultWebRecordingAudioFormat

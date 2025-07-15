@@ -1,1 +1,0 @@
-object AudioPermissionDeniedException : Exception("Audio permission denied")

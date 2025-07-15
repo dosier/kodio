@@ -34,5 +34,5 @@ plugins {
 }
 
 
-include(":library")
+include(":kodio-core")
 include(":composeApp")
