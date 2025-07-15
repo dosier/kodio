@@ -32,6 +32,9 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
     override suspend fun listOutputDevices(): List<AudioDevice.Output> {
         return audioSession.currentRoute.outputs
+            .onEach {
+                println(it)
+            }
             .filterIsInstance<AVAudioSessionPortDescription>()
             .map { port ->
                 AudioDevice.Output(

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -60,50 +61,53 @@ fun App() {
                 recordedAudioFlow = it
             }
         }
-        Column(Modifier.safeContentPadding()) {
-            Column {
-                Text("Input device: ${inputDevice?.name ?: "None"}")
+        Surface {
+            Column(Modifier.safeContentPadding()) {
+                Column {
+                    Text("Input device: ${inputDevice?.name ?: "None"}")
+                    HorizontalDivider()
+                    InputDeviceListUi(onDeviceSelected = { inputDevice = it })
+                }
                 HorizontalDivider()
-                InputDeviceListUi(onDeviceSelected = { inputDevice = it })
-            }
-            HorizontalDivider()
-            Column {
-                Text("Output device: ${outputDevice?.name ?: "None"}")
+                Column {
+                    Text("Output device: ${outputDevice?.name ?: "None"}")
+                    HorizontalDivider()
+                    OutputDeviceListUi(onDeviceSelected = { outputDevice = it })
+                }
                 HorizontalDivider()
-                OutputDeviceListUi(onDeviceSelected = { outputDevice = it })
-            }
-            HorizontalDivider()
-            Column {
-                AnimatedContent(audioRecordingSession to error) { (session, error) ->
-                    when {
-                        session == null -> {
-                            if (error is AudioPermissionDeniedException) {
-                                TextButton(onClick = { scope.launch { SystemAudioSystem.openPermissionSettings() } }) {
-                                    Text("Permission Required (Tap to open settings)")
+                Column {
+                    AnimatedContent(audioRecordingSession to error) { (session, error) ->
+                        when {
+                            session == null -> {
+                                if (error is AudioPermissionDeniedException) {
+                                    TextButton(onClick = { scope.launch { SystemAudioSystem.openPermissionSettings() } }) {
+                                        Text("Permission Required (Tap to open settings)")
+                                    }
+                                } else {
+                                    Text("Please select an input device")
                                 }
-                            } else {
-                                Text("Please select an input device")
+                            }
+
+                            else -> RecordingSessionUi(audioRecordingSession = session)
+                        }
+                    }
+                    AnimatedContent(audioPlaybackSession to recordedAudioFlow) { (playback, audioFlow) ->
+                        when {
+                            playback == null -> Text("Please select an output device")
+                            audioFlow == null -> Text("Please start recording before playing back")
+                            else -> {
+                                @Suppress("UNCHECKED_CAST")
+                                PlaybackSessionUi(
+                                    audioPlaybackSession = playback,
+                                    audioDataFlow = audioFlow,
+                                )
                             }
                         }
-                        else -> RecordingSessionUi(audioRecordingSession = session)
                     }
                 }
-                AnimatedContent(audioPlaybackSession to recordedAudioFlow) { (playback, audioFlow) ->
-                    when {
-                        playback == null -> Text("Please select an output device")
-                        audioFlow == null -> Text("Please start recording before playing back")
-                        else -> {
-                            @Suppress("UNCHECKED_CAST")
-                            PlaybackSessionUi(
-                                audioPlaybackSession = playback,
-                                audioDataFlow = audioFlow,
-                            )
-                        }
-                    }
-                }
+                if (error != null)
+                    Text("Error: ${error?.message}", color = MaterialTheme.colorScheme.error)
             }
-            if (error != null)
-                Text("Error: ${error?.message}", color = MaterialTheme.colorScheme.error)
         }
     }
 }

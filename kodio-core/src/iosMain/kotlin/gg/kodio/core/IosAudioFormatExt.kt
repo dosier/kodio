@@ -32,7 +32,6 @@ fun AudioFormat.toIosAudioFormat(): AVAudioFormat {
  * Converts an AVAudioFormat to our common AudioFormat.
  */
 fun AVAudioFormat.toCommonAudioFormat(): AudioFormat {
-    this.isStandard()
     return AudioFormat(
         sampleRate = sampleRate.toInt(),
         bitDepth = commonFormat.toCommonBitDepth(),

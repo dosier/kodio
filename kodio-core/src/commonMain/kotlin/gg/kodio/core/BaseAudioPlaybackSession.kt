@@ -32,18 +32,23 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
 
         if (_state.value == State.Playing) return
 
-        val playbackFormat = preparePlayback(audioFlow.format)
-        val playbackAudioFlow = audioFlow.convertAudio(playbackFormat)
-
-        playbackJob = scope.launch {
-            runCatching {
-                playBlocking(playbackAudioFlow)
-                _state.value = State.Finished
-            }.onFailure {
-                _state.value = State.Error(it)
+        runCatching {
+            val playbackFormat = preparePlayback(audioFlow.format)
+            val playbackAudioFlow = audioFlow.convertAudio(playbackFormat)
+            playbackJob = scope.launch {
+                runCatching {
+                    playBlocking(playbackAudioFlow)
+                    _state.value = State.Finished
+                }.onFailure {
+                    _state.value = State.Error(it)
+                }
             }
+        }.onFailure {
+            _state.value = State.Error(it)
+            it.printStackTrace()
+        }.onSuccess {
+            _state.value = State.Playing
         }
-        _state.value = State.Playing
     }
 
     final override fun pause() {

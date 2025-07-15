@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.map
 import platform.AVFAudio.AVAudioEngine
 import platform.AVFAudio.AVAudioMixerNode
 import platform.AVFAudio.AVAudioPlayerNode
+import platform.AVFAudio.AVAudioSession
 
 /**
  * IOS implementation for [AudioPlaybackSession].
@@ -16,34 +17,37 @@ import platform.AVFAudio.AVAudioPlayerNode
 class IosAudioPlaybackSession() : BaseAudioPlaybackSession() {
 
     private val engine = AVAudioEngine()
-    private val playerNode = AVAudioPlayerNode()
-    private val formatConverterMixer = AVAudioMixerNode()
+    private val mixer = AVAudioMixerNode()
+    private val player = AVAudioPlayerNode()
 
     init {
-        engine.attachNode(playerNode)
-        engine.attachNode(formatConverterMixer)
+        engine.attachNode(mixer)
+        engine.attachNode(player)
     }
 
     @OptIn(ExperimentalForeignApi::class)
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
-        val iosAudioFormat = format.toIosAudioFormat()
 
-        engine.connect(playerNode, formatConverterMixer, iosAudioFormat)
-        engine.connect(formatConverterMixer, engine.mainMixerNode, null)
+        engine.connect(player, mixer, format.toIosAudioFormat())
+        engine.connect(player, engine.mainMixerNode, null)
 
-        engine.prepare()
-        engine.startAndReturnError(null) // TODO: catch error
+        AVAudioSession.sharedInstance().configureCategoryPlayback()
 
+        runIosCatching { errorVar ->
+            engine.startAndReturnError(errorVar) // TODO: catch error
+        }.onFailure {
+            throw IosAudioEngineException.FailedToStart(it.message ?: "Unknown error")
+        }
         return format
     }
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {
-        playerNode.play()
+        player.play()
         val iosAudioFormat = audioFlow.format.toIosAudioFormat()
         val lastCompletable = audioFlow.map { bytes ->
             val iosAudioBuffer = bytes.toIosAudioBuffer(iosAudioFormat)
             val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
-            playerNode.scheduleBuffer(iosAudioBuffer) {
+            player.scheduleBuffer(iosAudioBuffer) {
                 // somehow indicate that the buffer has finished playing
                 iosAudioBufferFinishedIndicator.complete(Unit)
             }
@@ -53,19 +57,19 @@ class IosAudioPlaybackSession() : BaseAudioPlaybackSession() {
     }
 
     override fun onPause() {
-        if (playerNode.isPlaying())
-            playerNode.pause()
+        if (player.isPlaying())
+            player.pause()
     }
 
     override fun onResume() {
-        playerNode.play()
+        player.play()
     }
 
     override fun onStop() {
-        if (playerNode.isPlaying())
-            playerNode.stop()
+        if (player.isPlaying())
+            player.stop()
         engine.stop()
-        engine.disconnectNodeOutput(playerNode)
-        engine.disconnectNodeOutput(formatConverterMixer)
+        engine.disconnectNodeOutput(player)
+        engine.disconnectNodeOutput(mixer)
     }
 }
