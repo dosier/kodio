@@ -35,4 +35,4 @@ plugins {
 
 
 include(":kodio-core")
-include(":composeApp")
+include(":kodio-sample-app")

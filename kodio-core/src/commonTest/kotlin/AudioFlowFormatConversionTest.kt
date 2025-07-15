@@ -1,3 +1,6 @@
+import gg.kodio.core.*
+import gg.kodio.core.io.convertAudio
+
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -52,7 +55,7 @@ class AudioFlowFormatConversionTest {
     }
 
     @Test
-    fun `Convert 44100Hz, 16bit, Mono to 44100Hz, 16bit, Stereo`() = runTest {
+    fun `Convert 44100Hz 16bit Mono to 44100Hz 16bit Stereo`() = runTest {
         val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
         val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
 
@@ -71,7 +74,7 @@ class AudioFlowFormatConversionTest {
     }
 
     @Test
-    fun `Convert 44100Hz, 16bit, Stereo to 44100Hz, 16bit, Mono`() = runTest {
+    fun `Convert 44100Hz 16bit Stereo to 44100Hz 16bit Mono`() = runTest {
         val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
         val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
 
@@ -90,7 +93,7 @@ class AudioFlowFormatConversionTest {
     }
 
     @Test
-    fun `Convert 44100Hz, 16bit, Mono to 44100Hz, 8bit, Mono`() = runTest {
+    fun `Convert 44100Hz 16bit Mono to 44100Hz 8bit Mono`() = runTest {
         val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
         val outFormat = AudioFormat(44100, BitDepth.Eight, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
 
@@ -110,7 +113,7 @@ class AudioFlowFormatConversionTest {
     }
 
     @Test
-    fun `Convert 44100Hz, 8bit, Mono to 44100Hz, 16bit, Stereo`() = runTest {
+    fun `Convert 44100Hz 8bit Mono to 44100Hz 16bit Stereo`() = runTest {
         val inFormat = AudioFormat(44100, BitDepth.Eight, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
         val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
 
