@@ -12,8 +12,8 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
-group = "io.github.kotlin"
-version = "1.0.0"
+group = "space.kodio"
+version = "0.0.1"
 
 kotlin {
     jvm()
@@ -80,7 +80,7 @@ kotlin {
 }
 
 android {
-    namespace = "org.jetbrains.kotlinx.multiplatform.library.template"
+    namespace = "space.kodio"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
@@ -96,31 +96,30 @@ mavenPublishing {
 
     signAllPublications()
 
-    coordinates(group.toString(), "library", version.toString())
+    coordinates(group.toString(), "core", version.toString())
 
     pom {
-        name = "My library"
-        description = "A library."
-        inceptionYear = "2024"
-        url = "https://github.com/kotlin/multiplatform-library-template/"
+        name = "Kodio"
+        description = "A multiplatform library for audio recording/playback."
+        inceptionYear = "2025"
+        url = "https://github.com/dosier/kodio"
         licenses {
             license {
-                name = "XXX"
-                url = "YYY"
-                distribution = "ZZZ"
+                name = "The Apache License, Version 2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
             }
         }
         developers {
             developer {
-                id = "XXX"
-                name = "YYY"
-                url = "ZZZ"
+                id = "dosier"
+                name = "Stan"
+                url = "https://github.com/dosier"
             }
         }
         scm {
-            url = "XXX"
-            connection = "YYY"
-            developerConnection = "ZZZ"
+            url = "https://github.com/dosier/kodio"
+            connection = "scm:git:git://github.com/dosier/kodio.git"
+            developerConnection = "scm:git:ssh://git@github.com/dosier/kodio.git"
         }
     }
 }

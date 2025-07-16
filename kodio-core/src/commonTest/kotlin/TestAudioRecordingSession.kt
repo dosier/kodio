@@ -1,5 +1,5 @@
-import gg.kodio.core.AudioFormat
-import gg.kodio.core.BaseAudioRecordingSession
+import space.kodio.core.AudioFormat
+import space.kodio.core.BaseAudioRecordingSession
 import kotlinx.coroutines.channels.SendChannel
 
 internal class TestAudioRecordingSession(

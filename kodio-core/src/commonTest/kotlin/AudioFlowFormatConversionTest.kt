@@ -1,5 +1,5 @@
-import gg.kodio.core.*
-import gg.kodio.core.io.convertAudio
+import space.kodio.core.*
+import space.kodio.core.io.convertAudio
 
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
