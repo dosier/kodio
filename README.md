@@ -1,3 +1,5 @@
+![Maven Central Version](https://img.shields.io/maven-central/v/spaces.kodio/core)
+
 # Multiplatform Audio Library
 A Kotlin Multiplatform library for straightforward audio recording and playback. It leverages coroutines and Flow to provide a modern, asynchronous API for handling audio streams across JVM, Android, and iOS.
 
