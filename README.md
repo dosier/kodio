@@ -1,51 +1,40 @@
-![Maven Central Version](https://img.shields.io/maven-central/v/spaces.kodio/core)
+![Maven Central Version](https://img.shields.io/maven-central/v/space.kodio/core)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.2.0-blue.svg?logo=kotlin)](http://kotlinlang.org)
 
-# Multiplatform Audio Library
-A Kotlin Multiplatform library for straightforward audio recording and playback. It leverages coroutines and Flow to provide a modern, asynchronous API for handling audio streams across JVM, Android, and iOS.
+> [!CAUTION]  
+> This library is still in very early development.
 
-## Core Concepts
-- **`AudioSystem`**: The main entry point for all audio operations. Get the default platform-specific implementation via `SystemAudioSystem`.
-- **`AudioDevice`**: Represents hardware for audio input (microphones) and output (speakers). List available devices from the `AudioSystem`.
-- **`AudioFlow`**: A stream of audio data, combining a `Flow<ByteArray>` of audio chunks with an `AudioFormat`.
-- **`RecordingSession`**: Manages a recording from an input device. Use `start(format)` to begin capturing audio as an `AudioFlow`. You can observe its state (`Recording`, `Stopped`).
-- **`PlaybackSession`**: Manages playback to an output device. Use `play(audioFlow)` to start sending audio. Control it with `pause`, `resume`, and `stop`. You can observe its state (`Playing`, `Paused`, `Finished`).
+# Kotlin Multiplatform Audio Library
+Kodio is a Kotlin Multiplatform library for straightforward audio recording and playback. It leverages coroutines and Flow to provide a modern, asynchronous API for handling audio streams across JVM, Android, Web (JS/Wasm), and iOS.
 
 ## Usage Example
-Here’s a simple loopback example that records audio and plays it back immediately.
+Here’s a simple loopback example that records audio for 5 seconds and then plays it back.
 ```Kotlin
-kotlin import kotlinx.coroutines.delay import kotlinx.coroutines.runBlocking
-fun main() = runBlocking {
-    val audioSystem = SystemAudioSystem
-   
-   // 1. Get default input and output devices
-   val inputDevice = audioSystem.listInputDevices().firstOrNull() ?: error("No input device found")
-   val outputDevice = audioSystem.listOutputDevices().firstOrNull() ?: error("No output device found")
-   
-   // 2. Create recording and playback sessions
-   val recording = audioSystem.createRecordingSession(inputDevice)
-   val playback = audioSystem.createPlaybackSession(outputDevice)
-   
-   // 3. Start recording to get an audio flow
-   val format = inputDevice.formatSupport.defaultFormat
-   val audioFlow = recording.start(format)
-   
-   // 4. Play the recorded audio flow
-   playback.play(audioFlow)
-   
-   println("Recording and playing back for 10 seconds...")
-   delay(10_000)
-   
-   // 5. Stop the sessions
+suspend fun main() {
+   // Record some audio for 5 seconds
+   val inputDevice = SystemAudioSystem.listInputDevices().first()
+   val recording = SystemAudioSystem.createRecordingSession(inputDevice)
+   recording.start()
+   delay(5000)
    recording.stop()
-   playback.stop()
-   println("Done.")
+   // Playback the recorded audio
+   val outputDevice = SystemAudioSystem.listOutputDevices().first()
+   val playback = SystemAudioSystem.createPlaybackSession(outputDevice)
+   playback.play(recording.audioflow.value)
+}
+```
+## Setup
+
+### Gradle
+```Kotlin
+dependencies {
+    implementation("space.kodio:core:0.0.1")
 }
 ```
 
+### Platform-Specific Setup
 
-## Platform-Specific Setup
-
-### Android
+#### Android
 1. **Manifest permission**: Add the `RECORD_AUDIO` permission to your `AndroidManifest.xml`:
     ```xml
         <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -70,12 +59,12 @@ fun main() = runBlocking {
        }
    ```
 
-### iOS
+#### iOS
 1. **Permissions**: You must provide a description for microphone usage in your `Info.plist` file. Add the `NSMicrophoneUsageDescription` key with a string explaining why your app needs microphone access.
 2. **Device Selection**: On iOS, it is not possible to programmatically select a specific audio output device. The `PlaybackSession` will always use the system's current default output.
 
-### JVM
+#### JVM
 No special setup is required. The library should work out of the box on any system with available audio input and output devices.
 
-### Credits
+## Credits
 This project is inspired by https://github.com/theolm/kmp-record
