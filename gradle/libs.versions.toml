@@ -18,7 +18,6 @@ kotlin-browser-js = "1.0.0-pre.860"
 kotlinx-coroutines = "1.10.2"
 kotlinx-browser = "0.3"
 kotlinx-io = "0.8.0"
-jna = "5.17.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -41,8 +40,6 @@ kotlin-browser = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", vers
 kotlin-browser-js = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser-js", version.ref = "kotlin-browser-js" }
 kotlin-browser-wasmjs = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser-wasm-js", version = "2025.6.15" }
 bignum = { module = "com.ionspin.kotlin:bignum", version = "0.3.10" }
-jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
-jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

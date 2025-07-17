@@ -78,14 +78,7 @@ kotlin {
         }
         wasmJsMain {
             dependencies {
-//                implementation(libs.kotlin.browser.wasmjs)
                 implementation(libs.kotlinx.browser)
-            }
-        }
-        jvmMain {
-            dependencies {
-                implementation(libs.jna)
-                implementation(libs.jna.platform)
             }
         }
     }
