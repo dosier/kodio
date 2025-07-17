@@ -15,11 +15,13 @@ composeMultiplatform = "1.8.2"
 junit = "4.13.2"
 kotlin = "2.2.0"
 kotlin-browser-js = "1.0.0-pre.860"
+kotlinBrowser = "2025.7.5"
 kotlinx-coroutines = "1.10.2"
 kotlinx-browser = "0.3"
 kotlinx-io = "0.8.0"
 
 [libraries]
+kotlin-browser-v202575 = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlinBrowser" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }

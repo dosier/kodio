@@ -53,7 +53,7 @@ kotlin {
     }
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
-        outputModuleName.set("composeApp")
+        outputModuleName.set(wasmAppName)
         browser {
             commonWebpackConfig {
                 outputFileName = "$wasmAppName.js"
