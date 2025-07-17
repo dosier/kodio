@@ -49,28 +49,15 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
 
             // 3. Launch a job to collect audio from the platform-specific implementation.
             recordingJob = scope.launch {
-                coroutineScope {
-                    // callbackFlow wraps the platform-specific recording logic
-                    // and provides a SendChannel to push audio chunks into the flow.
-                    val platformFlow = callbackFlow {
-                        startRecording(this) // Call the abstract method
-                        awaitClose(::cleanup)
-                    }
+                // callbackFlow wraps the platform-specific recording logic
+                // and provides a SendChannel to push audio chunks into the flow.
+                val platformFlow = callbackFlow {
+                    startRecording(this) // Call the abstract method
+                    awaitClose(::cleanup)
+                }
 
-                    // Collect from the platform and emit to our hot flow
-                    platformFlow.collect(hotSource::emit)
-                }
-            }
-            val nestedBullshitForS =  {
-                {
-                    {
-                        {
-                            {
-                                println("Hi")
-                            }
-                        }
-                    }
-                }
+                // Collect from the platform and emit to our hot flow
+                platformFlow.collect(hotSource::emit)
             }
         } catch (e: Exception) {
             _state.value = State.Error(e)
