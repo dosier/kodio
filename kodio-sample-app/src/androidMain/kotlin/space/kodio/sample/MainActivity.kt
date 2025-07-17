@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import space.kodio.core.AndroidAudioPermissionManager
 import space.kodio.core.AndroidAudioSystem
 
 class MainActivity : ComponentActivity() {
@@ -14,7 +15,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         AndroidAudioSystem.setApplicationContext(applicationContext)
-        AndroidAudioSystem.setMicrophonePermissionRequestActivity(this)
+        AndroidAudioPermissionManager.setMicrophonePermissionRequestActivity(this)
         setContent {
             App()
         }
@@ -26,7 +27,7 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray,
         deviceId: Int
     ) {
-        AndroidAudioSystem.onRequestPermissionsResult(requestCode, grantResults)
+        AndroidAudioPermissionManager.onRequestPermissionsResult(requestCode, grantResults)
     }
 }
 

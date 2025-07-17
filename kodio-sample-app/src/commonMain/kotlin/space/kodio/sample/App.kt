@@ -80,7 +80,7 @@ fun App() {
                         when {
                             session == null -> {
                                 if (error is AudioPermissionDeniedException) {
-                                    TextButton(onClick = { scope.launch { SystemAudioSystem.openPermissionSettings() } }) {
+                                    TextButton(onClick = { scope.launch { SystemAudioSystem.permissionManager.requestRedirectToSettings() } }) {
                                         Text("Permission Required (Tap to open settings)")
                                     }
                                 } else {

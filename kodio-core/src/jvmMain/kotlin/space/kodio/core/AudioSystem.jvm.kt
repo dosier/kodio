@@ -2,6 +2,7 @@ package space.kodio.core
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import space.kodio.core.security.AudioPermissionManager
 import javax.sound.sampled.DataLine
 import javax.sound.sampled.SourceDataLine
 import javax.sound.sampled.TargetDataLine
@@ -14,6 +15,9 @@ import javax.sound.sampled.AudioSystem as JvmAudioSystem
  * @see JvmAudioRecordingSession for recording session implementation.
  */
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
+
+    override val permissionManager: AudioPermissionManager
+        get() = JvmAudioPermissionManager
 
     /**
      * Lists available audio input devices (microphones).

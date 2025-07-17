@@ -1,8 +1,8 @@
 package space.kodio.core
 
-import kotlinx.browser.window
 import kotlinx.coroutines.await
-import org.w3c.dom.mediacapture.MediaStreamConstraints
+import space.kodio.core.security.AudioPermissionDeniedException
+import space.kodio.core.security.AudioPermissionManager
 
 /**
  * JS implementation of the AudioSystem using the Web Audio API.
@@ -10,8 +10,8 @@ import org.w3c.dom.mediacapture.MediaStreamConstraints
  */
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
-    // Ensures we only request permission once.
-    private var permissionGranted: Boolean? = null
+    override val permissionManager: AudioPermissionManager
+        get() = WasmJsAudioPermissionManager
 
     override suspend fun listInputDevices(): List<AudioDevice.Input> =
         listDevices(MediaDeviceKindAudioInput)
@@ -28,22 +28,16 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
         WasmJsAudioPlaybackSession(device)
 
     private suspend fun listDevices(type: MediaDeviceKind): List<MediaDeviceInfo> {
-        if (!ensurePermissions()) return emptyList()
-        val devices = navigator.mediaDevices.enumerateDevices().await<JsArray<MediaDeviceInfo>>()
-        return devices.toList().filter { it.kind == type }
-    }
-
-    private suspend fun ensurePermissions(): Boolean {
-        if (permissionGranted == true) return true
-        // Calling getUserMedia is how you trigger the permission prompt.
-        try {
-            window.navigator.mediaDevices.getUserMedia(MediaStreamConstraints(audio = true.toJsBoolean())).await<MediaStream>()
-            permissionGranted = true
-            return true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            permissionGranted = false
-            return false
+        return try {
+            permissionManager.withMicrophonePermission {
+                val devices = navigator
+                    .mediaDevices
+                    .enumerateDevices()
+                    .await<JsArray<MediaDeviceInfo>>()
+                devices.toList().filter { it.kind == type }
+            }
+        } catch (_: AudioPermissionDeniedException) {
+            emptyList()
         }
     }
 }

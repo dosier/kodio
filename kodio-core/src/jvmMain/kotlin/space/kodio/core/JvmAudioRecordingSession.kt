@@ -37,10 +37,8 @@ class JvmAudioRecordingSession(
         val buffer = ByteArray(line.bufferSize / 5)
         while (coroutineContext.isActive && line.isOpen) {
             val bytesRead = line.read(buffer, 0, buffer.size)
-            if (bytesRead > 0) {
-                println("read $bytesRead bytes from line (sample = ${buffer.copyOf(bytesRead).average()})")
+            if (bytesRead > 0)
                 channel.send(buffer.copyOf(bytesRead))
-            }
         }
     }
 

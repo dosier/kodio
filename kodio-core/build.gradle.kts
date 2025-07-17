@@ -65,6 +65,12 @@ kotlin {
                 implementation(libs.androidx.core.ktx)
             }
         }
+        @Suppress("unused")
+        val webMain by getting {
+            dependencies {
+                implementation(libs.kotlin.browser)
+            }
+        }
         jsMain {
             dependencies {
                 implementation(libs.kotlin.browser.js)
@@ -74,6 +80,12 @@ kotlin {
             dependencies {
 //                implementation(libs.kotlin.browser.wasmjs)
                 implementation(libs.kotlinx.browser)
+            }
+        }
+        jvmMain {
+            dependencies {
+                implementation(libs.jna)
+                implementation(libs.jna.platform)
             }
         }
     }
@@ -88,6 +100,31 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+    }
+}
+
+val nativeLibsDir = "space/kodio/core/natives"
+val nativePermissionsProject = project(":kodio-native:audio-permissions")
+tasks.named<Copy>("jvmProcessResources") {
+    // Make sure the native libraries are built before this task runs
+    dependsOn(
+        nativePermissionsProject.tasks.named("macosX64Binaries"),
+        nativePermissionsProject.tasks.named("macosArm64Binaries"),
+        nativePermissionsProject.tasks.named("mingwX64Binaries"),
+    )
+    fun target(name: String) =
+        nativePermissionsProject.layout.buildDirectory.dir("bin/$name/audiopermissionsReleaseShared")
+    from(target("macosArm64")) {
+        include("libaudiopermissions.dylib")
+        into("$nativeLibsDir/macos-aarch64")
+    }
+    from(target("macosX64")) {
+        include("libaudiopermissions.dylib")
+        into("$nativeLibsDir/macos-x86-64")
+    }
+    from(target("mingwX64")) {
+        include("audiopermissions.dll")
+        into("$nativeLibsDir/windows-x86-64")
     }
 }
 

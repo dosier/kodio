@@ -4,6 +4,8 @@ import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionPortDescription
 import platform.AVFAudio.availableInputs
 import platform.AVFAudio.currentRoute
+import space.kodio.core.security.AudioPermissionDeniedException
+import space.kodio.core.security.AudioPermissionManager
 
 /**
  * IOS implementation for [AudioSystem].
@@ -13,28 +15,32 @@ import platform.AVFAudio.currentRoute
  */
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
-    private val audioSession = AVAudioSession.sharedInstance()
+    private val audioSession get() = AVAudioSession.sharedInstance()
+
+    override val permissionManager: AudioPermissionManager
+        get() = IosAudioPermissionManager
 
     override suspend fun listInputDevices(): List<AudioDevice.Input> {
-        if (!requestMicrophonePermission())
-            return emptyList()
-        return audioSession.availableInputs
-            ?.filterIsInstance<AVAudioSessionPortDescription>()
-            ?.map { port ->
-                AudioDevice.Input(
-                    id = port.UID(),
-                    name = port.portName(),
-                    formatSupport = AudioFormatSupport.Unknown
-                )
+        return try {
+            permissionManager.withMicrophonePermission {
+                audioSession.availableInputs
+                    ?.filterIsInstance<AVAudioSessionPortDescription>()
+                    ?.map { port ->
+                        AudioDevice.Input(
+                            id = port.UID(),
+                            name = port.portName(),
+                            formatSupport = AudioFormatSupport.Unknown
+                        )
+                    }
+                    ?: emptyList()
             }
-            ?: emptyList()
+        } catch (_: AudioPermissionDeniedException) {
+            emptyList()
+        }
     }
 
     override suspend fun listOutputDevices(): List<AudioDevice.Output> {
         return audioSession.currentRoute.outputs
-            .onEach {
-                println(it)
-            }
             .filterIsInstance<AVAudioSessionPortDescription>()
             .map { port ->
                 AudioDevice.Output(
@@ -46,7 +52,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
     }
 
     override suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession =
-        IosAudioRecordingSession(device)
+        permissionManager.withMicrophonePermission { IosAudioRecordingSession(device) }
 
     /**
      * In IOS, there is no control over the output device, so we ignore it.

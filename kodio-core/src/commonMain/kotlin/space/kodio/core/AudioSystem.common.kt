@@ -1,11 +1,17 @@
 package space.kodio.core
 
+import kotlinx.coroutines.CancellationException
+import space.kodio.core.security.AudioPermissionDeniedException
+import space.kodio.core.security.AudioPermissionManager
+
 public expect val SystemAudioSystem: AudioSystem
 
 /**
  * Manages audio devices and sessions.
  */
 public sealed interface AudioSystem {
+
+    val permissionManager: AudioPermissionManager get() = TODO()
 
     /** Lists all available audio input devices. */
     suspend fun listInputDevices(): List<AudioDevice.Input>
@@ -20,6 +26,7 @@ public sealed interface AudioSystem {
      * @param device The input device to record from.
      * @return A RecordingSession object.
      */
+    @Throws(AudioPermissionDeniedException::class, CancellationException::class)
     suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession
 
     /**
@@ -29,8 +36,6 @@ public sealed interface AudioSystem {
      * @return A PlaybackSession object.
      */
     suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession
-
-    suspend fun openPermissionSettings() = Unit
 }
 
 abstract class SystemAudioSystemImpl : AudioSystem

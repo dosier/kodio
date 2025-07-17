@@ -3,7 +3,8 @@ package space.kodio.core
 import kotlinx.browser.window
 import kotlinx.coroutines.await
 import org.w3c.dom.mediacapture.MediaDeviceInfo
-import org.w3c.dom.mediacapture.MediaStreamConstraints
+import space.kodio.core.security.AudioPermissionDeniedException
+import space.kodio.core.security.AudioPermissionManager
 import web.media.devices.MediaDeviceKind
 
 /**
@@ -12,8 +13,8 @@ import web.media.devices.MediaDeviceKind
  */
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
-    // Ensures we only request permission once.
-    private var permissionGranted: Boolean? = null
+    override val permissionManager: AudioPermissionManager
+        get() = JsAudioPermissionManager
 
     override suspend fun listInputDevices(): List<AudioDevice.Input> =
         listDevices(MediaDeviceKind.audioinput)
@@ -30,22 +31,16 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
         JsAudioPlaybackSession(device)
 
     private suspend fun listDevices(type: MediaDeviceKind): List<MediaDeviceInfo> {
-        if (!ensurePermissions()) return emptyList()
-        val devices = window.navigator.mediaDevices.enumerateDevices().await()
-        return devices.filter { it.kind == type }
-    }
-
-    private suspend fun ensurePermissions(): Boolean {
-        if (permissionGranted == true) return true
-        // Calling getUserMedia is how you trigger the permission prompt.
-        try {
-            window.navigator.mediaDevices.getUserMedia(MediaStreamConstraints(audio = true)).await()
-            permissionGranted = true
-            return true
-        } catch (e: Exception) {
-            console.error("Audio permission denied.", e)
-            permissionGranted = false
-            return false
+        return try {
+            permissionManager.withMicrophonePermission {
+                val devices = window.navigator
+                    .mediaDevices
+                    .enumerateDevices()
+                    .await()
+                devices.filter { it.kind == type }
+            }
+        } catch (_: AudioPermissionDeniedException) {
+            emptyList()
         }
     }
 }
