@@ -4,17 +4,12 @@ android-compileSdk = "35"
 android-minSdk = "24"
 android-targetSdk = "35"
 androidx-activity = "1.10.1"
-androidx-appcompat = "1.7.1"
-androidx-constraintlayout = "2.2.1"
 androidx-core = "1.16.0"
-androidx-espresso = "3.6.1"
 androidx-lifecycle = "2.9.1"
-androidx-testExt = "1.2.1"
 composeHotReload = "1.0.0-alpha11"
 composeMultiplatform = "1.8.2"
 junit = "4.13.2"
 kotlin = "2.2.0"
-kotlin-browser-js = "1.0.0-pre.860"
 kotlinBrowser = "2025.7.5"
 kotlinx-coroutines = "1.10.2"
 kotlinx-browser = "0.3"
@@ -26,10 +21,6 @@ kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotl
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
-androidx-testExt-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-testExt" }
-androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "androidx-espresso" }
-androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "androidx-appcompat" }
-androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "androidx-constraintlayout" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-lifecycle-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
@@ -38,9 +29,6 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-browser = { module = "org.jetbrains.kotlinx:kotlinx-browser", version.ref = "kotlinx-browser" }
 kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
-kotlin-browser = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlin-browser-js" }
-kotlin-browser-js = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser-js", version.ref = "kotlin-browser-js" }
-kotlin-browser-wasmjs = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser-wasm-js", version = "2025.6.15" }
 bignum = { module = "com.ionspin.kotlin:bignum", version = "0.3.10" }
 
 [plugins]
@@ -51,4 +39,4 @@ composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMul
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinJsPlainObjects = { id = "org.jetbrains.kotlin.plugin.js-plain-objects", version = "2.2.0" }
-vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version = "0.32.0" }
+vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version = "0.33.0" }

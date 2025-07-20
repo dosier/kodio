@@ -40,6 +40,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
             emptyList()
         }
     }
+
 }
 
 private fun toOutputDevice(info: MediaDeviceInfo): AudioDevice.Output = AudioDevice.Output(

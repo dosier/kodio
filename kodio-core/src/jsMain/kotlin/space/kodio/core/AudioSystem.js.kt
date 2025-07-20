@@ -5,7 +5,9 @@ import kotlinx.coroutines.await
 import org.w3c.dom.mediacapture.MediaDeviceInfo
 import space.kodio.core.security.AudioPermissionDeniedException
 import space.kodio.core.security.AudioPermissionManager
-import web.media.devices.MediaDeviceKind
+import web.mediadevices.MediaDeviceKind
+import web.mediadevices.audioinput
+import web.mediadevices.audiooutput
 
 /**
  * JS implementation of the AudioSystem using the Web Audio API.

@@ -1,32 +1,19 @@
 package space.kodio.core
 
-import js.buffer.ArrayBufferLike
 import js.typedarrays.Float32Array
-import js.typedarrays.Int16Array
-import js.typedarrays.Int8Array
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.launch
-import org.w3c.dom.MessageEvent
-import org.w3c.dom.url.URL
-import org.w3c.files.Blob
-import org.w3c.files.BlobPropertyBag
-import web.audio.AudioContext
-import web.audio.AudioContextOptions
-import web.audio.AudioWorkletNode
-import web.audio.MediaStreamAudioSourceNode
-import web.audio.close
+import web.audio.*
 import web.events.EventHandler
 import web.mediadevices.getUserMedia
 import web.mediastreams.MediaStream
+import web.messaging.MessageEvent
 import web.navigator.navigator
 import web.worklets.addModule
-import kotlin.math.max
-import kotlin.math.min
 
-class JsAudioRecordingSession(
+class WebAudioRecordingSession(
     private val device: AudioDevice.Input,
-    private val format: AudioFormat = DefaultJsRecordingAudioFormat
+    private val format: AudioFormat = DefaultWebRecordingAudioFormat
 ) : BaseAudioRecordingSession() {
 
     private var audioContext: AudioContext? = null
@@ -34,18 +21,18 @@ class JsAudioRecordingSession(
     private var mediaStream: MediaStream? = null
     private var audioWorkletNode: AudioWorkletNode? = null // Replaces ScriptProcessorNode
 
-    private val blobUrl: String
-    init {
-        val blob = Blob(
-            blobParts = arrayOf(AUDIO_PROCESSOR_CODE),
-            options = BlobPropertyBag(type = "application/javascript")
-        )
-        blobUrl = URL.createObjectURL(blob)
-    }
+    private val blobUrl = createCodeBlobUrl(AUDIO_PROCESSOR_CODE)
 
     override suspend fun prepareRecording(): AudioFormat {
-        val mediaConstraints = getMediaConstraints(device, format)
-        val stream = navigator.mediaDevices.getUserMedia(mediaConstraints)
+        val mediaStreamConstraints = createMediaStreamConstraints(
+            audio = createMediaTrackConstraints(
+                deviceId = device.id,
+                sampleRate = format.sampleRate,
+                sampleSize = format.bitDepth.value,
+                channelCount = format.channels.count
+            )
+        )
+        val stream = navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
         mediaStream = stream
 
         val inputTrack = stream.getAudioTracks().first()
@@ -59,7 +46,12 @@ class JsAudioRecordingSession(
             bitDepth = BitDepth.Sixteen, // We still convert to 16-bit PCM in Kotlin
             channels = Channels.Mono   // Worklet guarantees mono output
         )
-        val context = AudioContext(AudioContextOptions(sampleRate = finalFormat.sampleRate.toFloat()))
+        val context = AudioContext(
+            contextOptions = createAudioContextOptions(
+                latencyHint = AudioContextLatencyCategory.interactive,
+                sampleRate = finalFormat.sampleRate
+            )
+        )
         audioContext = context
         context.audioWorklet.addModule(blobUrl)
         return finalFormat
@@ -71,20 +63,23 @@ class JsAudioRecordingSession(
 
         val workletNode = AudioWorkletNode(context, "pcm-recorder-processor")
         workletNode.port.onmessage = EventHandler { event ->
-            val pcmData = (event as MessageEvent).data as Float32Array<*>
-            val byteData = pcmData.to16BitPcmByteArray()
-            channel.trySend(byteData)
+            try {
+                val pcmData = (event as MessageEvent).data as Float32Array<*>
+                val byteData = pcmData.to16BitPcmByteArray()
+                channel.trySend(byteData)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
         }
         this.audioWorkletNode = workletNode
 
         mediaStreamSource = context.createMediaStreamSource(stream)
         mediaStreamSource?.connect(workletNode)
         workletNode.connect(context.destination)
-
-        awaitCancellation()
     }
 
     override fun cleanup() {
+        println("CLOSING")
         mediaStreamSource?.disconnect()
         audioWorkletNode?.disconnect()
         audioWorkletNode?.port?.close() // Close the message port

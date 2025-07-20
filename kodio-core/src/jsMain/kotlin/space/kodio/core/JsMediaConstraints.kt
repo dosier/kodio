@@ -1,7 +1,7 @@
 package space.kodio.core
 
-import web.media.streams.MediaStreamConstraints
-import web.media.streams.MediaTrackConstraints
+import web.mediastreams.MediaStreamConstraints
+import web.mediastreams.MediaTrackConstraints
 
 internal fun getMediaConstraints(device: AudioDevice, format: AudioFormat): MediaStreamConstraints = MediaStreamConstraints(
     audio = MediaTrackConstraints(

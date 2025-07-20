@@ -45,7 +45,12 @@ class WasmJsAudioRecordingSession(
             channels = Channels.Mono
         )
 
-        val context = AudioContext(AudioContextOptions(sampleRate = finalFormat.sampleRate.toJsNumber()))
+        val context = AudioContext(
+            contextOptions = AudioContextOptions(
+                latencyHint = AudioContextLatencyCategoryInteractive,
+                sampleRate = finalFormat.sampleRate.toJsNumber()
+            )
+        )
         audioContext = context
         context.audioWorklet.addModule(blobUrl).await<Unit>()
 

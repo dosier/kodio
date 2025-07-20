@@ -68,12 +68,11 @@ kotlin {
         @Suppress("unused")
         val webMain by getting {
             dependencies {
-                implementation(libs.kotlin.browser)
+                implementation(libs.kotlin.browser.v202575)
             }
         }
         jsMain {
             dependencies {
-                implementation(libs.kotlin.browser.js)
             }
         }
         wasmJsMain {
