@@ -71,15 +71,6 @@ kotlin {
                 implementation(libs.kotlin.browser.v202575)
             }
         }
-        jsMain {
-            dependencies {
-            }
-        }
-        wasmJsMain {
-            dependencies {
-                implementation(libs.kotlinx.browser)
-            }
-        }
     }
 }
 

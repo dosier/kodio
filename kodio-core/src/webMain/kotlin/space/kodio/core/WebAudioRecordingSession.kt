@@ -35,8 +35,7 @@ class WebAudioRecordingSession(
         val stream = navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
         mediaStream = stream
 
-        val inputTrack = stream.getAudioTracks().first()
-            ?: error("Could not find audio track in stream")
+        val inputTrack = stream.getAudioTracks().toList().first()
         val settings = inputTrack.getSettings()
         val actualSampleRate = settings.sampleRate ?: format.sampleRate
 
@@ -65,7 +64,7 @@ class WebAudioRecordingSession(
         workletNode.port.onmessage = EventHandler { event ->
             try {
                 val pcmData = (event as MessageEvent).data as Float32Array<*>
-                val byteData = pcmData.to16BitPcmByteArray()
+                val byteData = pcmData.encodeAs16BitPcmByteArray()
                 channel.trySend(byteData)
             } catch (e: Throwable) {
                 e.printStackTrace()
@@ -83,7 +82,7 @@ class WebAudioRecordingSession(
         mediaStreamSource?.disconnect()
         audioWorkletNode?.disconnect()
         audioWorkletNode?.port?.close() // Close the message port
-        mediaStream?.getTracks()?.forEach { it.stop() }
+        mediaStream?.getTracks()?.toList()?.forEach { it.stop() }
         scope.launch { audioContext?.close() }
         audioContext = null
         mediaStream = null

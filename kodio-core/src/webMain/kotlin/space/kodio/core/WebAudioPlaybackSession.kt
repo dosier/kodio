@@ -27,14 +27,11 @@ class WebAudioPlaybackSession(
     }
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {
-        println("1. playBlocking")
-        val format = audioFlow.format
-        println("2. playBlocking $format")
+        @Suppress("MISSING_DEPENDENCY_SUPERCLASS_IN_TYPE_ARGUMENT")
+        val audioFormat = audioFlow.format
         val context = audioContext ?: return
-        println("3. playBlocking $context")
         var nextStartTime = context.currentTime
-        println("4. playBlocking $nextStartTime")
-        val lastCompletable = audioFlow.transformToPcm32().map { pcm32Data ->
+        val lastCompletable = audioFlow.map { audioData ->
             val jsAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
 
             // Ensure context is not closed and we are still playing
@@ -45,30 +42,24 @@ class WebAudioPlaybackSession(
             }
 
             // 2. Create AudioBuffer
-            val buffer = context.createBuffer(
-                numberOfChannels = format.channels.count,
-                length = pcm32Data.length,
-                sampleRate = format.sampleRate.toFloat()
+            val audioBuffer = context.createBufferFrom(
+                format = audioFormat,
+                data = audioData,
             )
-
-            buffer.copyToChannel(pcm32Data, 0) // Assuming mono audio for simplicity
-
             // 3. Create a source and play it
             val source = context.createBufferSource()
-            source.buffer = buffer
+            source.buffer = audioBuffer
             source.onended = EventHandler {
-                println("onended")
                 jsAudioBufferFinishedIndicator.complete(Unit)
             }
             source.connect(context.destination)
 
             // Schedule playback. Wait if the context time hasn't caught up yet.
             val scheduleTime = if (nextStartTime < context.currentTime) context.currentTime else nextStartTime
-            println("playing buffer(${scheduleTime}) at ${context.destination}")
             source.start(scheduleTime)
 
             // Update the start time for the next buffer
-            nextStartTime = scheduleTime + buffer.duration
+            nextStartTime = scheduleTime + audioBuffer.duration
 
             jsAudioBufferFinishedIndicator
         }.lastOrNull()
