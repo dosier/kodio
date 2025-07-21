@@ -9,7 +9,7 @@ import android.media.AudioFormat as AndroidAudioFormat
 
 internal class AndroidAudioPlaybackSession(
     private val context: Context,
-    private val device: AudioDevice.Output
+    private val requestedDevice: AudioDevice.Output?
 ) : BaseAudioPlaybackSession() {
 
     private var audioTrack: AudioTrack? = null
@@ -41,11 +41,8 @@ internal class AndroidAudioPlaybackSession(
             .setBufferSizeInBytes(playbackBufferSize)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        val selectedDevice = devices.firstOrNull { it.id.toString() == device.id }
-        if (selectedDevice != null)
-            audioTrack.preferredDevice = selectedDevice
+        if (requestedDevice != null)
+            setPreferredDevice(context, requestedDevice, audioTrack)
         audioTrack.playbackRate = format.sampleRate
         audioTrack.setVolume(AudioTrack.getMaxVolume())
         this.audioTrack = audioTrack
@@ -73,4 +70,12 @@ internal class AndroidAudioPlaybackSession(
         audioTrack?.release()
         audioTrack = null
     }
+}
+
+private fun setPreferredDevice(context: Context, requestedDevice: AudioDevice.Output, audioTrack: AudioTrack) {
+    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+    val selectedDevice = devices.firstOrNull { it.id.toString() == requestedDevice.id }
+    if (selectedDevice != null)
+        audioTrack.preferredDevice = selectedDevice
 }

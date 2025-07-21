@@ -50,7 +50,7 @@ actual fun createAudioContextOptions(latencyHint: AudioContextLatencyCategory, s
 actual fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStreamConstraints =
     MediaStreamConstraints(audio = audio)
 
-actual fun createMediaTrackConstraints(deviceId: String, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints =
+actual fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints =
     MediaTrackConstraints(deviceId = deviceId, sampleRate = sampleRate, sampleSize = sampleSize, channelCount = channelCount)
 
 actual val microphonePermissionDescriptor: PermissionDescriptor =

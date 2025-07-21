@@ -56,8 +56,8 @@ actual fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStre
     js("return { audio };")
 }
 
-actual fun createMediaTrackConstraints(deviceId: String, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints =
-    newMediaTrackConstraints(deviceId.toJsString(), sampleRate.toJsNumber(), sampleSize.toJsNumber(), channelCount.toJsNumber())
+actual fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints =
+    newMediaTrackConstraints(deviceId?.toJsString(), sampleRate.toJsNumber(), sampleSize.toJsNumber(), channelCount.toJsNumber())
 @Suppress("unused")
 private fun newMediaTrackConstraints(deviceId: JsAny?, sampleRate: JsAny?, sampleSize: JsAny?, channelCount: JsAny?): MediaTrackConstraints {
     js("return { deviceId, sampleRate, sampleSize, channelCount };")

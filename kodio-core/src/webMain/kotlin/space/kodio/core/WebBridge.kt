@@ -23,4 +23,4 @@ expect fun<B : ArrayBufferLike> Float32Array<B>.encodeAs16BitPcmByteArray(): Byt
 
 expect fun createAudioContextOptions(latencyHint: AudioContextLatencyCategory, sampleRate: Int): AudioContextOptions
 expect fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStreamConstraints
-expect fun createMediaTrackConstraints(deviceId: String, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints
+expect fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints

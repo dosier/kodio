@@ -22,11 +22,11 @@ open class WebAudioSystem : SystemAudioSystemImpl() {
         listDevices(MediaDeviceKind.audiooutput)
             .map(::toOutputDevice)
 
-    override suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession =
-        WebAudioRecordingSession(device)
+    override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession =
+        WebAudioRecordingSession(requestedDevice)
 
-    override suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession =
-        WebAudioPlaybackSession(device)
+    override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession =
+        WebAudioPlaybackSession()
 
     private suspend fun listDevices(type: MediaDeviceKind): List<MediaDeviceInfo> {
         return try {

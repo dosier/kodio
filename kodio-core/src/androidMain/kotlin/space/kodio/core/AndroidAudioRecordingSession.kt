@@ -12,7 +12,7 @@ import kotlin.coroutines.coroutineContext
 @SuppressLint("MissingPermission")
 class AndroidAudioRecordingSession(
     private val context: Context,
-    private val device: AudioDevice.Input,
+    private val requestedDevice: AudioDevice.Input?,
     private val format: AudioFormat = DefaultAndroidRecordingAudioFormat
 ) : BaseAudioRecordingSession() {
 
@@ -29,11 +29,8 @@ class AndroidAudioRecordingSession(
             .setAudioFormat(format.toAndroidAudioFormat())
             .setBufferSizeInBytes(bufferSize)
             .build()
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-        val selectedDevice = devices.firstOrNull { it.id.toString() == device.id }
-        if (selectedDevice != null)
-            record.preferredDevice = selectedDevice
+        if (requestedDevice != null)
+            setPreferredDevice(context, requestedDevice, record)
         this.audioRecord = record
         record.startRecording()
         return format
@@ -60,4 +57,12 @@ class AndroidAudioRecordingSession(
         }
         audioRecord = null
     }
+}
+
+private fun setPreferredDevice(context: Context, requestedDevice: AudioDevice.Input, record: AudioRecord) {
+    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+    val selectedDevice = devices.firstOrNull { it.id.toString() == requestedDevice.id }
+    if (selectedDevice != null)
+        record.preferredDevice = selectedDevice
 }

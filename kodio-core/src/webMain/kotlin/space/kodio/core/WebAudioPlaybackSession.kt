@@ -10,9 +10,10 @@ import web.audio.*
 import web.events.EventHandler
 import kotlin.coroutines.coroutineContext
 
-class WebAudioPlaybackSession(
-    private val device: AudioDevice.Output
-) : BaseAudioPlaybackSession() {
+/**
+ * TODO: support output device selection when setSinkId becomes widely adapted (https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/setSinkId)
+ */
+class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
 
     private var audioContext: AudioContext? = null
 

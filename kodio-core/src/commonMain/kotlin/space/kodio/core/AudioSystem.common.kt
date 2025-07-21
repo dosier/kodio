@@ -21,21 +21,20 @@ public sealed interface AudioSystem {
 
     /**
      * Creates a recording session with the specified input device.
-     * The session does not start recording until start() is called.
+     * The session does not start recording until [AudioRecordingSession.start] is called.
      *
-     * @param device The input device to record from.
+     * @param requestedDevice The requested device to record from (not all platforms support this).
      * @return A RecordingSession object.
      */
     @Throws(AudioPermissionDeniedException::class, CancellationException::class)
-    suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession
+    suspend fun createRecordingSession(requestedDevice: AudioDevice.Input? = null): AudioRecordingSession
 
     /**
      * Creates a playback session with the specified output device.
      *
-     * @param device The output device to play to.
-     * @return A PlaybackSession object.
+     * @param requestedDevice The requested output device to play to (not all platforms support this).
      */
-    suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession
+    suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output? = null): AudioPlaybackSession
 }
 
 abstract class SystemAudioSystemImpl : AudioSystem

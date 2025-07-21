@@ -29,11 +29,11 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
     override suspend fun listOutputDevices(): List<AudioDevice.Output> =
         requireContext().audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.toOutputDevice() }
 
-    override suspend fun createRecordingSession(device: AudioDevice.Input): AudioRecordingSession =
-        permissionManager.withMicrophonePermission { AndroidAudioRecordingSession(requireContext(), device) }
+    override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession =
+        permissionManager.withMicrophonePermission { AndroidAudioRecordingSession(requireContext(), requestedDevice) }
 
-    override suspend fun createPlaybackSession(device: AudioDevice.Output): AudioPlaybackSession =
-        AndroidAudioPlaybackSession(requireContext(), device)
+    override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession =
+        AndroidAudioPlaybackSession(requireContext(), requestedDevice)
 
     private fun requireContext(): Context =
         requireNotNull(if (this::context.isInitialized) context.get() else null) {

@@ -12,7 +12,7 @@ import web.navigator.navigator
 import web.worklets.addModule
 
 class WebAudioRecordingSession(
-    private val device: AudioDevice.Input,
+    private val device: AudioDevice.Input?,
     private val format: AudioFormat = DefaultWebRecordingAudioFormat
 ) : BaseAudioRecordingSession() {
 
@@ -26,7 +26,7 @@ class WebAudioRecordingSession(
     override suspend fun prepareRecording(): AudioFormat {
         val mediaStreamConstraints = createMediaStreamConstraints(
             audio = createMediaTrackConstraints(
-                deviceId = device.id,
+                deviceId = device?.id,
                 sampleRate = format.sampleRate,
                 sampleSize = format.bitDepth.value,
                 channelCount = format.channels.count
@@ -71,14 +71,12 @@ class WebAudioRecordingSession(
             }
         }
         this.audioWorkletNode = workletNode
-
         mediaStreamSource = context.createMediaStreamSource(stream)
         mediaStreamSource?.connect(workletNode)
         workletNode.connect(context.destination)
     }
 
     override fun cleanup() {
-        println("CLOSING")
         mediaStreamSource?.disconnect()
         audioWorkletNode?.disconnect()
         audioWorkletNode?.port?.close() // Close the message port

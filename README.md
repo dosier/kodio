@@ -12,14 +12,12 @@ Here’s a simple loopback example that records audio for 5 seconds and then pla
 ```Kotlin
 suspend fun main() {
    // Record some audio for 5 seconds
-   val inputDevice = SystemAudioSystem.listInputDevices().first()
-   val recording = SystemAudioSystem.createRecordingSession(inputDevice)
+   val recording = SystemAudioSystem.createRecordingSession()
    recording.start()
    delay(5000)
    recording.stop()
    // Playback the recorded audio
-   val outputDevice = SystemAudioSystem.listOutputDevices().first()
-   val playback = SystemAudioSystem.createPlaybackSession(outputDevice)
+   val playback = SystemAudioSystem.createPlaybackSession()
    playback.play(recording.audioflow.value)
 }
 ```
@@ -28,7 +26,7 @@ suspend fun main() {
 ### Gradle
 ```Kotlin
 dependencies {
-    implementation("space.kodio:core:0.0.3")
+    implementation("space.kodio:core:0.0.4")
 }
 ```
 
