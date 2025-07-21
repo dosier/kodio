@@ -9,10 +9,10 @@ import platform.AVFAudio.AVAudioSession
 /**
  * IOS implementation for [AudioRecordingSession].
  *
- * @param device The input device to record from.
+ * @param requestedDevice The requested input device to record from.
  */
 class IosAudioRecordingSession(
-    private val device: AudioDevice.Input,
+    private val requestedDevice: AudioDevice.Input?,
     private val format: AudioFormat = DefaultIosRecordingAudioFormat
 ) : BaseAudioRecordingSession() {
 
@@ -25,7 +25,8 @@ class IosAudioRecordingSession(
         val audioSession = AVAudioSession.Companion.sharedInstance()
         audioSession.configureCategoryRecord()
         audioSession.activate()
-        audioSession.setPreferredInput(device)
+        if (requestedDevice != null)
+            audioSession.setPreferredInput(requestedDevice)
         val hardwareIosAudioFormat = audioEngine.inputNode.outputFormatForBus(0u)
         converter = AVAudioConverter(hardwareIosAudioFormat, targetIosAudioFormat)
         audioEngine.prepare()
