@@ -60,10 +60,10 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
     }
 
     override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession =
-        JvmAudioRecordingSession(requestedDevice)
+        JvmAudioRecordingSession(requestedDevice?:listInputDevices().first())
 
     override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession =
-        JvmAudioPlaybackSession(requestedDevice)
+        JvmAudioPlaybackSession(requestedDevice?:listOutputDevices().first())
 }
 
 private fun toAudioFormatSupport(supportedFormats: List<AudioFormat>): AudioFormatSupport = when {
