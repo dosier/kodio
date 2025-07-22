@@ -26,7 +26,7 @@ suspend fun main() {
 ### Gradle
 ```Kotlin
 dependencies {
-    implementation("space.kodio:core:0.0.5")
+    implementation("space.kodio:core:0.0.6")
 }
 ```
 
