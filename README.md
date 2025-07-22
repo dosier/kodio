@@ -53,7 +53,7 @@ dependencies {
            deviceId: Int
        ) {
            //...
-           AndroidAudioSystem.onRequestPermissionsResult(requestCode, grantResults)
+           AndroidAudioPermissionManager.onRequestPermissionsResult(requestCode, grantResults)
        }
    ```
 
