@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalKotlinGradlePluginApi::class)
+
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
@@ -22,7 +24,19 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
-    
+    applyDefaultHierarchyTemplate {
+        common {
+            group("nonWeb") {
+                withAndroidTarget()
+                withApple()
+                withJvm()
+            }
+            group("web") {
+                withJs()
+                withWasmJs()
+            }
+        }
+    }
     listOf(
         iosX64(),
         iosArm64(),
@@ -89,6 +103,8 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation("io.github.vinceglb:filekit-core:0.10.0-beta04")
+            implementation("io.github.vinceglb:filekit-dialogs-compose:0.10.0-beta04")
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

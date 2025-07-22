@@ -5,13 +5,24 @@ import space.kodio.core.AudioPlaybackSession
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.deprecated.openFileSaver
+import io.github.vinceglb.filekit.dialogs.openFilePicker
+import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.launch
+import kotlinx.io.files.SystemFileSystem
+import kotlinx.io.files.SystemTemporaryDirectory
+import space.kodio.core.io.files.writeToFile
+import kotlin.time.Clock
 
 @Composable
 fun PlaybackSessionUi(
@@ -69,5 +80,20 @@ fun PlaybackSessionUi(
                 }
             }
         }
+        Row {
+            Column {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            saveWavFile(audioDataFlow)
+                        }
+                    }
+                ) {
+                    Text("Save as WAV file")
+                }
+            }
+        }
     }
 }
+
+expect suspend fun saveWavFile(audioDataFlow: AudioFlow)
