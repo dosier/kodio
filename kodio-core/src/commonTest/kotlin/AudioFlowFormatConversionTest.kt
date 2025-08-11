@@ -164,17 +164,6 @@ class AudioFlowFormatConversionTest {
     }
 
     @Test
-    fun `Unsupported sample rate conversion throws exception`() {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono)
-        val outFormat = AudioFormat(22050, BitDepth.Sixteen, Channels.Mono)
-        val inFlow = AudioFlow(inFormat, flowOf(byteArrayOf()))
-
-        assertFailsWith<UnsupportedOperationException> {
-            inFlow.convertAudio(outFormat)
-        }
-    }
-
-    @Test
     fun `Unsupported encoding throws exception`() {
         val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Unknown, Endianness.Little)
         val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
@@ -232,6 +221,60 @@ class AudioFlowFormatConversionTest {
         assertEquals(outFormat, outFlow.format)
 
         val expectedData = create16BitData(listOf(0, 16384, -16384))
+        assertContentEquals(expectedData, result)
+    }
+
+    @Test
+    fun `Convert 22050Hz Mono to 44100Hz Mono (Upsample)`() = runTest {
+        val inFormat = AudioFormat(22050, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+
+        val inData = create16BitData(listOf(10000, 20000))
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+        val result = outFlow.toList().first()
+
+        assertEquals(outFormat, outFlow.format)
+
+        // Expected: s1, (s1+s2)/2, s2, s2 (last sample is duplicated)
+        val expectedData = create16BitData(listOf(10000, 15000, 20000, 20000))
+        assertContentEquals(expectedData, result)
+    }
+
+    @Test
+    fun `Convert 44100Hz Mono to 22050Hz Mono (Downsample)`() = runTest {
+        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+        val outFormat = AudioFormat(22050, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+
+        val inData = create16BitData(listOf(1000, 2000, 3000, 4000))
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+        val result = outFlow.toList().first()
+
+        assertEquals(outFormat, outFlow.format)
+
+        // Expected: s1, s3 (takes every 2nd sample)
+        val expectedData = create16BitData(listOf(1000, 3000))
+        assertContentEquals(expectedData, result)
+    }
+
+    @Test
+    fun `Convert 44100Hz 16bit Stereo to 22050Hz 8bit Mono (Combined)`() = runTest {
+        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
+        val outFormat = AudioFormat(22050, BitDepth.Eight, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+
+        val inData = create16BitData(listOf(16384, 8192, -16384, -8192)) // L/R, L/R
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+        val result = outFlow.toList().first()
+
+        assertEquals(outFormat, outFlow.format)
+
+        // Decode: [0.5, 0.25, -0.5, -0.25]
+        // Resample: Decimate L to [0.5], R to [0.25]. Re-interleave to [0.5, 0.25]
+        // Convert Channels: Average to [(0.5+0.25)/2] = [0.375]
+        // Encode: 0.375 * 128 = 48
+        val expectedData = create8BitData(listOf(48))
         assertContentEquals(expectedData, result)
     }
 }

@@ -1,16 +1,18 @@
 package space.kodio.core.io
 
 import com.ionspin.kotlin.bignum.decimal.BigDecimal
+import com.ionspin.kotlin.bignum.decimal.DecimalMode
 import com.ionspin.kotlin.bignum.decimal.RoundingMode
 import com.ionspin.kotlin.bignum.integer.BigInteger
+import kotlinx.coroutines.flow.transform
+import kotlinx.io.Buffer
+import kotlinx.io.readByteArray
 import space.kodio.core.AudioFlow
 import space.kodio.core.AudioFormat
 import space.kodio.core.BitDepth
 import space.kodio.core.Channels
 import space.kodio.core.Encoding
-import kotlinx.coroutines.flow.transform
-import kotlinx.io.Buffer
-import kotlinx.io.readByteArray
+import kotlin.math.floor
 
 
 fun AudioFlow.convertAudio(
@@ -19,8 +21,6 @@ fun AudioFlow.convertAudio(
     val sourceFormat = this.format
     if (sourceFormat == targetFormat)
         return this
-    if (sourceFormat.sampleRate != targetFormat.sampleRate)
-        throw UnsupportedOperationException("Sample rate conversion is not supported.")
     if (sourceFormat.encoding is Encoding.Unknown || targetFormat.encoding is Encoding.Unknown)
         throw IllegalArgumentException("Unknown encoding is not supported for conversion.")
 
@@ -67,6 +67,60 @@ fun AudioFlow.convertAudio(
         return samples
     }
 
+    fun resample(
+        samples: Array<BigDecimal>,
+        sourceRate: Int,
+        targetRate: Int,
+        channels: Int
+    ): Array<BigDecimal> {
+        if (sourceRate == targetRate || channels == 0) return samples
+
+        // De-interleave samples into separate channels
+        val deinterleaved = Array(channels) { c ->
+            val channelSize = samples.size / channels
+            Array(channelSize) { i -> samples[i * channels + c] }
+        }
+
+        val ratio = targetRate.toDouble() / sourceRate.toDouble()
+
+        // Resample each channel independently
+        val resampledDeinterleaved = Array(channels) { c ->
+            val sourceChannel = deinterleaved[c]
+            if (sourceChannel.isEmpty()) return@Array emptyArray<BigDecimal>()
+
+            val numOutputSamples = floor(sourceChannel.size * ratio).toInt()
+            val resampledChannel = Array(numOutputSamples) { BigDecimal.ZERO }
+            val step = 1.0 / ratio
+
+            for (i in 0 until numOutputSamples) {
+                val sourcePos = i * step
+                val index = floor(sourcePos).toInt()
+                // Use a high-precision DecimalMode for interpolation
+                val fraction = BigDecimal.fromDouble(sourcePos - index, DecimalMode(10, RoundingMode.ROUND_HALF_AWAY_FROM_ZERO))
+
+                // Get samples for interpolation, handling edge cases at the end of the chunk
+                val s1 = sourceChannel.getOrNull(index) ?: sourceChannel.last()
+                val s2 = sourceChannel.getOrNull(index + 1) ?: s1 // If next sample is out of bounds, use current one
+
+                // Linear interpolation: s1 * (1 - fraction) + s2 * fraction
+                resampledChannel[i] = s1.multiply(BigDecimal.ONE.subtract(fraction)).add(s2.multiply(fraction))
+            }
+            resampledChannel
+        }
+
+        // Re-interleave the resampled channels
+        val totalOutputSamples = resampledDeinterleaved.sumOf { it.size }
+        val outputSamples = Array(totalOutputSamples) { BigDecimal.ZERO }
+
+        for (c in 0 until channels) {
+            val channelData = resampledDeinterleaved[c]
+            for (i in channelData.indices) {
+                outputSamples[i * channels + c] = channelData[i]
+            }
+        }
+        return outputSamples
+    }
+
     fun convertChannels(samples: Array<BigDecimal>, from: Channels, to: Channels): Array<BigDecimal> {
         if (from == to) return samples
         return when {
@@ -80,7 +134,7 @@ fun AudioFlow.convertAudio(
                     (left + right) / BigDecimal.fromInt(2)
                 }
             }
-            else -> samples
+            else -> samples // Should not happen with current Channel types
         }
     }
 
@@ -131,9 +185,27 @@ fun AudioFlow.convertAudio(
         }
         return buffer.readByteArray()
     }
+
     return AudioFlow(targetFormat, transform { chunk ->
+        // 1. Decode bytes to normalized samples
         val bigDecimalSamples = decode(chunk, sourceFormat)
-        val convertedChannelSamples = convertChannels(bigDecimalSamples, sourceFormat.channels, targetFormat.channels)
+
+        // 2. Resample if necessary
+        val sourceChannelCount = when (sourceFormat.channels) {
+            is Channels.Mono -> 1
+            is Channels.Stereo -> 2
+        }
+        val resampledSamples = resample(
+            bigDecimalSamples,
+            sourceFormat.sampleRate,
+            targetFormat.sampleRate,
+            sourceChannelCount
+        )
+
+        // 3. Convert channels if necessary
+        val convertedChannelSamples = convertChannels(resampledSamples, sourceFormat.channels, targetFormat.channels)
+
+        // 4. Encode normalized samples to bytes
         val outputChunk = encode(convertedChannelSamples, targetFormat)
         emit(outputChunk)
     })
