@@ -4,10 +4,6 @@ import kotlinx.io.Buffer
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
-import kotlinx.io.writeIntLe
-import kotlinx.io.writeShortLe
-import kotlinx.io.writeString
-import space.kodio.core.Encoding
 import space.kodio.core.io.AudioSource
 import space.kodio.core.io.files.wav.writeWav
 
@@ -36,7 +32,7 @@ class AudioFileWriter(
             }
         } catch (e: Exception) {
             // Wrap any file system exception in our custom error type
-            throw Exception(AudioFileWriteError.IOError(e).toString())
+            throw AudioFileWriteError.IO(e)
         }
     }
 }

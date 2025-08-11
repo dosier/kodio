@@ -1,6 +1,5 @@
 package space.kodio.core.io.files.wav
 
-import kotlinx.io.Buffer
 import kotlinx.io.Sink
 import kotlinx.io.writeIntLe
 import kotlinx.io.writeShortLe
@@ -18,17 +17,10 @@ internal fun writeWav(from: AudioSource, to: Sink) {
 
     // --- WAV Header Calculations ---
 
-    // 1 for PCM. The official spec also defines 3 for IEEE Float.
-    // We will only support PCM as defined in the user's Encoding class.
+    // 1 for PCM. TODO: The official spec also defines 3 for IEEE Float.
     val audioFormatCode = when (format.encoding) {
         is Encoding.Pcm -> 1
-        // If the encoding was extended, you could add other cases here:
-        // is Encoding.IeeeFloat -> 3
-        else -> throw Exception(
-            AudioFileWriteError.UnsupportedFormatError(
-                "Unsupported encoding for WAV file: ${format.encoding}"
-            ).toString()
-        )
+        else -> throw AudioFileWriteError.UnsupportedFormat("Unsupported encoding for WAV file: ${format.encoding}")
     }
 
     // The size of one "frame" of audio (all channels for one sample point)

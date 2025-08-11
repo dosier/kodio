@@ -113,7 +113,6 @@ class AudioFileWriterTest {
 
         // Expected values
         val expectedSubChunk2Size = 2
-        val expectedChunkSize = 36 + expectedSubChunk2Size
         val expectedNumChannels = 1
         val expectedBitsPerSample = 8
         val expectedSampleRate = 22050
@@ -161,14 +160,8 @@ class AudioFileWriterTest {
         val writer = AudioFileWriter(AudioFileFormat.Wav, testPath, SystemFileSystem)
 
         // --- 2. Act & 3. Assert ---
-        val exception = assertFailsWith<Exception> {
+        assertFailsWith<AudioFileWriteError.UnsupportedFormat> {
             writer.write(audioDataBuffer)
         }
-
-        // Check that the exception message contains the expected error information
-        val expectedErrorMessage = AudioFileWriteError.UnsupportedFormatError(
-            "Unsupported encoding for WAV file: ${format.encoding}"
-        ).toString()
-        assertEquals(expectedErrorMessage, exception.message)
     }
 }
