@@ -1,17 +1,25 @@
+package space.kodio.core.io.files
+
 import kotlinx.coroutines.test.runTest
-import kotlinx.io.*
+import kotlinx.io.Buffer
+import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
+import kotlinx.io.readIntLe
+import kotlinx.io.readShortLe
+import kotlinx.io.readString
 import space.kodio.core.AudioFormat
 import space.kodio.core.BitDepth
 import space.kodio.core.Channels
 import space.kodio.core.Encoding
 import space.kodio.core.io.AudioSource
-import space.kodio.core.io.files.AudioFileFormat
-import space.kodio.core.io.files.AudioFileWriteError
-import space.kodio.core.io.files.AudioFileWriter
-import kotlin.test.*
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /**
  * Contains tests for the AudioFileWriter class.
@@ -49,7 +57,7 @@ class AudioFileWriterTest {
         val writer = AudioFileWriter(AudioFileFormat.Wav, testPath, SystemFileSystem)
 
         // --- 2. Act ---
-        writer.write(AudioSource.of(format, 0x12, 0x34, 0x56, 0x78))
+        writer.write(AudioSource.Companion.of(format, 0x12, 0x34, 0x56, 0x78))
 
         // --- 3. Assert ---
         // Read the written file back and verify its contents
@@ -106,7 +114,7 @@ class AudioFileWriterTest {
         val writer = AudioFileWriter(AudioFileFormat.Wav, testPath, SystemFileSystem)
 
         // --- 2. Act ---
-        writer.write( AudioSource.of(format, 0xAB.toByte(), 0xCD.toByte()))
+        writer.write( AudioSource.Companion.of(format, 0xAB.toByte(), 0xCD.toByte()))
 
         // --- 3. Assert ---
         val writtenBuffer = SystemFileSystem.source(testPath).buffered()
@@ -156,7 +164,7 @@ class AudioFileWriterTest {
             channels = Channels.Mono,
             encoding = Encoding.Unknown // This is the unsupported part
         )
-        val audioDataBuffer = AudioSource.of(format, Buffer())
+        val audioDataBuffer = AudioSource.Companion.of(format, Buffer())
         val writer = AudioFileWriter(AudioFileFormat.Wav, testPath, SystemFileSystem)
 
         // --- 2. Act & 3. Assert ---
