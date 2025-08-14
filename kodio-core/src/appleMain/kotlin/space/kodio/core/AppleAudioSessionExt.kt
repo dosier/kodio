@@ -13,36 +13,36 @@ import platform.AVFAudio.setActive
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal fun AVAudioSession.configureCategoryRecord() {
-    runIosCatching { errorPtr ->
+    runErrorCatching { errorPtr ->
         setCategory(
             category = AVAudioSessionCategoryRecord,
             withOptions = AVAudioSessionCategoryOptions.MAX_VALUE,
             error = errorPtr
         )
     }.onFailure {
-        throw IosAudioSessionException.FailedToSetCategory(it.message ?: "Unknown error")
+        throw AppleAudioSessionException.FailedToSetCategory(it.message ?: "Unknown error")
     }
 }
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal fun AVAudioSession.configureCategoryPlayback() {
-    runIosCatching { errorPtr ->
+    runErrorCatching { errorPtr ->
         setCategory(
             category = AVAudioSessionCategoryPlayback,
             withOptions = AVAudioSessionCategoryOptions.MAX_VALUE,
             error = errorPtr
         )
     }.onFailure {
-        throw IosAudioSessionException.FailedToSetCategory(it.message ?: "Unknown error")
+        throw AppleAudioSessionException.FailedToSetCategory(it.message ?: "Unknown error")
     }
 }
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal fun AVAudioSession.activate() {
-    runIosCatching { errorPtr ->
+    runErrorCatching { errorPtr ->
         setActive(true, error = errorPtr)
     }.onFailure {
-        throw IosAudioSessionException.FailedToActivate(it.message ?: "Unknown error")
+        throw AppleAudioSessionException.FailedToActivate(it.message ?: "Unknown error")
     }
 }
 
@@ -53,11 +53,11 @@ internal fun AVAudioSession.setPreferredInput(device: AudioDevice.Input) {
         ?.filterIsInstance<AVAudioSessionPortDescription>()
         ?.firstOrNull { it.UID == device.id }
     if (portDescription != null) {
-        runIosCatching { errorVar ->
+        runErrorCatching { errorVar ->
             setPreferredInput(portDescription, error = errorVar)
         }.onFailure {
-            throw IosAudioSessionException.FailedToSetPreferredInput(device, it.message ?: "Unknown error")
+            throw AppleAudioSessionException.FailedToSetPreferredInput(device, it.message ?: "Unknown error")
         }
     } else
-        throw IosAudioSessionException.InputNotFound(device)
+        throw AppleAudioSessionException.InputNotFound(device)
 }

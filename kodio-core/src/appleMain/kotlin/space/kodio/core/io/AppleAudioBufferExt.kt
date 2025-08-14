@@ -1,4 +1,4 @@
-package space.kodio.core
+package space.kodio.core.io
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -21,15 +21,15 @@ import platform.posix.memcpy
 @OptIn(ExperimentalForeignApi::class)
 internal fun ByteArray.toIosAudioBuffer(isoAudioFormat: AVAudioFormat): AVAudioPCMBuffer {
     val streamDescription = isoAudioFormat.streamDescription?.pointed
-        ?: throw IosAudioBufferException.MissingStreamDescription()
+        ?: throw AppleAudioBufferException.MissingStreamDescription()
     if (streamDescription.mBytesPerFrame <= 0u)
-        throw IosAudioBufferException.InvalidStreamDescription(streamDescription)
+        throw AppleAudioBufferException.InvalidStreamDescription(streamDescription)
     val buffer = AVAudioPCMBuffer(
         pCMFormat = isoAudioFormat,
         frameCapacity = size.toUInt() / streamDescription.mBytesPerFrame
     )
     val audioBufferList = buffer.audioBufferList?.pointed
-        ?: throw IosAudioBufferException.MissingAudioBufferList()
+        ?: throw AppleAudioBufferException.MissingAudioBufferList()
     buffer.frameLength = buffer.frameCapacity
     usePinned { pinned ->
         memcpy(audioBufferList.mBuffers.pointed.mData, pinned.addressOf(0), size.toULong())

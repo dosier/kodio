@@ -11,7 +11,7 @@ import kotlinx.cinterop.value
 import platform.Foundation.NSError
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-internal fun <T> runIosCatching(block: (CPointer<ObjCObjectVar<NSError?>>) -> T): Result<T> {
+internal fun <T> runErrorCatching(block: (CPointer<ObjCObjectVar<NSError?>>) -> T): Result<T> {
     memScoped {
         val errorVar = alloc<ObjCObjectVar<NSError?>>()
         val result = block(errorVar.ptr)
