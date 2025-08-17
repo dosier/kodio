@@ -6,13 +6,14 @@ android-targetSdk = "35"
 androidx-activity = "1.10.1"
 androidx-core = "1.16.0"
 androidx-lifecycle = "2.9.1"
-composeHotReload = "1.0.0-alpha11"
+composeHotReload = "1.0.0-beta04"
 composeMultiplatform = "1.8.2"
 junit = "4.13.2"
 kotlin = "2.2.0"
 kotlinBrowser = "2025.7.5"
 kotlinx-coroutines = "1.10.2"
 kotlinx-io = "0.8.0"
+material-icons = "1.7.3"
 
 [libraries]
 kotlin-browser-v202575 = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlinBrowser" }
@@ -28,6 +29,7 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 bignum = { module = "com.ionspin.kotlin:bignum", version = "0.3.10" }
+material-icons = { module = "org.jetbrains.compose.material:material-icons-core", version.ref="material-icons" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

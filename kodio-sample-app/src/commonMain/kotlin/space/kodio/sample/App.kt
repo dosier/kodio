@@ -9,20 +9,56 @@ import space.kodio.core.SystemAudioSystem
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.ui.tooling.preview.Preview
+import space.kodio.compose.material3.RecordAudioButton
+import space.kodio.compose.rememberRecordAudioState
 
 @Composable
 @Preview
 fun App() {
     MaterialTheme {
+
+        if (true) {
+            var recordings by remember { mutableStateOf(listOf<AudioFlow>())}
+            val state = rememberRecordAudioState(
+                preferredInput = null,
+                onFinishRecording = { audioRecording: AudioFlow ->
+                    recordings += audioRecording
+                }
+            )
+            val scope = rememberCoroutineScope()
+            LazyColumn {
+                item {
+                    RecordAudioButton(state)
+                }
+                items(recordings) {
+                    ListItem(
+                        headlineContent = {
+                            var headline by remember { mutableStateOf("") }
+                            scope.launch {
+                                val frames = it.count()
+                                headline = frames.toString()
+                            }
+                            Text(headline)
+                        }
+                    )
+                }
+            }
+            return@MaterialTheme
+        }
+
         var inputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
         var outputDevice by remember { mutableStateOf<AudioDevice.Output?>(null) }
         var audioRecordingSession : AudioRecordingSession? by remember { mutableStateOf(null)}

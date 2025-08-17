@@ -29,7 +29,7 @@ fun RecordingSessionUi(
     Row {
         AnimatedContent(state) {
             when (it) {
-                AudioRecordingSession.State.Recording -> {
+                is AudioRecordingSession.State.Recording -> {
                     TextButton(onClick = { audioRecordingSession.stop() }) {
                         Text("Stop Recording (${audioFrameCount} frames)")
                     }

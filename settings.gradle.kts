@@ -35,7 +35,8 @@ plugins {
 
 
 include(":kodio-core")
-include(":kodio-extensions:ktor")
+include(":kodio-extensions:compose")
+include(":kodio-extensions:compose-material3")
 include(":kodio-native:audio-permissions")
 include(":kodio-native:audio-processing")
 include(":kodio-sample-app")
