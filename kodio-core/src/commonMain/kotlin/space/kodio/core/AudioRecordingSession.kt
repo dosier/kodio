@@ -19,12 +19,14 @@ interface AudioRecordingSession {
     /** Stops the current recording. Sets the state to STOPPED. */
     fun stop()
 
+    fun reset()
+
     /**
      * Represents the state of a recording session.
      */
     sealed class State {
         data object Idle : State()
-        data object Recording : State()
+        class Recording(val flow: AudioFlow) : State()
         data object Stopped : State()
         data class Error(val error: Throwable) : State()
     }

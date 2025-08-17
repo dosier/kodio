@@ -34,7 +34,6 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
         if (state.value is State.Recording) return
 
         try {
-            _state.value = State.Recording
             _audioFlow.value = null // Clear previous flow
 
             val format = prepareRecording()
@@ -45,7 +44,9 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             this.hotFlowSource = hotSource
 
             // 2. The publicly exposed flow is now the hot one.
-            _audioFlow.value = AudioFlow(format, hotSource.asSharedFlow())
+            val flow = AudioFlow(format, hotSource.asSharedFlow())
+            _audioFlow.value = flow
+            _state.value = State.Recording(flow)
 
             // 3. Launch a job to collect audio from the platform-specific implementation.
             recordingJob = scope.launch {
@@ -91,6 +92,14 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             hotFlowSource = null
             recordingAudioFormat = null
         }
+    }
+
+    override fun reset() {
+        cleanupRecording()
+        _audioFlow.value = null
+        _state.value = State.Idle
+        hotFlowSource = null
+        recordingAudioFormat = null
     }
 
     private fun cleanupRecording() {
