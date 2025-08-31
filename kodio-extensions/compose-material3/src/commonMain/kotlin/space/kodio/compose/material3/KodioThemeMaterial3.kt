@@ -20,7 +20,6 @@ import space.kodio.compose.material3.icons.Stop
 
 object KodioThemeMaterial3 : KodioTheme() {
 
-
     override fun icons(): KodioIcons {
         return KodioIcons(
             stopIcon = Icons.Default.Stop,

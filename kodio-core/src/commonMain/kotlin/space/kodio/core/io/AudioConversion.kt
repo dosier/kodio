@@ -132,10 +132,10 @@ fun AudioFlow.convertAudio(
                     val twoPow64 = BigInteger.ONE.shl(64)
                     val maxLong = BigInteger.fromLong(Long.MAX_VALUE)
                     val longVal = if (finalBigInt > maxLong) {
-                        (finalBigInt - twoPow64).longValue()
+                        (finalBigInt - twoPow64)
                     } else {
-                        finalBigInt.longValue()
-                    }
+                        finalBigInt
+                    }.longValue()
                     buffer.writeLong(format.endianness, longVal)
                 }
             }
@@ -153,10 +153,10 @@ fun AudioFlow.convertAudio(
             is Channels.Stereo -> 2
         }
         val resampledSamples = resample(
-            bigDecimalSamples,
-            sourceFormat.sampleRate,
-            targetFormat.sampleRate,
-            sourceChannelCount
+            samples = bigDecimalSamples,
+            sourceRate = sourceFormat.sampleRate,
+            targetRate = targetFormat.sampleRate,
+            channels = sourceChannelCount
         )
 
         // 3. Convert channels if necessary

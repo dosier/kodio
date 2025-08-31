@@ -6,7 +6,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 
 abstract class KodioTheme {
 
-
     abstract fun icons(): KodioIcons
 
     @Composable
