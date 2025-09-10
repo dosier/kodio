@@ -86,19 +86,14 @@ internal fun AudioPlaybackSessionButton(
                     .width(120.dp)
                     .heightIn(min = ButtonDefaults.MinHeight)
                     .widthIn(min = ButtonDefaults.MinWidth)
-                    .padding(
-                        top = 4.dp,
-                        bottom = 4.dp,
-//                        end = if (reverseDirection) 0.dp else 24.dp,
-//                        start = if (reverseDirection) 24.dp else 0.dp,
-                    )
+                    .padding(top = 4.dp, bottom = 4.dp,)
                     .clip(shape = MaterialTheme.shapes.large),
             )
         }
         ActionButton2(
             state = state,
             icons = icons,
-            replay = session::pause
+            replay = session::play
         )
         (state as? AudioPlaybackSession.State.Error)?.error?.also { error ->
             errorDialog?.invoke(error)
