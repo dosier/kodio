@@ -18,6 +18,10 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     override val state: StateFlow<State> = _state.asStateFlow()
 
     private var playbackJob: Job? = null
+
+    private val _audioFlow = MutableStateFlow<AudioFlow?>(null)
+    override val audioFlow: StateFlow<AudioFlow?> = _audioFlow.asStateFlow()
+
     protected val scope = CoroutineScope(Dispatchers.Default) + SupervisorJob()
 
     abstract suspend fun preparePlayback(format: AudioFormat): AudioFormat
@@ -28,11 +32,14 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     protected abstract fun onResume()
     protected abstract fun onStop()
 
-    final override suspend fun play(audioFlow: AudioFlow) {
+    final override suspend fun load(audioFlow: AudioFlow) {
+        _audioFlow.value = audioFlow
+        _state.value = State.Ready
+    }
 
-        if (_state.value == State.Playing) return
-
-        runCatching {
+    final override suspend fun play() {
+        val audioFlow = audioFlow.value ?: return
+        runAndUpdateState(State.Playing) {
             val playbackFormat = preparePlayback(audioFlow.format)
             val playbackAudioFlow = audioFlow.convertAudio(playbackFormat)
             playbackJob = scope.launch {
@@ -43,27 +50,32 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                     _state.value = State.Error(it)
                 }
             }
-        }.onFailure {
-            _state.value = State.Error(it)
-            it.printStackTrace()
-        }.onSuccess {
-            _state.value = State.Playing
         }
     }
 
     final override fun pause() {
-        onPause()
-        _state.value = State.Paused
+        runAndUpdateState(State.Paused, ::onPause)
     }
 
     final override fun resume() {
-        onResume()
-        _state.value = State.Playing
+        runAndUpdateState(State.Playing, ::onResume)
     }
 
     final override fun stop() {
-        onStop()
-        playbackJob?.cancel()
-        _state.value = State.Idle
+        runAndUpdateState(State.Idle) {
+            onStop()
+            playbackJob?.cancel()
+        }
+    }
+
+    protected fun runAndUpdateState(newState: State, block: suspend () -> Unit) {
+        scope.launch {
+            _state.value = runCatching {
+                block()
+                newState
+            }.getOrElse {
+                State.Error(it)
+            }
+        }
     }
 }

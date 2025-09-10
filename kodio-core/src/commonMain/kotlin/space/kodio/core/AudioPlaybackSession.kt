@@ -9,10 +9,16 @@ interface AudioPlaybackSession {
 
     /** A flow that emits the current state of the playback. */
     val state: StateFlow<State>
-    
+
+    /** A flow that emits the current loaded audio data. */
+    val audioFlow: StateFlow<AudioFlow?>
+
+    /** Loads the given audio data. */
+    suspend fun load(audioFlow: AudioFlow)
+
     /** Starts playback of the given audio data. */
-    suspend fun play(audioFlow: AudioFlow)
-    
+    suspend fun play()
+
     /** Pauses the playback. */
     fun pause()
     
@@ -28,6 +34,7 @@ interface AudioPlaybackSession {
      */
     sealed class State {
         data object Idle : State()
+        data object Ready : State()
         data object Playing : State()
         data object Paused : State()
         data object Finished : State()

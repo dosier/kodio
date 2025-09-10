@@ -1,4 +1,4 @@
-package space.kodio.compose.material3
+package space.kodio.compose.material3.component
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.material3.CircularProgressIndicator

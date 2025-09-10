@@ -1,10 +1,13 @@
-
-
-package space.kodio.compose.material3
+package space.kodio.compose.material3.component
 
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -18,24 +21,34 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import space.kodio.compose.*
+import space.kodio.compose.AudioGraph
+import space.kodio.compose.AudioGraphTheme
+import space.kodio.compose.KodioColors
+import space.kodio.compose.KodioIcons
+import space.kodio.compose.PlayAudioButton
+import space.kodio.compose.PlayAudioState
+import space.kodio.compose.material3.KodioComponentMaterial3
+import space.kodio.compose.material3.KodioThemeMaterial3
+import space.kodio.compose.rememberPlayAudioState
 import space.kodio.core.AudioDevice
 import space.kodio.core.AudioFlow
-import space.kodio.core.AudioRecordingSession
+import space.kodio.core.AudioPlaybackSession
 
 @Composable
-fun RecordAudioButton(
-    preferredInput: AudioDevice.Input,
-    state : RecordAudioState = rememberRecordAudioState(preferredInput),
-) {
-    RecordAudioButton(state = state)
-}
+fun PlayAudioButton(preferredOutput: AudioDevice.Output) =
+    PlayAudioButton(state = rememberPlayAudioState(preferredOutput))
 
 @Composable
-fun RecordAudioButton(
-    state : RecordAudioState = rememberRecordAudioState(null),
-) {
-    RecordAudioButton(
+fun PlayAudioButton(preferredOutput: AudioDevice.Output, audioFlow: AudioFlow) =
+    PlayAudioButton(state = rememberPlayAudioState(preferredOutput = preferredOutput, audioFlow = audioFlow))
+
+@Composable
+fun PlayAudioButton(audioFlow: AudioFlow) =
+    PlayAudioButton(state = rememberPlayAudioState(audioFlow = audioFlow))
+
+@Composable
+fun PlayAudioButton(state : PlayAudioState = rememberPlayAudioState()) {
+    PlayAudioButton(
         state = state,
         theme = KodioThemeMaterial3,
         components = KodioComponentMaterial3
@@ -45,12 +58,11 @@ fun RecordAudioButton(
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-internal fun AudioRecordingSessionButton(
-    session: AudioRecordingSession,
+internal fun AudioPlaybackSessionButton(
+    session: AudioPlaybackSession,
     icons: KodioIcons,
     colors: KodioColors,
     graphTheme: AudioGraphTheme,
-    onSend: suspend () -> Unit,
     errorDialog: @Composable ((Throwable) -> Unit)? = null,
 ) {
     val state by session.state.collectAsState()
@@ -60,8 +72,9 @@ internal fun AudioRecordingSessionButton(
         ActionButton(
             state = state,
             icons = icons,
-            onStart = session::start,
-            onStop = session::reset,
+            onStart = session::play,
+            onResume = session::resume,
+            onPause = session::pause,
         )
         val flow: AudioFlow? by session.audioFlow.collectAsState()
         flow?.let {
@@ -85,56 +98,61 @@ internal fun AudioRecordingSessionButton(
         ActionButton2(
             state = state,
             icons = icons,
-            onSend = {
-                session.stop()
-                onSend()
-                session.reset()
-            }
+            replay = session::pause
         )
-        (state as? AudioRecordingSession.State.Error)?.error?.also { error ->
+        (state as? AudioPlaybackSession.State.Error)?.error?.also { error ->
             errorDialog?.invoke(error)
         }
     }
 }
+
 @Composable
 private fun ActionButton(
-    state: AudioRecordingSession.State,
+    state: AudioPlaybackSession.State,
     icons: KodioIcons,
     onStart: suspend () -> Unit,
-    onStop: suspend () -> Unit,
+    onResume: suspend () -> Unit,
+    onPause: suspend () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     when (state) {
-        is AudioRecordingSession.State.Error -> {
+        is AudioPlaybackSession.State.Error -> {
             IconButton(onClick = { scope.launch { onStart() } }) {
                 Icon(icons.retryIcon, contentDescription = "Re-try")
             }
         }
-        is AudioRecordingSession.State.Idle -> {
+        is AudioPlaybackSession.State.Finished,
+        is AudioPlaybackSession.State.Ready -> {
             IconButton(onClick = { scope.launch { onStart() } }) {
-                Icon(icons.micIcon, contentDescription = "Record")
+                Icon(icons.playIcon, contentDescription = "Idle")
             }
         }
-        is AudioRecordingSession.State.Recording -> {
-            IconButton(onClick = { scope.launch { onStop() } }) {
-                Icon(icons.discardIcon, contentDescription = "Discord")
+        is AudioPlaybackSession.State.Playing -> {
+            IconButton(onClick = { scope.launch { onPause() } }) {
+                Icon(icons.stopIcon, contentDescription = "Pause")
             }
         }
-        is AudioRecordingSession.State.Stopped -> Unit
+        AudioPlaybackSession.State.Idle -> Unit
+        AudioPlaybackSession.State.Paused -> {
+            IconButton(onClick = { scope.launch { onResume() } }) {
+                Icon(icons.playIcon, contentDescription = "Resume")
+            }
+        }
     }
 }
 
 @Composable
 private fun ActionButton2(
-    state: AudioRecordingSession.State,
+    state: AudioPlaybackSession.State,
     icons: KodioIcons,
-    onSend: suspend () -> Unit,
+    replay: suspend () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     when (state) {
-        is AudioRecordingSession.State.Recording -> {
-            IconButton(onClick = { scope.launch { onSend() } }) {
-                Icon(icons.checkIcon, contentDescription = "Send")
+        is AudioPlaybackSession.State.Paused,
+        is AudioPlaybackSession.State.Playing -> {
+            IconButton(onClick = { scope.launch { replay() } }) {
+                Icon(icons.retryIcon, contentDescription = "Replay")
             }
         }
         else -> Unit
