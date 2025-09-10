@@ -104,8 +104,8 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtimeCompose)
-            implementation("io.github.vinceglb:filekit-core:0.10.0-beta04")
-            implementation("io.github.vinceglb:filekit-dialogs-compose:0.10.0-beta04")
+            implementation(libs.filekit.core)
+            implementation(libs.filekit.dialogs.compose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -118,11 +118,11 @@ kotlin {
 }
 
 android {
-    namespace = "gg.kodio.sample"
+    namespace = "space.kodio.sample"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "gg.kodio.sample"
+        applicationId = "space.kodio.sample"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
@@ -150,11 +150,11 @@ dependencies {
 
 compose.desktop {
     application {
-        mainClass = "gg.kodio.sample.MainKt"
+        mainClass = "space.kodio.sample.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "gg.kodio.sample"
+            packageName = "space.kodio.sample"
             packageVersion = "1.0.0"
         }
     }

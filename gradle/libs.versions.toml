@@ -8,6 +8,8 @@ androidx-core = "1.16.0"
 androidx-lifecycle = "2.9.1"
 composeHotReload = "1.0.0-beta04"
 composeMultiplatform = "1.8.2"
+filekitCore = "0.10.0-beta04"
+filekitDialogsCompose = "0.10.0-beta04"
 junit = "4.13.2"
 kotlin = "2.2.0"
 kotlinBrowser = "2025.7.5"
@@ -16,6 +18,8 @@ kotlinx-io = "0.8.0"
 material-icons = "1.7.3"
 
 [libraries]
+filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekitDialogsCompose" }
+filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekitCore" }
 kotlin-browser-v202575 = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlinBrowser" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
