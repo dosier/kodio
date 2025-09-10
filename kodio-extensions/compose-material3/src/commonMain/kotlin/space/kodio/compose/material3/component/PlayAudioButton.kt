@@ -93,7 +93,10 @@ internal fun AudioPlaybackSessionButton(
         ActionButton2(
             state = state,
             icons = icons,
-            replay = session::play
+            replay = {
+                session.stop()
+                session.play()
+            }
         )
         (state as? AudioPlaybackSession.State.Error)?.error?.also { error ->
             errorDialog?.invoke(error)
