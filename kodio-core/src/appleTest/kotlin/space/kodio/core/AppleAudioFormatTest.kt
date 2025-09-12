@@ -8,17 +8,16 @@ internal class AppleAudioFormatTest {
 
     @Test
     fun `Convert common AudioFormat to IOS AvAudioFormat`() {
-        val iosAudioFormat = DefaultRecordingAudioFormat.toIosAudioFormat()
+        val iosAudioFormat = DefaultAppleRecordingAudioFormat.toAppleAudioFormat()
         assertNotNull(iosAudioFormat)
-        assertEquals(DefaultRecordingAudioFormat.sampleRate.toDouble(), iosAudioFormat.sampleRate)
-        assertEquals(DefaultRecordingAudioFormat.channels.count.toUInt(), iosAudioFormat.channelCount)
-        assertEquals(DefaultRecordingAudioFormat.bitDepth.toAVAudioCommonFormat(), iosAudioFormat.commonFormat)
+        assertEquals(DefaultAppleRecordingAudioFormat.sampleRate.toDouble(), iosAudioFormat.sampleRate)
+        assertEquals(DefaultAppleRecordingAudioFormat.channels.count.toUInt(), iosAudioFormat.channelCount)
     }
 
     @Test
     fun `Convert IOS AvAudioFormat to common AudioFormat`() {
-        val iosAudioFormat = DefaultRecordingAudioFormat.toIosAudioFormat()
+        val iosAudioFormat = DefaultAppleRecordingAudioFormat.toAppleAudioFormat()
         assertNotNull(iosAudioFormat)
-        assertEquals(DefaultRecordingAudioFormat, iosAudioFormat.toCommonAudioFormat())
+        assertEquals(DefaultAppleRecordingAudioFormat, iosAudioFormat.toCommonAudioFormat())
     }
 }

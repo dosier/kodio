@@ -1,161 +1,164 @@
 package space.kodio.core
 
-import space.kodio.core.io.convertAudio
-
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
-import kotlin.test.Test
-import kotlin.test.assertContentEquals
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertSame
+import kotlin.test.*
+import space.kodio.core.io.convertAudio
 
 class AudioFlowFormatConversionTest {
 
-    // Helper function to create 16-bit little-endian byte arrays from Short values
+    /* -------------------- Helpers -------------------- */
+
+    private fun fmtInt(
+        rate: Int,
+        channels: Channels,
+        depth: IntBitDepth,
+        signed: Boolean = true,
+        endianness: Endianness = Endianness.Little
+    ) = AudioFormat(
+        sampleRate = rate,
+        channels = channels,
+        encoding = SampleEncoding.PcmInt(
+            bitDepth = depth,
+            endianness = endianness,
+            layout = SampleLayout.Interleaved,
+            signed = signed,
+            packed = true
+        )
+    )
+
+    private fun fmtInt16(rate: Int, channels: Channels, signed: Boolean = true, end: Endianness = Endianness.Little) =
+        fmtInt(rate, channels, IntBitDepth.Sixteen, signed, end)
+
+    private fun fmtInt8(rate: Int, channels: Channels, signed: Boolean = true, end: Endianness = Endianness.Little) =
+        fmtInt(rate, channels, IntBitDepth.Eight, signed, end)
+
+    // Helper: 16-bit LE from Short values
     private fun create16BitData(samples: List<Short>): ByteArray {
         val result = ByteArray(samples.size * 2)
-        var index = 0
-        for (sample in samples) {
-            val value = sample.toInt()
-            // Little-endian: LSB first, then MSB
-            result[index++] = (value and 0xFF).toByte()
-            result[index++] = (value shr 8 and 0xFF).toByte()
+        var i = 0
+        for (s in samples) {
+            val v = s.toInt()
+            result[i++] = (v and 0xFF).toByte()
+            result[i++] = ((v ushr 8) and 0xFF).toByte()
         }
         return result
     }
 
-    // Helper function to create 16-bit big-endian byte arrays from Short values
+    // Helper: 16-bit BE from Short values
     private fun create16BitDataBE(samples: List<Short>): ByteArray {
         val result = ByteArray(samples.size * 2)
-        var index = 0
-        for (sample in samples) {
-            val value = sample.toInt()
-            // Big-endian: MSB first, then LSB
-            result[index++] = (value shr 8 and 0xFF).toByte()
-            result[index++] = (value and 0xFF).toByte()
+        var i = 0
+        for (s in samples) {
+            val v = s.toInt()
+            result[i++] = ((v ushr 8) and 0xFF).toByte()
+            result[i++] = (v and 0xFF).toByte()
         }
         return result
     }
 
-    // Helper function to create 16-bit unsigned little-endian byte arrays
+    // Helper: 16-bit unsigned LE from Int values in [0, 65535]
     private fun create16BitUnsignedData(samples: List<Int>): ByteArray {
         val result = ByteArray(samples.size * 2)
-        var index = 0
-        for (sample in samples) {
-            result[index++] = (sample and 0xFF).toByte()
-            result[index++] = (sample shr 8 and 0xFF).toByte()
+        var i = 0
+        for (v in samples) {
+            result[i++] = (v and 0xFF).toByte()
+            result[i++] = ((v ushr 8) and 0xFF).toByte()
         }
         return result
     }
 
-    // Helper function to create 8-bit byte arrays from Byte values
-    private fun create8BitData(samples: List<Byte>): ByteArray {
-        return samples.toByteArray()
-    }
+    private fun create8BitData(samples: List<Byte>): ByteArray =
+        samples.toByteArray()
+
+    /* -------------------- Tests -------------------- */
 
     @Test
     fun `Convert 44100Hz 16bit Mono to 44100Hz 16bit Stereo`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
+        val inFormat = fmtInt16(44100, Channels.Mono)
+        val outFormat = fmtInt16(44100, Channels.Stereo)
 
         val inData = create16BitData(listOf(1000, -1000))
-
         val inFlow = AudioFlow(inFormat, flowOf(inData))
         val outFlow = inFlow.convertAudio(outFormat)
 
         val result = outFlow.toList().first()
         assertEquals(outFormat, outFlow.format)
 
-        // Mono samples are duplicated for each channel in stereo
         val expectedData = create16BitData(listOf(1000, 1000, -1000, -1000))
-
         assertContentEquals(expectedData, result)
     }
 
     @Test
     fun `Convert 44100Hz 16bit Stereo to 44100Hz 16bit Mono`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+        val inFormat = fmtInt16(44100, Channels.Stereo)
+        val outFormat = fmtInt16(44100, Channels.Mono)
 
-        val inData = create16BitData(listOf(1000, 2000, -1000, -2000)) // Interleaved L/R
-
+        val inData = create16BitData(listOf(1000, 2000, -1000, -2000)) // L/R interleaved
         val inFlow = AudioFlow(inFormat, flowOf(inData))
         val outFlow = inFlow.convertAudio(outFormat)
 
         val result = outFlow.toList().first()
         assertEquals(outFormat, outFlow.format)
 
-        // Stereo channels are averaged for mono
-        val expectedData = create16BitData(listOf(1500, -1500))
-
+        val expectedData = create16BitData(listOf(1500, -1500)) // average per frame
         assertContentEquals(expectedData, result)
     }
 
     @Test
     fun `Convert 44100Hz 16bit Mono to 44100Hz 8bit Mono`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Eight, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+        val inFormat = fmtInt16(44100, Channels.Mono)
+        val outFormat = fmtInt8(44100, Channels.Mono)
 
-        // 16384 (16-bit) -> 0.5f -> 64 (8-bit)
+        // 16384 (16-bit) -> 0.5 -> 64 (8-bit)
         val inData = create16BitData(listOf(16384, -16384))
-
         val inFlow = AudioFlow(inFormat, flowOf(inData))
         val outFlow = inFlow.convertAudio(outFormat)
 
         val result = outFlow.toList().first()
         assertEquals(outFormat, outFlow.format)
 
-        // Expected 8-bit values are scaled down
-        val expectedData = create8BitData(listOf(64, -64))
-
+        val expectedData = create8BitData(listOf(64, (-64).toByte()))
         assertContentEquals(expectedData, result)
     }
 
     @Test
     fun `Convert 44100Hz 8bit Mono to 44100Hz 16bit Stereo`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Eight, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
+        val inFormat = fmtInt8(44100, Channels.Mono)
+        val outFormat = fmtInt16(44100, Channels.Stereo)
 
-        // 64 (8-bit) -> 0.5f -> 16384 (16-bit)
-        val inData = create8BitData(listOf(64, -64))
-
+        // 64 (8-bit) -> 0.5 -> 16384 (16-bit)
+        val inData = create8BitData(listOf(64, (-64).toByte()))
         val inFlow = AudioFlow(inFormat, flowOf(inData))
         val outFlow = inFlow.convertAudio(outFormat)
 
         val result = outFlow.toList().first()
         assertEquals(outFormat, outFlow.format)
 
-        // 8-bit values are scaled up to 16-bit and duplicated for stereo.
         val expectedData = create16BitData(listOf(16384, 16384, -16384, -16384))
-
         assertContentEquals(expectedData, result)
     }
 
     @Test
     fun `Convert full-scale 16-bit stereo to 8-bit mono`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Eight, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+        val inFormat = fmtInt16(44100, Channels.Stereo)
+        val outFormat = fmtInt8(44100, Channels.Mono)
 
-        // Use max and min values to test clipping and scaling boundaries
         val inData = create16BitData(listOf(Short.MAX_VALUE, Short.MAX_VALUE, Short.MIN_VALUE, Short.MIN_VALUE))
-
         val inFlow = AudioFlow(inFormat, flowOf(inData))
         val outFlow = inFlow.convertAudio(outFormat)
 
         val result = outFlow.toList().first()
         assertEquals(outFormat, outFlow.format)
 
-        // Averaging MIN_VALUEs results in a value that scales to Byte.MIN_VALUE
         val expectedData = create8BitData(listOf(Byte.MAX_VALUE, Byte.MIN_VALUE))
-
         assertContentEquals(expectedData, result)
     }
 
     @Test
     fun `No conversion should return same flow instance`() {
-        val format = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+        val format = fmtInt16(44100, Channels.Mono)
         val inData = byteArrayOf(1, 2, 3)
         val inFlow = AudioFlow(format, flowOf(inData))
 
@@ -165,23 +168,11 @@ class AudioFlowFormatConversionTest {
     }
 
     @Test
-    fun `Unsupported encoding throws exception`() {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Unknown, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
-        val inFlow = AudioFlow(inFormat, flowOf(byteArrayOf()))
-
-        assertFailsWith<IllegalArgumentException> {
-            inFlow.convertAudio(outFormat)
-        }
-    }
-
-    @Test
     fun `Convert 16bit LE to 16bit BE`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Big)
+        val inFormat = fmtInt16(44100, Channels.Mono, signed = true, end = Endianness.Little)
+        val outFormat = fmtInt16(44100, Channels.Mono, signed = true, end = Endianness.Big)
 
         val inData = create16BitData(listOf(1000, -1000))
-
         val inFlow = AudioFlow(inFormat, flowOf(inData))
         val outFlow = inFlow.convertAudio(outFormat)
 
@@ -189,35 +180,35 @@ class AudioFlowFormatConversionTest {
         assertEquals(outFormat, outFlow.format)
 
         val expectedData = create16BitDataBE(listOf(1000, -1000))
-
         assertContentEquals(expectedData, result)
     }
 
     @Test
     fun `Convert 16bit signed to 16bit unsigned`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Unsigned, Endianness.Little)
+        val inFormat = fmtInt16(44100, Channels.Mono, signed = true)
+        val outFormat = fmtInt16(44100, Channels.Mono, signed = false)
 
         val inData = create16BitData(listOf(0, 16384, -16384))
-
         val inFlow = AudioFlow(inFormat, flowOf(inData))
         val outFlow = inFlow.convertAudio(outFormat)
+
         val result = outFlow.toList().first()
         assertEquals(outFormat, outFlow.format)
 
+        // signed -> unsigned mapping (+32768 offset): [0, 16384, -16384] -> [32768, 49152, 16384]
         val expectedData = create16BitUnsignedData(listOf(32768, 49152, 16384))
         assertContentEquals(expectedData, result)
     }
 
     @Test
     fun `Convert 16bit unsigned to 16bit signed`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Unsigned, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+        val inFormat = fmtInt16(44100, Channels.Mono, signed = false)
+        val outFormat = fmtInt16(44100, Channels.Mono, signed = true)
 
         val inData = create16BitUnsignedData(listOf(32768, 49152, 16384))
-
         val inFlow = AudioFlow(inFormat, flowOf(inData))
         val outFlow = inFlow.convertAudio(outFormat)
+
         val result = outFlow.toList().first()
         assertEquals(outFormat, outFlow.format)
 
@@ -226,9 +217,9 @@ class AudioFlowFormatConversionTest {
     }
 
     @Test
-    fun `Convert 22050Hz Mono to 44100Hz Mono (Upsample)`() = runTest {
-        val inFormat = AudioFormat(22050, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+    fun `Upsample 22050Hz Mono to 44100Hz Mono`() = runTest {
+        val inFormat = fmtInt16(22050, Channels.Mono)
+        val outFormat = fmtInt16(44100, Channels.Mono)
 
         val inData = create16BitData(listOf(10000, 20000))
         val inFlow = AudioFlow(inFormat, flowOf(inData))
@@ -237,15 +228,16 @@ class AudioFlowFormatConversionTest {
 
         assertEquals(outFormat, outFlow.format)
 
-        // Expected: s1, (s1+s2)/2, s2, s2 (last sample is duplicated)
+        // Expected with linear interpolation:
+        // s1, (s1+s2)/2, s2, s2 (duplicate last for boundary)
         val expectedData = create16BitData(listOf(10000, 15000, 20000, 20000))
         assertContentEquals(expectedData, result)
     }
 
     @Test
-    fun `Convert 44100Hz Mono to 22050Hz Mono (Downsample)`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(22050, BitDepth.Sixteen, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+    fun `Downsample 44100Hz Mono to 22050Hz Mono`() = runTest {
+        val inFormat = fmtInt16(44100, Channels.Mono)
+        val outFormat = fmtInt16(22050, Channels.Mono)
 
         val inData = create16BitData(listOf(1000, 2000, 3000, 4000))
         val inFlow = AudioFlow(inFormat, flowOf(inData))
@@ -254,15 +246,15 @@ class AudioFlowFormatConversionTest {
 
         assertEquals(outFormat, outFlow.format)
 
-        // Expected: s1, s3 (takes every 2nd sample)
+        // With simple linear-decimate, we effectively pick every ~2nd sample:
         val expectedData = create16BitData(listOf(1000, 3000))
         assertContentEquals(expectedData, result)
     }
 
     @Test
-    fun `Convert 44100Hz 16bit Stereo to 22050Hz 8bit Mono (Combined)`() = runTest {
-        val inFormat = AudioFormat(44100, BitDepth.Sixteen, Channels.Stereo, Encoding.Pcm.Signed, Endianness.Little)
-        val outFormat = AudioFormat(22050, BitDepth.Eight, Channels.Mono, Encoding.Pcm.Signed, Endianness.Little)
+    fun `Convert 44100Hz 16bit Stereo to 22050Hz 8bit Mono`() = runTest {
+        val inFormat = fmtInt16(44100, Channels.Stereo)
+        val outFormat = fmtInt8(22050, Channels.Mono)
 
         val inData = create16BitData(listOf(16384, 8192, -16384, -8192)) // L/R, L/R
         val inFlow = AudioFlow(inFormat, flowOf(inData))
@@ -272,10 +264,10 @@ class AudioFlowFormatConversionTest {
         assertEquals(outFormat, outFlow.format)
 
         // Decode: [0.5, 0.25, -0.5, -0.25]
-        // Resample: Decimate L to [0.5], R to [0.25]. Re-interleave to [0.5, 0.25]
-        // Convert Channels: Average to [(0.5+0.25)/2] = [0.375]
-        // Encode: 0.375 * 128 = 48
-        val expectedData = create8BitData(listOf(48))
+        // Resample to 22050: L-> [0.5], R-> [0.25]  => interleave: [0.5, 0.25]
+        // Downmix to mono: (0.5+0.25)/2 = 0.375
+        // Encode 8-bit signed: 0.375 * 128 = 48
+        val expectedData = create8BitData(listOf(48.toByte()))
         assertContentEquals(expectedData, result)
     }
 }

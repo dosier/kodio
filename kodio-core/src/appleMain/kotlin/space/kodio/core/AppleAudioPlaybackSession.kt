@@ -7,10 +7,9 @@ import kotlinx.coroutines.flow.map
 import platform.AVFAudio.AVAudioEngine
 import platform.AVFAudio.AVAudioMixerNode
 import platform.AVFAudio.AVAudioPlayerNode
-import platform.AVFAudio.AVAudioSession
 import space.kodio.core.io.toIosAudioBuffer
 
-open class AppleAudioPlaybackSession() : BaseAudioPlaybackSession() {
+abstract class AppleAudioPlaybackSession() : BaseAudioPlaybackSession() {
     
     private val engine = AVAudioEngine()
     private val mixer = AVAudioMixerNode()
@@ -21,13 +20,15 @@ open class AppleAudioPlaybackSession() : BaseAudioPlaybackSession() {
         engine.attachNode(player)
     }
 
+    abstract fun configureAudioSession()
+
     @OptIn(ExperimentalForeignApi::class)
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
 
-        engine.connect(player, mixer, format.toIosAudioFormat())
+        engine.connect(player, mixer, format.toAppleAudioFormat())
         engine.connect(player, engine.mainMixerNode, null)
 
-        AVAudioSession.sharedInstance().configureCategoryPlayback()
+        configureAudioSession()
 
         runErrorCatching { errorVar ->
             engine.startAndReturnError(errorVar) // TODO: catch error
@@ -39,7 +40,7 @@ open class AppleAudioPlaybackSession() : BaseAudioPlaybackSession() {
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {
         player.play()
-        val iosAudioFormat = audioFlow.format.toIosAudioFormat()
+        val iosAudioFormat = audioFlow.format.toAppleAudioFormat()
         val lastCompletable = audioFlow.map { bytes ->
             val iosAudioBuffer = bytes.toIosAudioBuffer(iosAudioFormat)
             val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()

@@ -61,6 +61,7 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
                 platformFlow.collect(hotSource::emit)
             }
         } catch (e: Exception) {
+            e.printStackTrace()
             _state.value = State.Error(e)
             cleanupRecording()
         }

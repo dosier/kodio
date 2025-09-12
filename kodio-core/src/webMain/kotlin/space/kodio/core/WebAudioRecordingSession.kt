@@ -28,7 +28,7 @@ class WebAudioRecordingSession(
             audio = createMediaTrackConstraints(
                 deviceId = device?.id,
                 sampleRate = format.sampleRate,
-                sampleSize = format.bitDepth.value,
+                sampleSize = format.bytesPerSample * 8,
                 channelCount = format.channels.count
             )
         )
@@ -42,8 +42,8 @@ class WebAudioRecordingSession(
         // Our worklet downmixes to mono, so the output format is always 1 channel.
         val finalFormat = AudioFormat(
             sampleRate = actualSampleRate,
-            bitDepth = BitDepth.Sixteen, // We still convert to 16-bit PCM in Kotlin
-            channels = Channels.Mono   // Worklet guarantees mono output
+            channels = Channels.Mono,   // Worklet guarantees mono output
+            encoding = SampleEncoding.PcmInt(IntBitDepth.Sixteen, Endianness.Little, SampleLayout.Interleaved, signed = true)
         )
         val context = AudioContext(
             contextOptions = createAudioContextOptions(

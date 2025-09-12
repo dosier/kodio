@@ -39,9 +39,10 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
 
     final override suspend fun play() {
         val audioFlow = audioFlow.value ?: return
-        runAndUpdateState(State.Playing) {
+        try {
             val playbackFormat = preparePlayback(audioFlow.format)
             val playbackAudioFlow = audioFlow.convertAudio(playbackFormat)
+            _state.value = State.Playing
             playbackJob = scope.launch {
                 runCatching {
                     playBlocking(playbackAudioFlow)
@@ -50,6 +51,8 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                     _state.value = State.Error(it)
                 }
             }
+        } catch (e: Exception) {
+            _state.value = State.Error(e)
         }
     }
 
@@ -68,14 +71,13 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
         }
     }
 
-    protected fun runAndUpdateState(newState: State, block: suspend () -> Unit) {
-        scope.launch {
-            _state.value = runCatching {
-                block()
-                newState
-            }.getOrElse {
-                State.Error(it)
-            }
+    protected fun runAndUpdateState(newState: State, block: () -> Unit) {
+        _state.value = runCatching {
+            block()
+            newState
+        }.getOrElse {
+            State.Error(it)
         }
     }
+
 }

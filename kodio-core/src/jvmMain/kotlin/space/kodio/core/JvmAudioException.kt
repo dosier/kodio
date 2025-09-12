@@ -14,5 +14,5 @@ sealed class JvmAudioException(message: String, cause: Throwable? = null) : Exce
 
     data class UnsupportedJvmEncoding(val encoding: JvmAudioFormat.Encoding) : JvmAudioException("Unsupported encoding: $encoding.")
 
-    data class UnsupportedCommonEncoding(val encoding: Encoding) : JvmAudioException("Unsupported common encoding: $encoding.")
+    data class UnsupportedCommonEncoding(val encoding: SampleEncoding) : JvmAudioException("Unsupported common encoding: $encoding.")
 }

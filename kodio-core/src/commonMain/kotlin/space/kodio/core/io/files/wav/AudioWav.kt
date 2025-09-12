@@ -4,57 +4,78 @@ import kotlinx.io.Sink
 import kotlinx.io.writeIntLe
 import kotlinx.io.writeShortLe
 import kotlinx.io.writeString
-import space.kodio.core.Encoding
+import space.kodio.core.*
+import space.kodio.core.SampleEncoding.PcmFloat
+import space.kodio.core.SampleEncoding.PcmInt
 import space.kodio.core.io.AudioSource
 import space.kodio.core.io.files.AudioFileWriteError
 
+/**
+ * Writes a RIFF/WAVE file (PCM-Int or IEEE-Float).
+ * Assumptions:
+ *  - Data is INTERLEAVED (not planar)
+ *  - Little-endian samples (WAV requires LE)
+ *  - from.byteCount is known
+ */
 internal fun writeWav(from: AudioSource, to: Sink) {
-    // Get properties from the audio format
     val format = from.format
+
+    // --- Validate WAV constraints ---
+    when (val enc = format.encoding) {
+        is PcmInt -> {
+            if (enc.layout == SampleLayout.Planar)
+                throw AudioFileWriteError.UnsupportedFormat("WAV writer requires interleaved PCM-Int.")
+            if (enc.endianness != Endianness.Little)
+                throw AudioFileWriteError.UnsupportedFormat("WAV requires little-endian PCM-Int.")
+        }
+        is PcmFloat -> {
+            if (enc.layout == SampleLayout.Planar)
+                throw AudioFileWriteError.UnsupportedFormat("WAV writer requires interleaved PCM-Float.")
+            // WAV float is also little-endian by convention
+        }
+    }
+
+    // --- Derive header fields ---
     val numChannels = format.channels.count
-    val bitsPerSample = format.bitDepth.value
-    val sampleRate = format.sampleRate
+    val sampleRate  = format.sampleRate
 
-    // --- WAV Header Calculations ---
-
-    // 1 for PCM. TODO: The official spec also defines 3 for IEEE Float.
-    val audioFormatCode = when (format.encoding) {
-        is Encoding.Pcm -> 1
-        else -> throw AudioFileWriteError.UnsupportedFormat("Unsupported encoding for WAV file: ${format.encoding}")
+    val (audioFormatCode, bitsPerSample) = when (val enc = format.encoding) {
+        is PcmInt -> 1 to enc.bitDepth.bits
+        is PcmFloat -> 3 to when (enc.precision) {
+            FloatPrecision.F32 -> 32
+            FloatPrecision.F64 -> 64
+        }
     }
 
-    // The size of one "frame" of audio (all channels for one sample point)
-    val blockAlign = numChannels * bitsPerSample / 8
-    // The number of bytes per second
-    val byteRate = sampleRate * blockAlign
+    val bytesPerSample = bitsPerSample / 8
+    val blockAlign = numChannels * bytesPerSample              // bytes per frame (all channels)
+    val byteRate   = sampleRate * blockAlign                   // bytes per second
 
-    // Size of the actual audio data payload in bytes
-    val subChunk2Size = from.byteCount
-    // Total file size minus the first 8 bytes ("RIFF" and the size field itself)
-    val chunkSize = 36 + subChunk2Size
+    val dataSize   = from.byteCount
+    val riffSize   = 36 + dataSize                             // 4+ (fmt) 24 + (data) 8 + dataSize, RIFF wants fileSize-8
 
-    // --- Write WAV Header to Buffer ---
+    // --- Write RIFF/WAVE header ---
     with(to) {
-        // -- RIFF Chunk Descriptor --
-        writeString("RIFF") // ChunkID: Contains the letters "RIFF"
-        writeIntLe(chunkSize.toInt()) // ChunkSize: 36 + SubChunk2Size
-        writeString("WAVE") // Format: Contains the letters "WAVE"
+        // RIFF chunk
+        writeString("RIFF")
+        writeIntLe(riffSize.toInt())
+        writeString("WAVE")
 
-        // -- "fmt " Sub-Chunk --
-        writeString("fmt ") // Subchunk1ID: Contains "fmt " (note the space)
-        writeIntLe(16) // Subchunk1Size: 16 for PCM
-        writeShortLe(audioFormatCode.toShort()) // AudioFormat: 1 for PCM
-        writeShortLe(numChannels.toShort()) // NumChannels: Mono = 1, Stereo = 2
-        writeIntLe(sampleRate) // SampleRate: e.g., 44100, 48000
-        writeIntLe(byteRate) // ByteRate: SampleRate * NumChannels * BitsPerSample/8
-        writeShortLe(blockAlign.toShort()) // BlockAlign: NumChannels * BitsPerSample/8
-        writeShortLe(bitsPerSample.toShort()) // BitsPerSample: 8, 16, 24, etc.
+        // fmt  subchunk (PCM/IEEE-float uses 16-byte fmt chunk)
+        writeString("fmt ")
+        writeIntLe(16)                                 // Subchunk1Size
+        writeShortLe(audioFormatCode.toShort())        // AudioFormat: 1=PCM, 3=IEEE float
+        writeShortLe(numChannels.toShort())            // NumChannels
+        writeIntLe(sampleRate)                         // SampleRate
+        writeIntLe(byteRate)                           // ByteRate
+        writeShortLe(blockAlign.toShort())             // BlockAlign
+        writeShortLe(bitsPerSample.toShort())          // BitsPerSample
 
-        // -- "data" Sub-Chunk --
-        writeString("data") // Subchunk2ID: Contains "data"
-        writeIntLe(subChunk2Size.toInt()) // Subchunk2Size: Size of the audio data
+        // data subchunk header
+        writeString("data")
+        writeIntLe(dataSize.toInt())
     }
 
-    // --- Write Actual Audio Data ---
+    // --- Write payload ---
     to.write(from.source, from.byteCount)
 }

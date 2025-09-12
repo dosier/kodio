@@ -21,6 +21,6 @@ sealed interface AudioFormatSupport {
      * formats. The library should rely on common standards. (e.g., JavaScript)
      */
     data object Unknown : AudioFormatSupport {
-        override val defaultFormat: AudioFormat = AudioFormat.DEFAULT
+        override val defaultFormat: AudioFormat = DefaultRecordingInt16
     }
 }

@@ -1,74 +1,77 @@
 package space.kodio.core
 
-/**
- * Defines the format of the audio data.
- */
+/** Channels: number + layout if you need it later. */
+enum class Channels(val count: Int) {
+    Mono(1),
+    Stereo(2);
+    companion object {
+        fun fromInt(count: Int) = when (count) {
+            1 -> Mono
+            2 -> Stereo
+            else -> throw IllegalArgumentException("Only 1 or 2 channels are supported")
+        }
+    }
+}
+
+enum class Endianness { Little, Big }
+enum class IntBitDepth(val bits: Int) { Eight(8), Sixteen(16), TwentyFour(24), ThirtyTwo(32) }
+enum class FloatPrecision { F32, F64 }
+
+/** How samples are laid out in memory. */
+enum class SampleLayout { Interleaved, Planar }
+
+/** Audio sample encoding. No “signed/unsigned” for floats anymore. */
+sealed interface SampleEncoding {
+    data class PcmInt(
+        val bitDepth: IntBitDepth,
+        val endianness: Endianness = Endianness.Little,
+        val layout: SampleLayout = SampleLayout.Interleaved,
+        val signed: Boolean = true,           // true for standard PCM; keep in case you ever need u8
+        val packed: Boolean = true            // matches kAudioFormatFlagIsPacked (no padding)
+    ) : SampleEncoding
+
+    data class PcmFloat(
+        val precision: FloatPrecision = FloatPrecision.F32,
+        val layout: SampleLayout = SampleLayout.Interleaved
+    ) : SampleEncoding
+
+    // Room for compressed / encoded streams, if you ever add them:
+    // data class Compressed(val codec: Codec, val profile: String?, val bitrate: Int?) : SampleEncoding
+}
+
+/** Canonical audio format */
 data class AudioFormat(
     val sampleRate: Int,
-    val bitDepth: BitDepth,
     val channels: Channels,
-    val encoding: Encoding = Encoding.Unknown,
-    val endianness: Endianness = Endianness.Little,
+    val encoding: SampleEncoding
 ) {
-
-    companion object {
-        val DEFAULT = AudioFormat(44100, BitDepth.Sixteen, Channels.Mono)
-    }
-}
-
-/**
- * Represents the valid bit depths for audio data.
- * Each object holds its integer value.
- */
-sealed class BitDepth(val value: Int) {
-
-    data object Eight : BitDepth(8)
-    data object Sixteen : BitDepth(16)
-    data object ThirtyTwo : BitDepth(32)
-    data object SixtyFour : BitDepth(64)
-
-    companion object {
-        fun fromInt(value: Int): BitDepth {
-            return when (value) {
-                8 -> Eight
-                16 -> Sixteen
-                32 -> ThirtyTwo
-                64 -> SixtyFour
-                else -> throw IllegalArgumentException("Invalid bit depth: $value")
-            }
+    /** Bytes per (single-channel) sample. */
+    val bytesPerSample: Int = when (val e = encoding) {
+        is SampleEncoding.PcmInt   -> e.bitDepth.bits / 8
+        is SampleEncoding.PcmFloat -> when (e.precision) {
+            FloatPrecision.F32 -> 4
+            FloatPrecision.F64 -> 8
         }
     }
-}
 
-/**
- * Represents the valid channel configurations for audio data.
- * Each object holds its integer count.
- */
-sealed class Channels(val count: Int) {
-
-    data object Mono : Channels(1)
-    data object Stereo : Channels(2)
-
-    companion object {
-        fun fromInt(count: Int): Channels {
-            return when (count) {
-                1 -> Mono
-                2 -> Stereo
-                else -> throw IllegalArgumentException("Invalid channel count: $count")
-            }
-        }
+    /** Bytes per frame = per-sample * channels (for interleaved); planar uses per-plane frame size. */
+    val bytesPerFrame: Int = when (val e = encoding) {
+        is SampleEncoding.PcmInt   ->
+            if (e.layout == SampleLayout.Interleaved) bytesPerSample * channels.count else bytesPerSample
+        is SampleEncoding.PcmFloat ->
+            if (e.layout == SampleLayout.Interleaved) bytesPerSample * channels.count else bytesPerSample
     }
 }
 
-sealed class Encoding {
-    sealed class Pcm(val signed: Boolean) : Encoding() {
-        data object Signed : Pcm(true)
-        data object Unsigned : Pcm(false)
-    }
-    data object Unknown : Encoding()
-}
+/** Sensible defaults you can swap depending on your pipeline */
+val DefaultRecordingInt16 = AudioFormat(
+    sampleRate = 48000,
+    channels = Channels.Mono,
+    encoding = SampleEncoding.PcmInt(IntBitDepth.Sixteen, Endianness.Little, SampleLayout.Interleaved, signed = true)
+)
 
-sealed class Endianness {
-    data object Little : Endianness()
-    data object Big : Endianness()
-}
+val DefaultRecordingFloat32 = AudioFormat(
+    sampleRate = 48000,
+    channels = Channels.Mono,
+    encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
+)

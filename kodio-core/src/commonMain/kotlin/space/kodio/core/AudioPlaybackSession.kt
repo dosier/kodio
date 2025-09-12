@@ -28,7 +28,6 @@ interface AudioPlaybackSession {
     /** Stops the playback entirely. */
     fun stop()
 
-
     /**
      * Represents the state of a playback session.
      */

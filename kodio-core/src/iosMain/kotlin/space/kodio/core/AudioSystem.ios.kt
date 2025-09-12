@@ -6,7 +6,7 @@ import platform.AVFAudio.availableInputs
 import platform.AVFAudio.currentRoute
 import space.kodio.core.security.AudioPermissionDeniedException
 import space.kodio.core.security.AudioPermissionManager
-import space.kodio.core.security.AppleAudioPermissionManager
+import space.kodio.core.IosAudioPermissionManager
 
 /**
  * IOS implementation for [AudioSystem].
@@ -19,7 +19,7 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
     private val audioSession get() = AVAudioSession.sharedInstance()
 
     override val permissionManager: AudioPermissionManager
-        get() = AppleAudioPermissionManager
+        get() = IosAudioPermissionManager
 
     override suspend fun listInputDevices(): List<AudioDevice.Input> {
         return try {

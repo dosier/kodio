@@ -10,22 +10,12 @@ import kotlinx.io.readByteArray
 import kotlinx.io.readIntLe
 import kotlinx.io.readShortLe
 import kotlinx.io.readString
-import space.kodio.core.AudioFormat
-import space.kodio.core.BitDepth
-import space.kodio.core.Channels
-import space.kodio.core.Encoding
+import space.kodio.core.*
 import space.kodio.core.io.AudioSource
-import kotlin.test.BeforeTest
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.*
 
 /**
- * Contains tests for the AudioFileWriter class.
- * This test suite uses JUnit 5 and a temporary directory to perform real file I/O
- * in a controlled environment, ensuring the writer behaves as expected without
- * polluting the file system.
+ * Contains tests for the AudioFileWriter class with the new AudioFormat model.
  */
 class AudioFileWriterTest {
 
@@ -37,33 +27,52 @@ class AudioFileWriterTest {
         SystemFileSystem.createDirectories(tempDir)
     }
 
+    /* -------------------- Helpers -------------------- */
+
+    private fun fmtInt(
+        rate: Int,
+        channels: Channels,
+        depth: IntBitDepth,
+        signed: Boolean = true,
+        endianness: Endianness = Endianness.Little,
+        layout: SampleLayout = SampleLayout.Interleaved
+    ) = AudioFormat(
+        sampleRate = rate,
+        channels = channels,
+        encoding = SampleEncoding.PcmInt(
+            bitDepth = depth,
+            endianness = endianness,
+            layout = layout,
+            signed = signed,
+            packed = true
+        )
+    )
+
+    /* -------------------- Tests -------------------- */
+
     /**
-     * Tests the "happy path": writing a standard 16-bit, 44.1kHz, stereo PCM audio buffer.
-     * It verifies that every single field in the WAV header is written correctly.
+     * Happy path: 16-bit, 44.1kHz, stereo PCM-int (interleaved, LE).
      */
     @Test
     fun `write with 16-bit stereo PCM format writes correct WAV header`() = runTest {
-        // --- 1. Arrange ---
+        // Arrange
         val testPath = Path(tempDir.toString(), "test_16bit_stereo.wav")
-        val format = AudioFormat(
-            sampleRate = 44100,
-            bitDepth = BitDepth.Sixteen,
+        val format = fmtInt(
+            rate = 44100,
             channels = Channels.Stereo,
-            encoding = Encoding.Pcm.Signed
+            depth = IntBitDepth.Sixteen,
+            signed = true,
+            endianness = Endianness.Little
         )
-
-        // Create a dummy audio payload (e.g., 4 bytes for one stereo 16-bit sample)
-
+        // 4 bytes of payload (one stereo frame: 2 bytes L + 2 bytes R)
         val writer = AudioFileWriter(AudioFileFormat.Wav, testPath, SystemFileSystem)
 
-        // --- 2. Act ---
-        writer.write(AudioSource.Companion.of(format, 0x12, 0x34, 0x56, 0x78))
+        // Act
+        writer.write(AudioSource.of(format, 0x12, 0x34, 0x56, 0x78))
 
-        // --- 3. Assert ---
-        // Read the written file back and verify its contents
-        val writtenBuffer = SystemFileSystem.source(testPath).buffered()
+        // Assert
+        val buf = SystemFileSystem.source(testPath).buffered()
 
-        // Expected values
         val expectedSubChunk2Size = 4
         val expectedChunkSize = 36 + expectedSubChunk2Size
         val expectedNumChannels = 2
@@ -72,54 +81,53 @@ class AudioFileWriterTest {
         val expectedBlockAlign = expectedNumChannels * expectedBitsPerSample / 8
         val expectedByteRate = expectedSampleRate * expectedBlockAlign
 
-        // Verify RIFF Chunk
-        assertEquals("RIFF", writtenBuffer.readString(4))
-        assertEquals(expectedChunkSize, writtenBuffer.readIntLe())
-        assertEquals("WAVE", writtenBuffer.readString(4))
+        // RIFF
+        assertEquals("RIFF", buf.readString(4))
+        assertEquals(expectedChunkSize, buf.readIntLe())
+        assertEquals("WAVE", buf.readString(4))
 
-        // Verify "fmt " sub-chunk
-        assertEquals("fmt ", writtenBuffer.readString(4))
-        assertEquals(16, writtenBuffer.readIntLe()) // Subchunk1Size for PCM
-        assertEquals(1, writtenBuffer.readShortLe().toInt()) // AudioFormat code for PCM
-        assertEquals(expectedNumChannels, writtenBuffer.readShortLe().toInt())
-        assertEquals(expectedSampleRate, writtenBuffer.readIntLe())
-        assertEquals(expectedByteRate, writtenBuffer.readIntLe())
-        assertEquals(expectedBlockAlign, writtenBuffer.readShortLe().toInt())
-        assertEquals(expectedBitsPerSample, writtenBuffer.readShortLe().toInt())
+        // fmt
+        assertEquals("fmt ", buf.readString(4))
+        assertEquals(16, buf.readIntLe())                 // PCM/IEEE-float basic fmt chunk
+        assertEquals(1, buf.readShortLe().toInt())        // AudioFormat: 1 = PCM-int
+        assertEquals(expectedNumChannels, buf.readShortLe().toInt())
+        assertEquals(expectedSampleRate, buf.readIntLe())
+        assertEquals(expectedByteRate, buf.readIntLe())
+        assertEquals(expectedBlockAlign, buf.readShortLe().toInt())
+        assertEquals(expectedBitsPerSample, buf.readShortLe().toInt())
 
-        // Verify "data" sub-chunk
-        assertEquals("data", writtenBuffer.readString(4))
-        assertEquals(expectedSubChunk2Size, writtenBuffer.readIntLe())
+        // data
+        assertEquals("data", buf.readString(4))
+        assertEquals(expectedSubChunk2Size, buf.readIntLe())
 
-        // Verify the audio payload was written correctly
-        val payloadBytes = writtenBuffer.readByteArray()
-        assertTrue(payloadBytes.contentEquals(byteArrayOf(0x12, 0x34, 0x56, 0x78)))
+        // payload
+        val payload = buf.readByteArray()
+        assertTrue(payload.contentEquals(byteArrayOf(0x12, 0x34, 0x56, 0x78)))
     }
 
     /**
-     * Tests a different but still valid format: 8-bit, 22.05kHz, mono.
-     * This ensures the calculations in the writer are dynamic and not hardcoded.
+     * 8-bit, 22.05kHz, mono unsigned PCM-int (WAV PCM-int code=1).
      */
     @Test
     fun `write with 8-bit mono PCM format writes correct WAV header`() {
-        // --- 1. Arrange ---
+        // Arrange
         val testPath = Path(tempDir.toString(), "test_8bit_mono.wav")
-        val format = AudioFormat(
-            sampleRate = 22050,
-            bitDepth = BitDepth.Eight,
+        val format = fmtInt(
+            rate = 22050,
             channels = Channels.Mono,
-            encoding = Encoding.Pcm.Unsigned // 8-bit is often unsigned
+            depth = IntBitDepth.Eight,
+            signed = false, // 8-bit often unsigned in WAV
+            endianness = Endianness.Little
         )
 
         val writer = AudioFileWriter(AudioFileFormat.Wav, testPath, SystemFileSystem)
 
-        // --- 2. Act ---
-        writer.write( AudioSource.Companion.of(format, 0xAB.toByte(), 0xCD.toByte()))
+        // Act
+        writer.write(AudioSource.of(format, 0xAB.toByte(), 0xCD.toByte()))
 
-        // --- 3. Assert ---
-        val writtenBuffer = SystemFileSystem.source(testPath).buffered()
+        // Assert
+        val buf = SystemFileSystem.source(testPath).buffered()
 
-        // Expected values
         val expectedSubChunk2Size = 2
         val expectedNumChannels = 1
         val expectedBitsPerSample = 8
@@ -127,49 +135,101 @@ class AudioFileWriterTest {
         val expectedBlockAlign = expectedNumChannels * expectedBitsPerSample / 8
         val expectedByteRate = expectedSampleRate * expectedBlockAlign
 
-        // Skip RIFF and WAVE, assume they are correct from the first test
-        writtenBuffer.skip(12)
+        // Skip "RIFF....WAVE"
+        buf.skip(12)
 
-        // Verify "fmt " sub-chunk
-        assertEquals("fmt ", writtenBuffer.readString(4))
-        assertEquals(16, writtenBuffer.readIntLe())
-        assertEquals(1, writtenBuffer.readShortLe().toInt())
-        assertEquals(expectedNumChannels, writtenBuffer.readShortLe().toInt())
-        assertEquals(expectedSampleRate, writtenBuffer.readIntLe())
-        assertEquals(expectedByteRate, writtenBuffer.readIntLe())
-        assertEquals(expectedBlockAlign, writtenBuffer.readShortLe().toInt())
-        assertEquals(expectedBitsPerSample, writtenBuffer.readShortLe().toInt())
+        assertEquals("fmt ", buf.readString(4))
+        assertEquals(16, buf.readIntLe())
+        assertEquals(1, buf.readShortLe().toInt()) // PCM-int
+        assertEquals(expectedNumChannels, buf.readShortLe().toInt())
+        assertEquals(expectedSampleRate, buf.readIntLe())
+        assertEquals(expectedByteRate, buf.readIntLe())
+        assertEquals(expectedBlockAlign, buf.readShortLe().toInt())
+        assertEquals(expectedBitsPerSample, buf.readShortLe().toInt())
 
-        // Verify "data" sub-chunk
-        assertEquals("data", writtenBuffer.readString(4))
-        assertEquals(expectedSubChunk2Size, writtenBuffer.readIntLe())
+        assertEquals("data", buf.readString(4))
+        assertEquals(expectedSubChunk2Size, buf.readIntLe())
 
-        // Verify payload
-        val payloadBytes = writtenBuffer.readByteArray()
-        assertTrue(payloadBytes.contentEquals(byteArrayOf(0xAB.toByte(), 0xCD.toByte())))
+        val payload = buf.readByteArray()
+        assertTrue(payload.contentEquals(byteArrayOf(0xAB.toByte(), 0xCD.toByte())))
     }
 
     /**
-     * Tests the error handling path: attempting to write a WAV file with an encoding
-     * that is not supported (e.g., Encoding.Unknown).
-     * It verifies that the correct exception type is thrown.
+     * Error path: WAV writer rejects planar data (WAV requires interleaved).
      */
     @Test
-    fun `write with unsupported encoding throws UnsupportedFormatError`() {
-        // --- 1. Arrange ---
+    fun `write with planar PCM-int throws UnsupportedFormatError`() {
+        // Arrange
         val testPath = Path(tempDir.toString(), "test_unsupported.wav")
-        val format = AudioFormat(
+        val planarFormat = AudioFormat(
             sampleRate = 44100,
-            bitDepth = BitDepth.Sixteen,
             channels = Channels.Mono,
-            encoding = Encoding.Unknown // This is the unsupported part
+            encoding = SampleEncoding.PcmInt(
+                bitDepth = IntBitDepth.Sixteen,
+                endianness = Endianness.Little,
+                layout = SampleLayout.Planar, // <-- not supported by WAV writer
+                signed = true,
+                packed = true
+            )
         )
-        val audioDataBuffer = AudioSource.Companion.of(format, Buffer())
+
+        val src = AudioSource.of(planarFormat, Buffer())
         val writer = AudioFileWriter(AudioFileFormat.Wav, testPath, SystemFileSystem)
 
-        // --- 2. Act & 3. Assert ---
+        // Act & Assert
         assertFailsWith<AudioFileWriteError.UnsupportedFormat> {
-            writer.write(audioDataBuffer)
+            writer.write(src)
         }
+    }
+
+    /**
+     * Optional: verify IEEE float path header (format code 3) with 32-bit float mono.
+     */
+    @Test
+    fun `write with 32-bit float mono writes IEEE-float WAV header`() = runTest {
+        // Arrange
+        val testPath = Path(tempDir.toString(), "test_float32_mono.wav")
+        val floatFmt = AudioFormat(
+            sampleRate = 48000,
+            channels = Channels.Mono,
+            encoding = SampleEncoding.PcmFloat(
+                precision = FloatPrecision.F32,
+                layout = SampleLayout.Interleaved
+            )
+        )
+
+        val writer = AudioFileWriter(AudioFileFormat.Wav, testPath, SystemFileSystem)
+        // Four bytes: one Float32 value (raw bits). We'll just write 0.0f bytes.
+        writer.write(AudioSource.of(floatFmt, 0x00, 0x00, 0x00, 0x00))
+
+        // Assert
+        val buf = SystemFileSystem.source(testPath).buffered()
+
+        val expectedSubChunk2Size = 4
+        val expectedChunkSize = 36 + expectedSubChunk2Size
+        val expectedNumChannels = 1
+        val expectedBitsPerSample = 32
+        val expectedSampleRate = 48000
+        val expectedBlockAlign = expectedNumChannels * expectedBitsPerSample / 8
+        val expectedByteRate = expectedSampleRate * expectedBlockAlign
+
+        assertEquals("RIFF", buf.readString(4))
+        assertEquals(expectedChunkSize, buf.readIntLe())
+        assertEquals("WAVE", buf.readString(4))
+
+        assertEquals("fmt ", buf.readString(4))
+        assertEquals(16, buf.readIntLe())
+        assertEquals(3, buf.readShortLe().toInt()) // 3 = IEEE float
+        assertEquals(expectedNumChannels, buf.readShortLe().toInt())
+        assertEquals(expectedSampleRate, buf.readIntLe())
+        assertEquals(expectedByteRate, buf.readIntLe())
+        assertEquals(expectedBlockAlign, buf.readShortLe().toInt())
+        assertEquals(expectedBitsPerSample, buf.readShortLe().toInt())
+
+        assertEquals("data", buf.readString(4))
+        assertEquals(expectedSubChunk2Size, buf.readIntLe())
+
+        val payload = buf.readByteArray()
+        assertTrue(payload.contentEquals(byteArrayOf(0, 0, 0, 0)))
     }
 }

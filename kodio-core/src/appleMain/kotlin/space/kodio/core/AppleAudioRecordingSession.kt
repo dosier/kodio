@@ -4,26 +4,22 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.channels.SendChannel
 import platform.AVFAudio.AVAudioConverter
 import platform.AVFAudio.AVAudioEngine
-import platform.AVFAudio.AVAudioSession
 import space.kodio.core.io.convert
 import space.kodio.core.io.toByteArray
 
-open class AppleAudioRecordingSession(
-    private val requestedDevice: AudioDevice.Input?,
-    private val format: AudioFormat = DefaultRecordingAudioFormat
+abstract class AppleAudioRecordingSession(
+    private val format: AudioFormat = DefaultAppleRecordingAudioFormat
 ) : BaseAudioRecordingSession() {
 
     private val audioEngine = AVAudioEngine()
-    private val targetIosAudioFormat get() = format.toIosAudioFormat()
+    private val targetIosAudioFormat get() = format.toAppleAudioFormat()
 
     private lateinit var converter: AVAudioConverter
 
+    abstract fun prepareAudioSession()
+
     override suspend fun prepareRecording(): AudioFormat {
-        val audioSession = AVAudioSession.Companion.sharedInstance()
-        audioSession.configureCategoryRecord()
-        audioSession.activate()
-        if (requestedDevice != null)
-            audioSession.setPreferredInput(requestedDevice)
+        prepareAudioSession()
         val hardwareIosAudioFormat = audioEngine.inputNode.outputFormatForBus(0u)
         converter = AVAudioConverter(hardwareIosAudioFormat, targetIosAudioFormat)
         audioEngine.prepare()
