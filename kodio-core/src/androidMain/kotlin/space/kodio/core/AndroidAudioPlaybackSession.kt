@@ -23,7 +23,7 @@ internal class AndroidAudioPlaybackSession(
 
         // Derive Android constants
         androidChannelMask = format.channels.toAndroidChannelOutMask()
-        androidEncoding = format.toAndroidEncodingInt()
+        androidEncoding = format.toAndroidEncoding()
 
         if (androidEncoding == AndroidAudioFormat.ENCODING_INVALID)
             error("$format is not supported by the device")

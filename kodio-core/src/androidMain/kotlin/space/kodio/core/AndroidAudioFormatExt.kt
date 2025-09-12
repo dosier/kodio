@@ -1,5 +1,6 @@
 package space.kodio.core
 
+import android.os.Build
 import android.media.AudioFormat as AndroidAudioFormat
 
 /* ---------------- Defaults ---------------- */
@@ -28,35 +29,6 @@ internal fun Channels.toAndroidChannelOutMask(): Int = when (this) {
     Channels.Stereo -> AndroidAudioFormat.CHANNEL_OUT_STEREO
 }
 
-/* ---------------- Encoding mapping ---------------- */
-
-private fun AudioFormat.toAndroidEncoding(): Int = when (val e = encoding) {
-    is SampleEncoding.PcmInt -> when (e.bitDepth) {
-        IntBitDepth.Eight    -> AndroidAudioFormat.ENCODING_PCM_8BIT          // unsigned by Android convention
-        IntBitDepth.Sixteen  -> AndroidAudioFormat.ENCODING_PCM_16BIT         // signed little-endian
-        IntBitDepth.TwentyFour -> {
-            // API 24+: ENCODING_PCM_24BIT_PACKED (3 bytes per sample, little-endian)
-
-            val v = AndroidAudioFormat.ENCODING_PCM_24BIT_PACKED
-            if (v == AndroidAudioFormat.ENCODING_INVALID) {
-                throw AndroidAudioFormatException.UnsupportedBitDepth(e.bitDepth)
-            }
-            v
-        }
-        IntBitDepth.ThirtyTwo -> {
-            // API 21+: ENCODING_PCM_32BIT (signed 32-bit int)
-            val v = AndroidAudioFormat.ENCODING_PCM_32BIT
-            if (v == AndroidAudioFormat.ENCODING_INVALID) {
-                throw AndroidAudioFormatException.UnsupportedBitDepth(e.bitDepth)
-            }
-            v
-        }
-    }
-    is SampleEncoding.PcmFloat -> when (e.precision) {
-        FloatPrecision.F32 -> AndroidAudioFormat.ENCODING_PCM_FLOAT           // IEEE float32
-        FloatPrecision.F64 -> throw AndroidAudioFormatException.UnsupportedCommonEncoding(encoding)
-    }
-}
 
 /* ---------------- From Android -> common ---------------- */
 
@@ -132,12 +104,18 @@ internal fun AudioFormat.toAndroidOutputAudioFormat(): AndroidAudioFormat {
 
 
 /** Map common format -> Android encoding (kept in one place). */
-internal fun AudioFormat.toAndroidEncodingInt(): Int = when (val e = encoding) {
+internal fun AudioFormat.toAndroidEncoding(): Int = when (val e = encoding) {
     is SampleEncoding.PcmInt -> when (e.bitDepth) {
         IntBitDepth.Eight      -> AndroidAudioFormat.ENCODING_PCM_8BIT
         IntBitDepth.Sixteen    -> AndroidAudioFormat.ENCODING_PCM_16BIT
-        IntBitDepth.TwentyFour -> AndroidAudioFormat.ENCODING_PCM_24BIT_PACKED
-        IntBitDepth.ThirtyTwo  -> AndroidAudioFormat.ENCODING_PCM_32BIT
+        IntBitDepth.TwentyFour -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            AndroidAudioFormat.ENCODING_PCM_24BIT_PACKED
+        else
+            throw AndroidAudioFormatException.UnsupportedBitDepth(e.bitDepth)
+        IntBitDepth.ThirtyTwo  -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            AndroidAudioFormat.ENCODING_PCM_32BIT
+        else
+            throw AndroidAudioFormatException.UnsupportedBitDepth(e.bitDepth)
     }
     is SampleEncoding.PcmFloat -> when (e.precision) {
         FloatPrecision.F32 -> AndroidAudioFormat.ENCODING_PCM_FLOAT

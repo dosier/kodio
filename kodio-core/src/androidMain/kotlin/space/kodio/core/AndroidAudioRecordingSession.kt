@@ -25,7 +25,7 @@ class AndroidAudioRecordingSession(
     override suspend fun prepareRecording(): AudioFormat {
         ensureInterleaved(format) // AudioRecord needs interleaved frames
 
-        androidEncoding = format.toAndroidEncodingInt()
+        androidEncoding = format.toAndroidEncoding()
         androidChannelMask = format.channels.toAndroidChannelInMask()
 
         if (androidEncoding == AndroidAudioFormat.ENCODING_INVALID)
