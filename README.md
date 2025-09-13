@@ -16,12 +16,26 @@ suspend fun main() {
    recording.start()
    delay(5000)
    recording.stop()
+   val audioFlow = recording.audioflow.value
+       ?: error("Audio flow should not be null")
    // Playback the recorded audio
    val playback = SystemAudioSystem.createPlaybackSession()
-   playback.play(recording.audioflow.value)
+   playback.load(audioFlow)
+   playback.play()
 }
 ```
+You can also write it to a file (using kotlinx.io)
+```Kotlin
+ audioFlow.writeToFile(
+     format = AudioFileFormat.Wav,
+     path = Path("test.wav")
+ )
+```
+
 ## Setup
+
+It is best to fork/clone the repo and build it locally at this point in development. 
+But releases are also published to Maven Central semi-frequently.
 
 ### Gradle
 ```Kotlin
@@ -63,6 +77,9 @@ dependencies {
 
 #### JVM
 No special setup is required. The library should work out of the box on any system with available audio input and output devices.
+
+#### MacOs (Experimental)
+**TODO** (not sure if additional setup is required).
 
 ## Credits
 This project is inspired by https://github.com/theolm/kmp-record
