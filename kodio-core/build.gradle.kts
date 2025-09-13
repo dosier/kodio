@@ -96,6 +96,7 @@ android {
 
 val nativeLibsDir = "space/kodio/core/natives"
 val nativePermissionsProject = project(":kodio-native:audio-permissions")
+val nativeProcessingProject = project(":kodio-native:audio-processing")
 tasks.named<Copy>("jvmProcessResources") {
     // Make sure the native libraries are built before this task runs
     dependsOn(
@@ -103,19 +104,33 @@ tasks.named<Copy>("jvmProcessResources") {
         nativePermissionsProject.tasks.named("macosArm64Binaries"),
         nativePermissionsProject.tasks.named("mingwX64Binaries"),
     )
-    fun target(name: String) =
-        nativePermissionsProject.layout.buildDirectory.dir("bin/$name/audiopermissionsReleaseShared")
-    from(target("macosArm64")) {
+    fun permissions(target: String) =
+        nativePermissionsProject.layout.buildDirectory.dir("bin/$target/audiopermissionsReleaseShared")
+    from(permissions("macosArm64")) {
         include("libaudiopermissions.dylib")
         into("$nativeLibsDir/macos-aarch64")
     }
-    from(target("macosX64")) {
+    from(permissions("macosX64")) {
         include("libaudiopermissions.dylib")
         into("$nativeLibsDir/macos-x86-64")
     }
-    from(target("mingwX64")) {
+    from(permissions("mingwX64")) {
         include("audiopermissions.dll")
         into("$nativeLibsDir/windows-x86-64")
+    }
+    dependsOn(
+        nativeProcessingProject.tasks.named("macosX64Binaries"),
+        nativeProcessingProject.tasks.named("macosArm64Binaries"),
+    )
+    fun processing(target: String) =
+        nativeProcessingProject.layout.buildDirectory.dir("bin/$target/audioprocessingReleaseShared")
+    from(processing("macosArm64")) {
+        include("libaudioprocessing.dylib")
+        into("$nativeLibsDir/macos-aarch64")
+    }
+    from(processing("macosX64")) {
+        include("libaudioprocessing.dylib")
+        into("$nativeLibsDir/macos-x86-64")
     }
 }
 
