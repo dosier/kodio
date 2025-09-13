@@ -2,6 +2,7 @@ package space.kodio.core
 
 import kotlinx.cinterop.*
 import platform.CoreAudio.*
+import platform.CoreAudioTypes.AudioBufferList
 import platform.CoreAudioTypes.AudioStreamBasicDescription
 import platform.CoreFoundation.CFStringRefVar
 
@@ -13,13 +14,33 @@ sealed class MacosAudioObject(
 
     sealed class Device(id: AudioDeviceID, scope: AudioObjectPropertyScope) : MacosAudioObject(id = id, scope = scope) {
 
-
         val uid by lazy { getDeviceCFString(selector = kAudioDevicePropertyDeviceUID) }
         val name by lazy { getDeviceCFString(selector = kAudioDevicePropertyDeviceNameCFString) }
+        val channelCount by lazy { countChannels() }
 
         fun getDeviceStreams(): List<Stream> =
             enumerateIds(kAudioDevicePropertyStreams)
                 .map(::Stream)
+
+        private fun countChannels(): Int = memScoped {
+            getStreamConfiguration().let {
+                var channels = 0
+                for (i in 0 until it.mNumberBuffers.toInt())
+                    channels += it.mBuffers[i].mNumberChannels.toInt()
+                channels
+            }
+        }
+
+        private fun MemScope.getStreamConfiguration(): AudioBufferList {
+            val address: AudioObjectPropertyAddress = allocPropertyAddress(
+                selector = kAudioDevicePropertyStreamConfiguration,
+                element = kAudioObjectPropertyElementMain
+            )
+            val size: UIntVar = allocAndGetPropertyDataSize(address)
+            val raw = allocArray<ByteVar>(size.value.toInt())
+            getPropertyData(address, size, raw)
+            return raw.reinterpret<AudioBufferList>().pointed
+        }
     }
 
     class Input(id: AudioDeviceID) : Device(id = id, scope = kAudioObjectPropertyScopeInput)

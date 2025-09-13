@@ -47,28 +47,38 @@ internal fun enumerateDevices(scope: AudioObjectPropertyScope): List<CoreAudioDe
     // 2) For each device, check if it has at least one channel in the requested scope
     val result = mutableListOf<CoreAudioDevice>()
     for (deviceId in devices) {
-        val device = when(scope) {
+        val device = when (scope) {
             kAudioObjectPropertyScopeInput -> MacosAudioObject.Input(deviceId)
             kAudioObjectPropertyScopeOutput -> MacosAudioObject.Output(deviceId)
             else -> error("Unsupported scope $scope")
         }
 
-        val channelCount = deviceTotalChannels(deviceId, scope)
-        if (channelCount <= 0) continue
-
-        val uid = device.uid ?: error("Could not get device UID")
-        val name = device.name ?: "Device $deviceId"
-        val audioFormatSupport = device.getDeviceStreams()
-            .flatMap { stream ->
-                with(stream) {
-                    getAvailableVirtualFormats()
-                        .mapNotNull { toCommonAudioFormat(it.mFormat) }
+        runCatching {
+            val channelCount = deviceTotalChannels(deviceId, scope)
+            if (channelCount <= 0)
+                return@runCatching null
+            val uid = device.uid ?: error("Could not get device UID")
+            val name = device.name ?: "Device $deviceId"
+            val audioFormatSupport = device.getDeviceStreams()
+                .flatMap { stream ->
+                    with(stream) {
+                        getAvailableVirtualFormats()
+                            .mapNotNull { toCommonAudioFormat(it.mFormat) }
+                    }
                 }
+                .takeIf { it.isNotEmpty() }
+                ?.let { AudioFormatSupport.Known(it, it.first()) }
+                ?: AudioFormatSupport.Unknown
+            CoreAudioDevice(deviceId, uid, name, audioFormatSupport)
+        }.onFailure { error ->
+            println("Failed to enumerate device $deviceId: $error")
+            error.printStackTrace()
+        }.onSuccess { coreAudioDevice ->
+            if (coreAudioDevice != null) {
+                println("Enumerated device $deviceId: $coreAudioDevice")
+                result += coreAudioDevice
             }
-            .takeIf { it.isNotEmpty() }
-            ?.let { AudioFormatSupport.Known(it, it.first()) }
-            ?: AudioFormatSupport.Unknown
-        result += CoreAudioDevice(deviceId, uid, name, audioFormatSupport)
+        }
     }
     result
 }
