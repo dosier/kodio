@@ -105,6 +105,8 @@ kotlin {
     sourceSets {
         val desktopMain by getting
         val nonMacosMain by getting
+        val nonWebMacosMain by getting
+        val webMain by getting
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
@@ -121,7 +123,11 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtimeCompose)
         }
-        nonMacosMain.dependencies {
+        nonWebMacosMain.dependencies {
+            implementation(libs.filekit.core)
+            implementation(libs.filekit.dialogs.compose)
+        }
+        webMain.dependencies {
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }

@@ -17,7 +17,6 @@ actual suspend fun saveWavFile(audioDataFlow: AudioFlow) {
         return
     val sink = file.sink(append = false).buffered()
     sink.use {
-
         audioDataFlow.writeToSink(AudioFileFormat.Wav, it)
     }
 }
