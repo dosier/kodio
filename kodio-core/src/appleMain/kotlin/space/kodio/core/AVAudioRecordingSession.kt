@@ -7,12 +7,12 @@ import platform.AVFAudio.AVAudioEngine
 import space.kodio.core.io.convert
 import space.kodio.core.io.toByteArray
 
-abstract class AppleAudioRecordingSession(
+abstract class AVAudioRecordingSession(
     private val format: AudioFormat = DefaultAppleRecordingAudioFormat
 ) : BaseAudioRecordingSession() {
 
     private val audioEngine = AVAudioEngine()
-    private val targetIosAudioFormat get() = format.toAppleAudioFormat()
+    private val targetIosAudioFormat get() = format.toAVAudioFormat()
 
     private lateinit var converter: AVAudioConverter
 
@@ -44,7 +44,7 @@ abstract class AppleAudioRecordingSession(
         runErrorCatching {
             audioEngine.startAndReturnError(it)
         }.onFailure {
-            throw AppleAudioEngineException.FailedToStart(it.message ?: "Unknown error")
+            throw AVAudioEngineException.FailedToStart(it.message ?: "Unknown error")
         }
     }
 

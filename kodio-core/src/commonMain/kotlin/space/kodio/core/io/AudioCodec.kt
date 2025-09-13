@@ -63,22 +63,49 @@ private fun decodePcmInt(
 
 /* -------------------- PCM-FLOAT -------------------- */
 
+//private fun decodePcmFloat(
+//    buffer: Buffer,
+//    out: Array<BigDecimal>,
+//    enc: PcmFloat
+//) {
+//    for (i in out.indices) {
+//        val v: Double = when (enc.precision) {
+//            FloatPrecision.F32 -> buffer.readF32(enc.layoutEndianness()).toDouble()
+//            FloatPrecision.F64 -> buffer.readF64(enc.layoutEndianness())
+//        }
+//        // Most CoreAudio float streams are already in [-1, 1], but clamp just in case.
+//        val clamped = v.coerceIn(-1.0, 1.0)
+//        try {
+//            out[i] = clamped.toBigDecimal()
+//        } catch (e: NumberFormatException) {
+//            e.printStackTrace()
+//            println("out[$i]: sample $v could not be converted to big decimal ($clamped)")
+//        }
+//    }
+//}
+// Inside decodePcmFloat
 private fun decodePcmFloat(
     buffer: Buffer,
     out: Array<BigDecimal>,
     enc: PcmFloat
 ) {
     for (i in out.indices) {
-        val v: Double = when (enc.precision) {
-            FloatPrecision.F32 -> buffer.readF32(enc.layoutEndianness()).toDouble()
-            FloatPrecision.F64 -> buffer.readF64(enc.layoutEndianness())
+        // Read the raw bits first for inspection
+        val bits = when (enc.precision) {
+            FloatPrecision.F32 -> buffer.readInt32LE()
+            FloatPrecision.F64 -> buffer.readInt64LE().toInt() // Note: simplification for logging
         }
-        // Most CoreAudio float streams are already in [-1, 1], but clamp just in case.
-        val clamped = v.coerceIn(-1.0, 1.0)
-        out[i] = clamped.toBigDecimal()
+        val v = Float.fromBits(bits)
+
+        if (v.isNaN()) {
+            println("Found NaN at index $i! Raw bits (hex): ${bits.toUInt().toString(16)}")
+            out[i] = BigDecimal.ZERO // or some other placeholder
+        } else {
+            // Clamping is good practice
+            out[i] = v.coerceIn(-1.0f, 1.0f).toBigDecimal()
+        }
     }
 }
-
 /* -------------------- Helpers -------------------- */
 
 /**

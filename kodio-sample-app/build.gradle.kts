@@ -26,10 +26,17 @@ kotlin {
     }
     applyDefaultHierarchyTemplate {
         common {
-            group("nonWeb") {
+            group("nonWebMacos") {
                 withAndroidTarget()
-                withApple()
+                withIos()
                 withJvm()
+            }
+            group("nonMacos") {
+                withAndroidTarget()
+                withJvm()
+                withIos()
+                withJs()
+                withWasmJs()
             }
             group("web") {
                 withJs()
@@ -45,6 +52,15 @@ kotlin {
         iosTarget.binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+        }
+    }
+
+    listOf(
+        macosX64(),
+        macosArm64()
+    ).forEach { macosTarget ->
+        macosTarget.binaries.executable {
+            entryPoint = "main"
         }
     }
     
@@ -85,10 +101,10 @@ kotlin {
         }
         binaries.executable()
     }
-    
+
     sourceSets {
         val desktopMain by getting
-        
+        val nonMacosMain by getting
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
@@ -104,6 +120,8 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+        }
+        nonMacosMain.dependencies {
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }

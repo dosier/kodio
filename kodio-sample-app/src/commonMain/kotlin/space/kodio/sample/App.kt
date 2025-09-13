@@ -35,12 +35,8 @@ fun App() {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                item {
-                    RecordAudioButton(state)
-                }
-                item {
-                    HorizontalDivider()
-                }
+                item { RecordAudioButton(state) }
+                item { HorizontalDivider() }
                 items(recordings) { audioFrames ->
                     ListItem(
                         headlineContent =  {

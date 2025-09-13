@@ -17,10 +17,10 @@ internal fun <T> runErrorCatching(block: (CPointer<ObjCObjectVar<NSError?>>) -> 
         val result = block(errorVar.ptr)
         val errorValue = errorVar.value
         return if (errorValue != null)
-            Result.failure(IosException(errorValue))
+            Result.failure(NSException(errorValue))
         else
             Result.success(result)
     }
 }
 
-internal class IosException(error: NSError) : Exception(error.localizedDescription)
+internal class NSException(error: NSError) : Exception(error.localizedDescription)

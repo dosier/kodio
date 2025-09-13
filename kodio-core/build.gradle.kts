@@ -27,7 +27,14 @@ kotlin {
     iosX64()
     iosArm64()
     iosSimulatorArm64()
-
+    listOf(
+        macosX64(),
+        macosArm64()
+    ).forEach { macosTarget ->
+        macosTarget.binaries.executable {
+            entryPoint = "main"
+        }
+    }
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
     applyDefaultHierarchyTemplate {
         common {
@@ -46,6 +53,7 @@ kotlin {
             freeCompilerArgs.add("-Xwasm-attach-js-exception")
         }
     }
+
     sourceSets {
         commonMain {
             dependencies {

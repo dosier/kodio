@@ -9,7 +9,7 @@ import platform.AVFAudio.AVAudioMixerNode
 import platform.AVFAudio.AVAudioPlayerNode
 import space.kodio.core.io.toIosAudioBuffer
 
-abstract class AppleAudioPlaybackSession() : BaseAudioPlaybackSession() {
+abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
     
     private val engine = AVAudioEngine()
     private val mixer = AVAudioMixerNode()
@@ -25,7 +25,7 @@ abstract class AppleAudioPlaybackSession() : BaseAudioPlaybackSession() {
     @OptIn(ExperimentalForeignApi::class)
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
 
-        engine.connect(player, mixer, format.toAppleAudioFormat())
+        engine.connect(player, mixer, format.toAVAudioFormat())
         engine.connect(player, engine.mainMixerNode, null)
 
         configureAudioSession()
@@ -33,14 +33,14 @@ abstract class AppleAudioPlaybackSession() : BaseAudioPlaybackSession() {
         runErrorCatching { errorVar ->
             engine.startAndReturnError(errorVar) // TODO: catch error
         }.onFailure {
-            throw AppleAudioEngineException.FailedToStart(it.message ?: "Unknown error")
+            throw AVAudioEngineException.FailedToStart(it.message ?: "Unknown error")
         }
         return format
     }
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {
         player.play()
-        val iosAudioFormat = audioFlow.format.toAppleAudioFormat()
+        val iosAudioFormat = audioFlow.format.toAVAudioFormat()
         val lastCompletable = audioFlow.map { bytes ->
             val iosAudioBuffer = bytes.toIosAudioBuffer(iosAudioFormat)
             val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()

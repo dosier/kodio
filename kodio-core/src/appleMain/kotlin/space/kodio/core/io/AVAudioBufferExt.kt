@@ -21,15 +21,15 @@ import platform.posix.memcpy
 @OptIn(ExperimentalForeignApi::class)
 internal fun ByteArray.toIosAudioBuffer(isoAudioFormat: AVAudioFormat): AVAudioPCMBuffer {
     val streamDescription = isoAudioFormat.streamDescription?.pointed
-        ?: throw AppleAudioBufferException.MissingStreamDescription()
+        ?: throw AVAudioBufferException.MissingStreamDescription()
     if (streamDescription.mBytesPerFrame <= 0u)
-        throw AppleAudioBufferException.InvalidStreamDescription(streamDescription)
+        throw AVAudioBufferException.InvalidStreamDescription(streamDescription)
     val buffer = AVAudioPCMBuffer(
         pCMFormat = isoAudioFormat,
         frameCapacity = size.toUInt() / streamDescription.mBytesPerFrame
     )
     val audioBufferList = buffer.audioBufferList?.pointed
-        ?: throw AppleAudioBufferException.MissingAudioBufferList()
+        ?: throw AVAudioBufferException.MissingAudioBufferList()
     buffer.frameLength = buffer.frameCapacity
     usePinned { pinned ->
         memcpy(audioBufferList.mBuffers.pointed.mData, pinned.addressOf(0), size.toULong())

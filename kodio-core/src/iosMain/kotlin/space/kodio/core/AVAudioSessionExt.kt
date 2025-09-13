@@ -20,7 +20,7 @@ internal fun AVAudioSession.configureCategoryRecord() {
             error = errorPtr
         )
     }.onFailure {
-        throw AppleAudioSessionException.FailedToSetCategory(it.message ?: "Unknown error")
+        throw AVAudioSessionException.FailedToSetCategory(it.message ?: "Unknown error")
     }
 }
 
@@ -33,7 +33,7 @@ internal fun AVAudioSession.configureCategoryPlayback() {
             error = errorPtr
         )
     }.onFailure {
-        throw AppleAudioSessionException.FailedToSetCategory(it.message ?: "Unknown error")
+        throw AVAudioSessionException.FailedToSetCategory(it.message ?: "Unknown error")
     }
 }
 
@@ -42,7 +42,7 @@ internal fun AVAudioSession.activate() {
     runErrorCatching { errorPtr ->
         setActive(true, error = errorPtr)
     }.onFailure {
-        throw AppleAudioSessionException.FailedToActivate(it.message ?: "Unknown error")
+        throw AVAudioSessionException.FailedToActivate(it.message ?: "Unknown error")
     }
 }
 
@@ -56,8 +56,8 @@ internal fun AVAudioSession.setPreferredInput(device: AudioDevice.Input) {
         runErrorCatching { errorVar ->
             setPreferredInput(portDescription, error = errorVar)
         }.onFailure {
-            throw AppleAudioSessionException.FailedToSetPreferredInput(device, it.message ?: "Unknown error")
+            throw AVAudioSessionException.FailedToSetPreferredInput(device, it.message ?: "Unknown error")
         }
     } else
-        throw AppleAudioSessionException.InputNotFound(device)
+        throw AVAudioSessionException.InputNotFound(device)
 }
