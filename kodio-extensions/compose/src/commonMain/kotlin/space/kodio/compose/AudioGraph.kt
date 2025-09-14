@@ -69,7 +69,7 @@ internal fun AudioFlow.collectAsRunningAmplitudeList(): List<Double> {
         map { rawAudioDateFrame ->
             decode(rawAudioDateFrame, format)
         }.collect { samples ->
-            val average = samples.map { value -> value.doubleValue(false) }.maxOrNull()?:0.0
+            val average = samples.maxOfOrNull { it.doubleValue(false) } ?:0.0
             amplitudes = amplitudes.plus(average).takeLast(100)
         }
     }
