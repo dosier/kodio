@@ -59,7 +59,7 @@ kotlin {
             dependencies {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.io)
-                implementation(libs.bignum)
+                api(libs.bignum)
             }
         }
         commonTest {
@@ -97,6 +97,7 @@ android {
 val nativeLibsDir = "space/kodio/core/natives"
 val nativePermissionsProject = project(":kodio-native:audio-permissions")
 val nativeProcessingProject = project(":kodio-native:audio-processing")
+
 tasks.named<Copy>("jvmProcessResources") {
     // Make sure the native libraries are built before this task runs
     dependsOn(
