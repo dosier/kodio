@@ -3,11 +3,11 @@ agp = "8.7.3"
 android-compileSdk = "35"
 android-minSdk = "24"
 android-targetSdk = "35"
-androidx-activity = "1.10.1"
-androidx-core = "1.16.0"
-androidx-lifecycle = "2.9.1"
+androidx-activity = "1.11.0"
+androidx-core = "1.17.0"
+androidx-lifecycle = "2.9.4"
 composeHotReload = "1.0.0-beta04"
-composeMultiplatform = "1.8.2"
+composeMultiplatform = "1.9.0"
 filekitCore = "0.10.0-beta04"
 filekitDialogsCompose = "0.10.0-beta04"
 junit = "4.13.2"
@@ -16,6 +16,7 @@ kotlinBrowser = "2025.7.5"
 kotlinx-coroutines = "1.10.2"
 kotlinx-io = "0.8.0"
 kotlinxBenchmarkRuntime = "0.4.14"
+ktor3 = "3.2.3"
 material-icons = "1.7.3"
 
 [libraries]
@@ -35,6 +36,8 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 bignum = { module = "com.ionspin.kotlin:bignum", version = "0.3.10" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor3" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor3" }
 material-icons = { module = "org.jetbrains.compose.material:material-icons-core", version.ref="material-icons" }
 
 [plugins]
