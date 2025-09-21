@@ -17,7 +17,7 @@ sealed interface AudioDevice {
     /**
      * Represents an audio input device (e.g., a microphone).
      */
-    class Input(
+    data class Input(
         override val id: String,
         override val name: String,
         override val formatSupport: AudioFormatSupport
@@ -26,7 +26,7 @@ sealed interface AudioDevice {
     /**
      * Represents an audio output device (e.g., speakers).
      */
-    class Output(
+    data class Output(
         override val id: String,
         override val name: String,
         override val formatSupport: AudioFormatSupport
