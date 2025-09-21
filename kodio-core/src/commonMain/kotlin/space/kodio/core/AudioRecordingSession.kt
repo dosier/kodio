@@ -26,7 +26,7 @@ interface AudioRecordingSession {
      */
     sealed class State {
         data object Idle : State()
-        class Recording(val flow: AudioFlow) : State()
+        data object Recording : State()
         data object Stopped : State()
         data class Error(val error: Throwable) : State()
     }

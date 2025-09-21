@@ -46,7 +46,7 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             // 2. The publicly exposed flow is now the hot one.
             val flow = AudioFlow(format, hotSource.asSharedFlow())
             _audioFlow.value = flow
-            _state.value = State.Recording(flow)
+            _state.value = State.Recording
 
             // 3. Launch a job to collect audio from the platform-specific implementation.
             recordingJob = scope.launch {
