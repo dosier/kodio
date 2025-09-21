@@ -1,6 +1,7 @@
 package space.kodio.core.io
 
 import kotlinx.io.Buffer
+import kotlinx.io.readByteArray
 import space.kodio.core.AudioFormat
 import space.kodio.core.Channels
 import space.kodio.core.Endianness
@@ -11,6 +12,18 @@ import space.kodio.core.SampleLayout
 
 private const val PCM_FLOAT_ENCODING_FLAG = 1.toByte()
 private const val PCM_INT_ENCODING_FLAG = 2.toByte()
+
+fun AudioFormat.encodeToByteArray(): ByteArray {
+    val buffer = Buffer()
+    buffer.writeAudioFormat(this)
+    return buffer.readByteArray()
+}
+
+fun ByteArray.decodeAsAudioFormat(): AudioFormat {
+    val buffer = Buffer()
+    buffer.write(this)
+    return buffer.readAudioFormat()
+}
 
 fun Buffer.writeAudioFormat(audioFormat: AudioFormat) {
     writeInt(audioFormat.sampleRate)

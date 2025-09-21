@@ -7,7 +7,7 @@ import space.kodio.core.AudioDevice
 private const val INPUT_AUDIO_DEVICE_FLAG = 1.toByte()
 private const val OUTPUT_AUDIO_DEVICE_FLAG = 2.toByte()
 
-fun AudioDevice.encodeAsByteArray(): ByteArray {
+fun AudioDevice.encodeToByteArray(): ByteArray {
     val buffer = Buffer()
     buffer.writeAudioDevice(this)
     return buffer.readByteArray()
