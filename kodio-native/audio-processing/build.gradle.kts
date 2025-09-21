@@ -22,4 +22,12 @@ kotlin {
             }
         }
     }
+
+    sourceSets {
+        macosMain {
+            dependencies {
+                implementation(project(":kodio-core"))
+            }
+        }
+    }
 }

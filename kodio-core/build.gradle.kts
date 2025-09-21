@@ -101,9 +101,13 @@ val nativeProcessingProject = project(":kodio-native:audio-processing")
 tasks.named<Copy>("jvmProcessResources") {
     // Make sure the native libraries are built before this task runs
     dependsOn(
+        // Permissions
         nativePermissionsProject.tasks.named("macosX64Binaries"),
         nativePermissionsProject.tasks.named("macosArm64Binaries"),
         nativePermissionsProject.tasks.named("mingwX64Binaries"),
+        // Processing
+        nativeProcessingProject.tasks.named("macosX64Binaries"),
+        nativeProcessingProject.tasks.named("macosArm64Binaries"),
     )
     fun permissions(target: String) =
         nativePermissionsProject.layout.buildDirectory.dir("bin/$target/audiopermissionsReleaseShared")
@@ -119,10 +123,6 @@ tasks.named<Copy>("jvmProcessResources") {
         include("audiopermissions.dll")
         into("$nativeLibsDir/windows-x86-64")
     }
-    dependsOn(
-        nativeProcessingProject.tasks.named("macosX64Binaries"),
-        nativeProcessingProject.tasks.named("macosArm64Binaries"),
-    )
     fun processing(target: String) =
         nativeProcessingProject.layout.buildDirectory.dir("bin/$target/audioprocessingReleaseShared")
     from(processing("macosArm64")) {
