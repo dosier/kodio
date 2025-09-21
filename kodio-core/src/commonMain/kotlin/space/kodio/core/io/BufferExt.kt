@@ -1,15 +1,7 @@
 package space.kodio.core.io
 
+import kotlinx.io.*
 import space.kodio.core.Endianness
-import kotlinx.io.Buffer
-import kotlinx.io.readIntLe
-import kotlinx.io.readLongLe
-import kotlinx.io.readShortLe
-import kotlinx.io.readString
-import kotlinx.io.writeIntLe
-import kotlinx.io.writeLongLe
-import kotlinx.io.writeShortLe
-import kotlinx.io.writeString
 
 fun Buffer.writeLong(endianness: Endianness, long: Long) = when (endianness) {
     Endianness.Little -> writeLongLe(long)
@@ -39,10 +31,12 @@ fun Buffer.readInt(endianness: Endianness) = when (endianness) {
 }
 
 fun Buffer.writeUtf8(string: String) {
-    writeInt(string.length)
-    writeString(string)
+    val bytes = string.encodeToByteArray()
+    writeInt(bytes.size)
+    write(bytes)
 }
 fun Buffer.readUtf8(): String {
     val length = readInt()
-    return readString(length.toLong())
+    val bytes = readByteArray(length)
+    return bytes.decodeToString()
 }
