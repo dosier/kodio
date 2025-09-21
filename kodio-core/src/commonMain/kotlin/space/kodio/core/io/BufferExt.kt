@@ -5,9 +5,11 @@ import kotlinx.io.Buffer
 import kotlinx.io.readIntLe
 import kotlinx.io.readLongLe
 import kotlinx.io.readShortLe
+import kotlinx.io.readString
 import kotlinx.io.writeIntLe
 import kotlinx.io.writeLongLe
 import kotlinx.io.writeShortLe
+import kotlinx.io.writeString
 
 fun Buffer.writeLong(endianness: Endianness, long: Long) = when (endianness) {
     Endianness.Little -> writeLongLe(long)
@@ -34,4 +36,13 @@ fun Buffer.writeInt(endianness: Endianness, int: Int) = when (endianness) {
 fun Buffer.readInt(endianness: Endianness) = when (endianness) {
     Endianness.Little -> readIntLe()
     Endianness.Big -> readInt()
+}
+
+fun Buffer.writeUtf8(string: String) {
+    writeInt(string.length)
+    writeString(string)
+}
+fun Buffer.readUtf8(): String {
+    val length = readInt()
+    return readString(length.toLong())
 }
