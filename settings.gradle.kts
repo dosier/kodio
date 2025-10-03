@@ -34,7 +34,7 @@ plugins {
 }
 
 
-include(":kodio-benchmark")
+//include(":kodio-benchmark")
 include(":kodio-core")
 include(":kodio-extensions:compose")
 include(":kodio-extensions:compose-material3")
