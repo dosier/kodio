@@ -82,7 +82,7 @@ fun App() {
 }
 
 /**
- * Screen to input the Deepgram API key.
+ * Screen to input the OpenAI API key.
  */
 @Composable
 private fun ApiKeyInputScreen(
@@ -98,15 +98,15 @@ private fun ApiKeyInputScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            "Deepgram API Key Required",
+            "OpenAI API Key Required",
             style = MaterialTheme.typography.headlineSmall
         )
         
         Spacer(Modifier.height(8.dp))
         
         Text(
-            "Enter your Deepgram API key to enable real-time transcription.\n" +
-            "Get a free key at deepgram.com",
+            "Enter your OpenAI API key to enable transcription.\n" +
+            "Get a key at platform.openai.com",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

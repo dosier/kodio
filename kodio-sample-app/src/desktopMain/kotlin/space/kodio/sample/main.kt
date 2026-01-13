@@ -19,7 +19,7 @@ fun main() {
             onCloseRequest = ::exitApplication,
             title = "KodioApp",
         ) {
-            WaveformShowcase()
+            App()
         }
     }
 }

@@ -27,7 +27,7 @@ import space.kodio.core.Kodio
 import space.kodio.core.Recorder
 import space.kodio.core.security.AudioPermissionManager
 import space.kodio.transcription.*
-import space.kodio.transcription.cloud.DeepgramEngine
+import space.kodio.transcription.cloud.OpenAIWhisperEngine
 
 /**
  * Demonstrates real-time transcription using Kodio's transcription extension.
@@ -51,8 +51,8 @@ fun TranscriptionShowcase(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     
-    // Create the transcription engine
-    val engine = remember { DeepgramEngine(apiKey) }
+    // Create the transcription engine (OpenAI Whisper - processes in chunks)
+    val engine = remember { OpenAIWhisperEngine(apiKey = apiKey, chunkDurationSeconds = 5) }
     
     // Recorder reference for transcription
     var recorder by remember { mutableStateOf<Recorder?>(null) }
@@ -94,7 +94,7 @@ fun TranscriptionShowcase(
         )
         
         Text(
-            "Powered by Deepgram + Kodio",
+            "Powered by OpenAI Whisper + Kodio",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
