@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import io.github.oshai.kotlinlogging.KotlinLogging
 import space.kodio.core.*
 import space.kodio.core.security.AudioPermissionManager
+import kotlin.math.sqrt
 
 private val logger = KotlinLogging.logger("RecorderState")
 
@@ -62,6 +63,7 @@ class RecorderState internal constructor(
     private val scope: CoroutineScope,
     private val quality: AudioQuality,
     private val device: AudioDevice.Input?,
+    private val liveWaveformGain: Float,
     private val getOnRecordingComplete: () -> ((AudioRecording) -> Unit)?
 ) {
     private var _recorder: Recorder? = null
@@ -381,13 +383,14 @@ class RecorderState internal constructor(
                 var nonZeroChunks = 0
                 audioFlow.collect { chunk ->
                     chunkCount++
-                    val amplitude = calculateAmplitude(chunk, format)
+                    val rawAmplitude = calculateAmplitude(chunk, format)
+                    val amplitude = mapLiveWaveformAmplitude(rawAmplitude)
                     val hasNonZero = chunk.any { it != 0.toByte() }
                     if (hasNonZero) nonZeroChunks++
                     
                     if (chunkCount <= 5 || (chunkCount % 20 == 0)) {
                         val nonZeroCount = chunk.count { it != 0.toByte() }
-                        logger.debug { "Chunk #$chunkCount: size=${chunk.size}, amplitude=$amplitude, nonZeroBytes=$nonZeroCount/${chunk.size}, firstBytes=${chunk.take(16).map { it.toInt() and 0xFF }}" }
+                        logger.debug { "Chunk #$chunkCount: size=${chunk.size}, rawAmplitude=$rawAmplitude, displayAmplitude=$amplitude, nonZeroBytes=$nonZeroCount/${chunk.size}, firstBytes=${chunk.take(16).map { it.toInt() and 0xFF }}" }
                     }
                     _liveAmplitudes.value = (_liveAmplitudes.value + amplitude).takeLast(100)
                 }
@@ -397,6 +400,19 @@ class RecorderState internal constructor(
                 logger.debug { "Amplitude collection ended: ${e.message}" }
             }
         }
+    }
+
+    /**
+     * Map a raw RMS amplitude (0..1-ish) to a more visually useful value for live waveform rendering.
+     *
+     * We apply a sqrt "perceptual" curve to make low signals more visible, then apply a gain,
+     * and finally clamp into [0, 1] (the expected range for [AudioWaveform]).
+     */
+    private fun mapLiveWaveformAmplitude(raw: Float): Float {
+        val safe = raw.coerceAtLeast(0f)
+        val curved = sqrt(safe.toDouble()).toFloat()
+        val gained = curved * liveWaveformGain.coerceAtLeast(0f)
+        return gained.coerceIn(0f, 1f)
     }
 
     private fun calculateAmplitude(chunk: ByteArray, format: AudioFormat): Float {
@@ -469,6 +485,7 @@ class RecorderState internal constructor(
 fun rememberRecorderState(
     quality: AudioQuality = AudioQuality.Default,
     device: AudioDevice.Input? = null,
+    liveWaveformGain: Float = 4f,
     onRecordingComplete: ((AudioRecording) -> Unit)? = null
 ): RecorderState {
     val scope = rememberCoroutineScope()
@@ -481,6 +498,7 @@ fun rememberRecorderState(
             scope = scope,
             quality = quality,
             device = device,
+            liveWaveformGain = liveWaveformGain,
             getOnRecordingComplete = { currentCallback }
         )
     }
