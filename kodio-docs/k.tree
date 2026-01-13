@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE instance-profile SYSTEM "https://resources.jetbrains.com/writerside/1.0/product-profile.dtd">
+<instance-profile id="k"
+                  name="Kodio"
+                  start-page="Getting-Started.md">
+
+    <toc-element topic="Getting-Started.md"/>
+    <toc-element topic="Quick-Start.md"/>
+    <toc-element topic="Installation.md"/>
+    <toc-element topic="Platform-Setup.md"/>
+    
+    <toc-element toc-title="Core">
+        <toc-element topic="Recording.md"/>
+        <toc-element topic="Playback.md"/>
+        <toc-element topic="Audio-Quality.md"/>
+        <toc-element topic="Audio-Format.md"/>
+        <toc-element topic="Error-Handling.md"/>
+    </toc-element>
+    
+    <toc-element toc-title="Compose">
+        <toc-element topic="Recorder-State.md"/>
+        <toc-element topic="Player-State.md"/>
+        <toc-element topic="Audio-Waveform.md"/>
+        <toc-element topic="Material3-Components.md"/>
+    </toc-element>
+    
+    <toc-element toc-title="Advanced">
+        <toc-element topic="Low-Level-API.md"/>
+        <toc-element topic="Device-Selection.md"/>
+        <toc-element topic="Custom-Formats.md"/>
+    </toc-element>
+    
+    <toc-element topic="Migration.md"/>
+    <toc-element topic="API-Reference.md"/>
+</instance-profile>

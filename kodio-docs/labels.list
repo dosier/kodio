@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE labels SYSTEM "https://resources.jetbrains.com/writerside/1.0/labels-list.dtd">
+<labels xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://resources.jetbrains.com/writerside/1.0/labels.xsd">
+    
+    <!-- Primary Labels -->
+    <primary-label id="core" short-name="Core" name="Core Module" color="blue">
+        Part of the kodio-core module
+    </primary-label>
+    
+    <primary-label id="compose" short-name="Compose" name="Compose Module" color="purple">
+        Part of the kodio-compose module
+    </primary-label>
+    
+    <primary-label id="material3" short-name="M3" name="Material 3" color="tangerine">
+        Part of the kodio-compose-material3 module
+    </primary-label>
+    
+    <primary-label id="advanced" short-name="Adv" name="Advanced" color="strawberry">
+        Advanced topic for experienced users
+    </primary-label>
+    
+    <!-- Secondary Labels - Versions -->
+    <secondary-label id="0.0.6" name="0.0.6" color="blue">
+        Available since version 0.0.6
+    </secondary-label>
+    
+    <secondary-label id="0.0.5" name="0.0.5" color="grey">
+        Available since version 0.0.5
+    </secondary-label>
+    
+    <!-- Secondary Labels - Status -->
+    <secondary-label id="beta" name="Beta" color="tangerine">
+        This feature is in beta and may change
+    </secondary-label>
+    
+    <secondary-label id="experimental" name="Experimental" color="purple">
+        This is an experimental feature
+    </secondary-label>
+    
+    <secondary-label id="deprecated" name="Deprecated" color="strawberry">
+        This feature is deprecated
+    </secondary-label>
+    
+    <!-- Secondary Labels - Platform -->
+    <secondary-label id="android" name="Android" color="green">
+        Android-specific information
+    </secondary-label>
+    
+    <secondary-label id="ios" name="iOS" color="grey">
+        iOS-specific information
+    </secondary-label>
+    
+    <secondary-label id="jvm" name="JVM" color="blue">
+        JVM/Desktop-specific information
+    </secondary-label>
+    
+    <secondary-label id="web" name="Web" color="tangerine">
+        Web (JS/Wasm) specific information
+    </secondary-label>
+    
+    <secondary-label id="multiplatform" name="KMP" color="purple">
+        Kotlin Multiplatform
+    </secondary-label>
+    
+</labels>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE rules SYSTEM "https://resources.jetbrains.com/writerside/1.0/rules.dtd">
+<rules>
+    <!-- Add redirects here when pages are renamed or moved -->
+    <!-- Example:
+    <rule id="renamed-page">
+        <description>Old page was renamed</description>
+        <accept path="old-page-name.html"/>
+        <redirect path="new-page-name.html"/>
+    </rule>
+    -->
+</rules>

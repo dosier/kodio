@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE vars SYSTEM "https://resources.jetbrains.com/writerside/1.0/vars.dtd">
+<vars>
+    <!-- Version numbers -->
+    <var name="kodio-version" value="0.0.6"/>
+    <var name="kotlin-version" value="2.2.20"/>
+    <var name="compose-version" value="1.9.0"/>
+    <var name="coroutines-version" value="1.10.2"/>
+    
+    <!-- Maven coordinates -->
+    <var name="maven-group" value="space.kodio"/>
+    <var name="core-artifact" value="core"/>
+    <var name="compose-artifact" value="compose"/>
+    <var name="compose-material3-artifact" value="compose-material3"/>
+    
+    <!-- Links -->
+    <var name="github-repo" value="https://github.com/dosier/kodio"/>
+    <var name="maven-central" value="https://central.sonatype.com/artifact/space.kodio/core"/>
+    
+    <!-- Sample rates for documentation -->
+    <var name="voice-sample-rate" value="16000"/>
+    <var name="standard-sample-rate" value="44100"/>
+    <var name="high-sample-rate" value="48000"/>
+    <var name="lossless-sample-rate" value="96000"/>
+</vars>
