@@ -1,10 +1,16 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package space.kodio.core
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.io.Buffer
+import kotlinx.io.readByteArray
 import kotlinx.io.write
+import space.kodio.core.io.collectAsSource
+import space.kodio.core.io.decodeAsAudioPlaybackState
 import space.kodio.core.io.decodeAsAudioRecordingState
 import space.kodio.core.io.decodeAsAudioFormat
 import space.kodio.core.io.encodeToByteArray
@@ -78,8 +84,22 @@ internal object NativeMacosAudioSystem : SystemAudioSystemImpl() {
 
     override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession {
         check(isAvailable) { "Native macOS audio library not available" }
-        // TODO: Implement native playback session
-        throw UnsupportedOperationException("Native macOS playback not yet implemented")
+        return Arena.ofShared().use { arena ->
+            val sessionSeq = if (requestedDevice != null) {
+                val deviceData = requestedDevice.encodeToByteArray()
+                val deviceDataLen = deviceData.size
+                val deviceDataSeq = arena.allocate(deviceDataLen.toLong())
+                sessionSeqWrite(deviceDataSeq, deviceData)
+                NativeMacosLib.macos_create_playback_session_with_device
+                    .invokeExact(deviceDataLen, deviceDataSeq) as MemorySegment
+            } else {
+                NativeMacosLib.macos_create_playback_session_with_default_device
+                    .invokeExact() as MemorySegment
+            }
+            NativeMacosAudioPlaybackSession(
+                nativeMemSeq = sessionSeq,
+            )
+        }
     }
 
     private inline fun <reified T : AudioDevice> listAudioDevice(listDevicesMethod: MethodHandle) =
@@ -267,6 +287,125 @@ private class NativeMacosAudioRecordingSession(
 }
 
 /**
+ * Native macOS playback session implementation using Panama FFI.
+ */
+private class NativeMacosAudioPlaybackSession(
+    private val nativeMemSeq: MemorySegment,
+) : AudioPlaybackSession {
+
+    private val _state = MutableStateFlow<AudioPlaybackSession.State>(AudioPlaybackSession.State.Idle)
+    override val state: StateFlow<AudioPlaybackSession.State> = _state.asStateFlow()
+
+    private val _audioFlowHolder = MutableStateFlow<AudioFlow?>(null)
+    override val audioFlow: StateFlow<AudioFlow?> = _audioFlowHolder.asStateFlow()
+
+    companion object {
+        private val IDX = AtomicLong(1L)
+        private val SESSIONS = ConcurrentHashMap<Long, NativeMacosAudioPlaybackSession>()
+
+        @JvmStatic
+        fun onState(ctx: MemorySegment?, data: MemorySegment?, len: Int) {
+            if (ctx == null || ctx.address() == 0L) return
+            val ctx8 = ctx.reinterpret(java.lang.Long.BYTES.toLong())
+            val id = ctx8.get(ValueLayout.JAVA_LONG, 0)
+
+            val sess = SESSIONS[id] ?: return
+            if (data == null || len <= 0) return
+
+            val dseg = data.reinterpret(len.toLong())
+            val bytes = ByteArray(len)
+            dseg.asByteBuffer().get(bytes)
+
+            sess._state.value = bytes.decodeAsAudioPlaybackState()
+        }
+    }
+
+    private var runtimeArena: Arena? = null
+    private var ctxSeg: MemorySegment? = null
+    private var stateCbStub: MemorySegment? = null
+    private var id: Long = 0L
+    private var loaded = false
+
+    override suspend fun load(audioFlow: AudioFlow) {
+        _audioFlowHolder.value = audioFlow
+        
+        val arena = Arena.ofShared().also { runtimeArena = it }
+        id = IDX.getAndIncrement()
+        SESSIONS[id] = this
+
+        // Encode format
+        val formatData = audioFlow.format.encodeToByteArray()
+        val formatDataSeq = arena.allocate(formatData.size.toLong())
+        formatDataSeq.asSlice(0, formatData.size.toLong()).copyFrom(MemorySegment.ofArray(formatData))
+
+        // Collect all audio data into a single byte array
+        val audioSource = runBlocking { audioFlow.collectAsSource() }
+        val audioData = audioSource.source.readByteArray()
+        val audioDataSeq = arena.allocate(audioData.size.toLong())
+        audioDataSeq.asSlice(0, audioData.size.toLong()).copyFrom(MemorySegment.ofArray(audioData))
+
+        // Call native load
+        NativeMacosLib.macos_playback_session_load.invokeExact(
+            nativeMemSeq,
+            formatData.size,
+            formatDataSeq,
+            audioData.size,
+            audioDataSeq
+        )
+
+        loaded = true
+        _state.value = AudioPlaybackSession.State.Ready
+    }
+
+    override suspend fun play() {
+        if (!loaded) return
+
+        ctxSeg = runtimeArena!!.allocate(ValueLayout.JAVA_LONG).also { it.set(ValueLayout.JAVA_LONG, 0, id) }
+
+        val stateMh = MethodHandles.lookup().findStatic(
+            javaClass, "onState",
+            MethodType.methodType(
+                Void.TYPE,
+                MemorySegment::class.java,
+                MemorySegment::class.java,
+                Int::class.javaPrimitiveType
+            )
+        )
+
+        stateCbStub = NativeMacosLib.linker.upcallStub(stateMh, NativeMacosLib.CB_DESC, runtimeArena!!)
+
+        // Kick off native play; state callbacks will update the state
+        NativeMacosLib.macos_playback_session_play.invokeExact(
+            nativeMemSeq, ctxSeg!!, stateCbStub!!
+        )
+    }
+
+    override fun pause() {
+        NativeMacosLib.macos_playback_session_pause.invokeExact(nativeMemSeq)
+    }
+
+    override fun resume() {
+        NativeMacosLib.macos_playback_session_resume.invokeExact(nativeMemSeq)
+    }
+
+    override fun stop() {
+        NativeMacosLib.macos_playback_session_stop.invokeExact(nativeMemSeq)
+        cleanup()
+    }
+
+    private fun cleanup() {
+        val old = id
+        id = 0L
+        if (old != 0L) SESSIONS.remove(old)
+        runtimeArena?.close()
+        runtimeArena = null
+        ctxSeg = null
+        stateCbStub = null
+        loaded = false
+    }
+}
+
+/**
  * Native library bindings for macOS audio via Panama FFI.
  */
 private object NativeMacosLib {
@@ -283,7 +422,7 @@ private object NativeMacosLib {
         ValueLayout.JAVA_INT // len
     )
 
-    // functions
+    // Recording functions
     val macos_free: MethodHandle
     val macos_create_recording_session_with_device: MethodHandle
     val macos_create_recording_session_with_default_device: MethodHandle
@@ -291,6 +430,18 @@ private object NativeMacosLib {
     val macos_recording_session_stop: MethodHandle
     val macos_recording_session_reset: MethodHandle
     val macos_recording_session_release: MethodHandle
+
+    // Playback functions
+    val macos_create_playback_session_with_device: MethodHandle
+    val macos_create_playback_session_with_default_device: MethodHandle
+    val macos_playback_session_load: MethodHandle
+    val macos_playback_session_play: MethodHandle
+    val macos_playback_session_pause: MethodHandle
+    val macos_playback_session_resume: MethodHandle
+    val macos_playback_session_stop: MethodHandle
+    val macos_playback_session_release: MethodHandle
+
+    // Device functions
     val macos_list_input_devices: MethodHandle
     val macos_list_output_devices: MethodHandle
 
@@ -305,6 +456,7 @@ private object NativeMacosLib {
             ValueLayout.ADDRESS
         )
 
+        // Recording session methods
         macos_create_recording_session_with_device = lookupMethod(
             name = "macos_create_recording_session_with_device",
             res = ValueLayout.ADDRESS,
@@ -337,6 +489,51 @@ private object NativeMacosLib {
             ValueLayout.ADDRESS
         )
 
+        // Playback session methods
+        macos_create_playback_session_with_device = lookupMethod(
+            name = "macos_create_playback_session_with_device",
+            res = ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS
+        )
+        macos_create_playback_session_with_default_device = lookupMethod(
+            name = "macos_create_playback_session_with_default_device",
+            res = ValueLayout.ADDRESS
+        )
+
+        macos_playback_session_load = lookupMethodVoid(
+            name = "macos_playback_session_load",
+            ValueLayout.ADDRESS, // session
+            ValueLayout.JAVA_INT, // formatDataSize
+            ValueLayout.ADDRESS, // formatDataPtr
+            ValueLayout.JAVA_INT, // audioDataSize
+            ValueLayout.ADDRESS  // audioDataPtr
+        )
+
+        macos_playback_session_play = lookupMethodVoid(
+            name = "macos_playback_session_play",
+            ValueLayout.ADDRESS, // session
+            ValueLayout.ADDRESS, // ctx
+            ValueLayout.ADDRESS  // on_state
+        )
+
+        macos_playback_session_pause = lookupMethodVoid(
+            name = "macos_playback_session_pause",
+            ValueLayout.ADDRESS
+        )
+        macos_playback_session_resume = lookupMethodVoid(
+            name = "macos_playback_session_resume",
+            ValueLayout.ADDRESS
+        )
+        macos_playback_session_stop = lookupMethodVoid(
+            name = "macos_playback_session_stop",
+            ValueLayout.ADDRESS
+        )
+        macos_playback_session_release = lookupMethodVoid(
+            name = "macos_playback_session_release",
+            ValueLayout.ADDRESS
+        )
+
+        // Device methods
         macos_list_input_devices = lookupMethod(
             name = "macos_list_input_devices",
             res = ValueLayout.ADDRESS,

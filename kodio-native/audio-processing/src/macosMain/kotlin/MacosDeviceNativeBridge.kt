@@ -6,8 +6,11 @@ import kotlinx.coroutines.*
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import space.kodio.core.AudioDevice
+import space.kodio.core.AudioFlow
+import space.kodio.core.AudioPlaybackSession
 import space.kodio.core.AudioRecordingSession
 import space.kodio.core.SystemAudioSystem
+import space.kodio.core.io.decodeAsAudioFormat
 import space.kodio.core.io.encodeToByteArray
 import space.kodio.core.io.readAudioDevice
 import space.kodio.core.io.writeAudioDevice
@@ -123,10 +126,126 @@ fun macos_recording_session_reset(ptr: COpaquePointer) {
     session.reset()
 }
 
-/** Dispose StableRef when you’re fully done with the session (after stop/reset). */
+/** Dispose StableRef when you're fully done with the session (after stop/reset). */
 @CName("macos_recording_session_release")
 fun macos_recording_session_release(ptr: COpaquePointer) =
     ptr.asStableRef<AudioRecordingSession>().dispose()
+
+// --- Playback -----------------------------------------------------------------
+
+@CName("macos_create_playback_session_with_device")
+fun macos_create_playback_session_with_device(
+    deviceDataSize: Int,
+    deviceDataPtr: CArrayPointer<ByteVar>
+): COpaquePointer {
+    val deviceData = deviceDataPtr.readBytes(deviceDataSize)
+    val buf = Buffer().apply { write(deviceData) }
+    val device = buf.readAudioDevice()
+    if (device !is AudioDevice.Output)
+        error("Can only create a playback session from an output device, got $device.")
+    return createPlaybackSession(device)
+}
+
+@CName("macos_create_playback_session_with_default_device")
+fun macos_create_playback_session_with_default_device(): COpaquePointer =
+    createPlaybackSession(null)
+
+private fun createPlaybackSession(device: AudioDevice.Output?): COpaquePointer {
+    val session = runBlocking { SystemAudioSystem.createPlaybackSession(device) }
+    return StableRef.create(session).asCPointer()
+}
+
+/**
+ * Load audio data into the playback session.
+ *
+ * @param sessionPtr The session pointer
+ * @param formatDataSize Size of the format data
+ * @param formatDataPtr Pointer to encoded AudioFormat bytes
+ * @param audioDataSize Size of the audio data
+ * @param audioDataPtr Pointer to raw audio bytes
+ */
+@CName("macos_playback_session_load")
+fun macos_playback_session_load(
+    sessionPtr: COpaquePointer,
+    formatDataSize: Int,
+    formatDataPtr: CArrayPointer<ByteVar>,
+    audioDataSize: Int,
+    audioDataPtr: CArrayPointer<ByteVar>
+) {
+    val session = sessionPtr.asStableRef<AudioPlaybackSession>().get()
+    
+    // Decode format
+    val formatData = formatDataPtr.readBytes(formatDataSize)
+    val format = formatData.decodeAsAudioFormat()
+    
+    // Copy audio data
+    val audioData = audioDataPtr.readBytes(audioDataSize)
+    
+    // Create AudioFlow from the data
+    val audioFlow = AudioFlow(
+        format = format,
+        data = kotlinx.coroutines.flow.flowOf(audioData)
+    )
+    
+    runBlocking { session.load(audioFlow) }
+}
+
+/**
+ * Start playback with state callbacks.
+ *
+ * on_state(ctx, bytes, len) – called whenever the session State changes.
+ */
+@CName("macos_playback_session_play")
+fun macos_playback_session_play(
+    sessionPtr: COpaquePointer,
+    ctx: COpaquePointer?,
+    on_state: CPointer<CFunction<(COpaquePointer?, CPointer<ByteVar>?, Int) -> Unit>>?
+) {
+    val session = sessionPtr.asStableRef<AudioPlaybackSession>().get()
+    
+    GlobalScope.launch(Dispatchers.Default) {
+        // State stream
+        val stateJob = launch {
+            session.state.collect { st ->
+                val b = st.encodeToByteArray()
+                memScoped {
+                    val p = allocArray<ByteVar>(b.size)
+                    b.usePinned { src -> platform.posix.memcpy(p, src.addressOf(0), b.size.convert()) }
+                    on_state?.invoke(ctx, p, b.size)
+                }
+            }
+        }
+        
+        // Start playback
+        session.play()
+        
+        // Wait for state job (it will complete when session finishes)
+        stateJob.join()
+    }
+}
+
+@CName("macos_playback_session_pause")
+fun macos_playback_session_pause(ptr: COpaquePointer) {
+    val session = ptr.asStableRef<AudioPlaybackSession>().get()
+    session.pause()
+}
+
+@CName("macos_playback_session_resume")
+fun macos_playback_session_resume(ptr: COpaquePointer) {
+    val session = ptr.asStableRef<AudioPlaybackSession>().get()
+    session.resume()
+}
+
+@CName("macos_playback_session_stop")
+fun macos_playback_session_stop(ptr: COpaquePointer) {
+    val session = ptr.asStableRef<AudioPlaybackSession>().get()
+    session.stop()
+}
+
+/** Dispose StableRef when you're fully done with the session. */
+@CName("macos_playback_session_release")
+fun macos_playback_session_release(ptr: COpaquePointer) =
+    ptr.asStableRef<AudioPlaybackSession>().dispose()
 
 // --- Devices ------------------------------------------------------------------
 
