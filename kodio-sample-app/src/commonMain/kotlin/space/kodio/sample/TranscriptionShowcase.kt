@@ -48,6 +48,7 @@ fun TranscriptionShowcase(
     modifier: Modifier = Modifier
 ) {
     var isTranscribing by remember { mutableStateOf(false) }
+    var isFinishing by remember { mutableStateOf(false) } // Waiting for transcription to finish after stop
     var partialText by remember { mutableStateOf("") }
     var finalSegments by remember { mutableStateOf(listOf<TranscriptionSegment>()) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -142,7 +143,10 @@ fun TranscriptionShowcase(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    containerColor = if (isFinishing) 
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                    else 
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                 )
             ) {
                 Row(
@@ -150,17 +154,20 @@ fun TranscriptionShowcase(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Pulsing recording indicator
+                    // Recording/finishing indicator
                     Box(
                         modifier = Modifier
                             .size(12.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .background(Color.Red)
+                            .background(if (isFinishing) Color(0xFFFFA500) else Color.Red)
                     )
                     Text(
-                        "Listening... Speak now",
+                        if (isFinishing) "Finishing transcription..." else "Listening... Speak now",
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (isFinishing) 
+                            MaterialTheme.colorScheme.secondary 
+                        else 
+                            MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -263,13 +270,12 @@ fun TranscriptionShowcase(
         Button(
             onClick = {
                 if (isTranscribing) {
-                    // Stop transcription
-                    transcriptionJob?.cancel()
-                    transcriptionJob = null
+                    // Stop recording - but let transcription finish processing buffered audio
+                    log("=== Stopping Recording (will finish transcribing buffered audio) ===")
+                    isFinishing = true
                     recorder?.stop()
-                    recorder?.release()
-                    recorder = null
-                    isTranscribing = false
+                    // Don't cancel transcriptionJob - let it finish naturally
+                    // Don't set isTranscribing = false - the flow completion will do that
                 } else {
                     // Start transcription
                     error = null
@@ -305,11 +311,20 @@ fun TranscriptionShowcase(
                                 audioFlow.transcribe(engine)
                                     .onStart { log("Transcription flow started") }
                                     .onCompletion { cause -> 
-                                        if (cause == null || cause is kotlinx.coroutines.CancellationException) {
-                                            log("Transcription flow completed normally")
+                                        if (cause == null) {
+                                            log("Transcription flow completed successfully!")
+                                        } else if (cause is kotlinx.coroutines.CancellationException) {
+                                            log("Transcription flow cancelled")
                                         } else {
                                             log("Transcription flow completed with error: $cause")
                                         }
+                                        // Clean up after flow completes naturally
+                                        log("Cleaning up after transcription...")
+                                        recorder?.release()
+                                        recorder = null
+                                        transcriptionJob = null
+                                        isTranscribing = false
+                                        isFinishing = false
                                     }
                                     .catch { e ->
                                         // Don't treat cancellation as an error
@@ -319,10 +334,8 @@ fun TranscriptionShowcase(
                                             log("ERROR: Transcription error in catch: ${e.message}")
                                             e.printStackTrace()
                                             error = "Transcription error: ${e.message}"
-                                            newRecorder.stop()
-                                            newRecorder.release()
                                         }
-                                        isTranscribing = false
+                                        // Note: cleanup is handled in onCompletion
                                     }
                                     .collect { result ->
                                         log("Received transcription result: $result")
@@ -366,24 +379,34 @@ fun TranscriptionShowcase(
                                 e.printStackTrace()
                                 error = "Error: ${e.message}"
                             }
+                            // Ensure cleanup on any exception
+                            recorder?.release()
+                            recorder = null
+                            transcriptionJob = null
                             isTranscribing = false
+                            isFinishing = false
                         }
                     }
                 }
             },
-            enabled = !needsPermission && apiKey.isNotBlank(),
+            enabled = !needsPermission && apiKey.isNotBlank() && !isFinishing,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isTranscribing) 
-                    MaterialTheme.colorScheme.error 
-                else 
-                    MaterialTheme.colorScheme.primary
+                containerColor = when {
+                    isFinishing -> MaterialTheme.colorScheme.secondary
+                    isTranscribing -> MaterialTheme.colorScheme.error 
+                    else -> MaterialTheme.colorScheme.primary
+                }
             )
         ) {
             Text(
-                text = if (isTranscribing) "Stop Transcribing" else "Start Transcribing",
+                text = when {
+                    isFinishing -> "Finishing..."
+                    isTranscribing -> "Stop Transcribing"
+                    else -> "Start Transcribing"
+                },
                 style = MaterialTheme.typography.titleMedium
             )
         }
