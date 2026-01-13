@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import space.kodio.core.*
 import space.kodio.transcription.*
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 private val logger = KotlinLogging.logger {}
 
@@ -125,7 +126,7 @@ class OpenAIWhisperEngine(
                 if (usage != null) {
                     totalSecondsTranscribed += usage.seconds
                     totalCost += usage.cost
-                    logger.info { "Chunk $chunkIndex: ${usage.seconds}s transcribed, cost: \$${String.format("%.4f", usage.cost)}" }
+                    logger.info { "Chunk $chunkIndex: ${usage.seconds}s transcribed, cost: \$${formatCost(usage.cost)}" }
                 }
                 logger.info { "Chunk $chunkIndex result: $result" }
                 if (result != null) {
@@ -148,7 +149,7 @@ class OpenAIWhisperEngine(
             if (usage != null) {
                 totalSecondsTranscribed += usage.seconds
                 totalCost += usage.cost
-                logger.info { "Final chunk: ${usage.seconds}s transcribed, cost: \$${String.format("%.4f", usage.cost)}" }
+                logger.info { "Final chunk: ${usage.seconds}s transcribed, cost: \$${formatCost(usage.cost)}" }
             }
             logger.info { "Final chunk result: $result" }
             if (result != null) {
@@ -160,9 +161,26 @@ class OpenAIWhisperEngine(
         
         logger.info { "=== OpenAI Whisper Transcription Complete ===" }
         logger.info { "📊 USAGE SUMMARY:" }
-        logger.info { "   Total audio transcribed: ${totalSecondsTranscribed}s (${String.format("%.2f", totalSecondsTranscribed / 60)} minutes)" }
-        logger.info { "   Total cost: \$${String.format("%.4f", totalCost)}" }
+        logger.info { "   Total audio transcribed: ${totalSecondsTranscribed}s (${formatMinutes(totalSecondsTranscribed)} minutes)" }
+        logger.info { "   Total cost: \$${formatCost(totalCost)}" }
         logger.info { "   Chunks processed: $chunkIndex" }
+    }
+    
+    /** Format cost to 4 decimal places (KMP compatible) */
+    private fun formatCost(value: Double): String {
+        val scaled = (value * 10000).toLong()
+        val intPart = scaled / 10000
+        val decPart = (scaled % 10000).toString().padStart(4, '0')
+        return "$intPart.$decPart"
+    }
+    
+    /** Format minutes to 2 decimal places (KMP compatible) */
+    private fun formatMinutes(seconds: Double): String {
+        val minutes = seconds / 60.0
+        val scaled = (minutes * 100).toLong()
+        val intPart = scaled / 100
+        val decPart = (scaled % 100).toString().padStart(2, '0')
+        return "$intPart.$decPart"
     }
     
     /**
@@ -223,7 +241,7 @@ class OpenAIWhisperEngine(
             logger.info { ">>> Sending chunk $chunkIndex (${wavData.size} bytes) to OpenAI Whisper API..." }
             logger.debug { "Config: language=${config.language}, model=$model" }
             
-            val startTime = System.currentTimeMillis()
+            val timeMark = TimeSource.Monotonic.markNow()
             
             val response = httpClient.post("https://api.openai.com/v1/audio/transcriptions") {
                 headers {
@@ -247,8 +265,8 @@ class OpenAIWhisperEngine(
                 ))
             }
             
-            val elapsed = System.currentTimeMillis() - startTime
-            logger.info { "<<< API response received in ${elapsed}ms, status: ${response.status}" }
+            val elapsed = timeMark.elapsedNow()
+            logger.info { "<<< API response received in ${elapsed.inWholeMilliseconds}ms, status: ${response.status}" }
             
             if (response.status.isSuccess()) {
                 val responseText = response.bodyAsText()
