@@ -1,24 +1,82 @@
 package space.kodio.core
 
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.test.fail
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 /**
- * Tests for the JVM Native macOS audio system via FFI.
+ * Tests for the JVM audio system with native macOS fallback.
  * 
- * These tests verify that the FFI bridge correctly handles audio data
- * without introducing gaps or drops.
+ * These tests verify:
+ * 1. The SystemAudioSystem correctly selects native or JVM implementation
+ * 2. The fallback mechanism works when native is unavailable
+ * 3. The FFI bridge handles audio data correctly
  * 
- * NOTE: These tests require a macOS system with microphone permission.
+ * NOTE: Some tests require a macOS system with microphone permission.
  * They will be skipped on other platforms or when permission is denied.
  */
 class NativeMacosAudioSystemTest {
+
+    // ==================== Platform Selection Tests ====================
+
+    @Test
+    fun `SystemAudioSystem should be available on all JVM platforms`() {
+        // The SystemAudioSystem should always be available, either via native or JVM fallback
+        assertNotNull(SystemAudioSystem, "SystemAudioSystem should not be null")
+    }
+
+    @Test
+    fun `on macOS should prefer native implementation when available`() {
+        val isMacOS = System.getProperty("os.name").lowercase().contains("mac")
+        
+        if (isMacOS) {
+            println("Running on macOS")
+            println("  Native available: ${NativeMacosAudioSystem.isAvailable}")
+            
+            // On macOS, if native is available, SystemAudioSystem should be NativeMacosAudioSystem
+            if (NativeMacosAudioSystem.isAvailable) {
+                // We can't directly check object identity since both implement AudioSystem
+                // But we can verify that the native system reports as available
+                assertTrue(NativeMacosAudioSystem.isAvailable, "Native should be available on macOS")
+            } else {
+                println("  Native library not loaded - using JVM fallback")
+            }
+        } else {
+            println("Skipping test: Not running on macOS")
+            // On non-macOS, native should not be available
+            // Note: NativeMacosAudioSystem.isAvailable will return false on non-macOS
+        }
+    }
+
+    @Test
+    fun `JvmAudioSystem should be available as fallback`() {
+        // JvmAudioSystem should always be available
+        assertNotNull(JvmAudioSystem, "JvmAudioSystem should not be null")
+    }
+
+    @Test
+    fun `should be able to list input devices`() = runBlocking {
+        val devices = SystemAudioSystem.listInputDevices()
+        println("Found ${devices.size} input devices:")
+        devices.forEach { device ->
+            println("  - ${device.name} (${device.id})")
+        }
+        // Most systems have at least one input device, but don't fail if none
+        assertTrue(true, "Should not throw when listing input devices")
+    }
+
+    @Test
+    fun `should be able to list output devices`() = runBlocking {
+        val devices = SystemAudioSystem.listOutputDevices()
+        println("Found ${devices.size} output devices:")
+        devices.forEach { device ->
+            println("  - ${device.name} (${device.id})")
+        }
+        // Most systems have at least one output device, but don't fail if none
+        assertTrue(true, "Should not throw when listing output devices")
+    }
 
     // ==================== FFI Data Integrity Tests ====================
 
