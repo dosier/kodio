@@ -1,9 +1,9 @@
 package space.kodio.core
 
 import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import javax.sound.sampled.TargetDataLine
-import kotlin.coroutines.coroutineContext
 
 /**
  * JVM implementation for [AudioRecordingSession].
@@ -35,7 +35,7 @@ class JvmAudioRecordingSession(
         if (!line.isRunning)
             line.start()
         val buffer = ByteArray(line.bufferSize / 5)
-        while (coroutineContext.isActive && line.isOpen) {
+        while (currentCoroutineContext().isActive && line.isOpen) {
             val bytesRead = line.read(buffer, 0, buffer.size)
             if (bytesRead > 0)
                 channel.send(buffer.copyOf(bytesRead))
