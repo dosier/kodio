@@ -95,9 +95,6 @@ kotlin {
                     }
                 }
             }
-            compilerOptions {
-                freeCompilerArgs.add("-Xwasm-attach-js-exception")
-            }
         }
         binaries.executable()
     }

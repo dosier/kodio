@@ -1,6 +1,9 @@
+@file:OptIn(ExperimentalWasmJsInterop::class)
+
 package space.kodio.core
 
 import js.array.JsArray
+import kotlin.js.ExperimentalWasmJsInterop
 import js.buffer.ArrayBuffer
 import js.buffer.ArrayBufferLike
 import js.core.JsPrimitives.toFloat

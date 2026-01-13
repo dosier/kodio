@@ -11,8 +11,8 @@ import space.kodio.core.MacosAudioQueueProperty.CurrentDevice
 class MacosAudioRecordingSession(
     private val requestedDevice: AudioDevice.Input?,
     private val requestedFormat: AudioFormat? = requestedDevice?.formatSupport?.defaultFormat,
-    private val bufferDurationSec: Double = 0.02, // ≈20ms buffer
-    private val bufferCount: Int = 3              // triple-buffered
+    private val bufferDurationSec: Double = 0.05, // ≈50ms buffer - more headroom for processing
+    private val bufferCount: Int = 5              // 5 buffers - better resilience to delays
 ) : BaseAudioRecordingSession() {
 
     private lateinit var audioQueue: MacosAudioQueue.ReadOnly

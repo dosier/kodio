@@ -4,82 +4,407 @@
 > [!CAUTION]  
 > This library is still in very early development.
 
-# Kotlin Multiplatform Audio Library
+# Kodio - Kotlin Multiplatform Audio Library
+
 Kodio is a Kotlin Multiplatform library for straightforward audio recording and playback. It leverages coroutines and Flow to provide a modern, asynchronous API for handling audio streams across JVM, Android, Web (JS/Wasm), and iOS.
 
-## Usage Example
-Here’s a simple loopback example that records audio for 5 seconds and then plays it back.
-```Kotlin
+## Features
+
+- 🎙️ **Simple Recording** - One-line recording with quality presets
+- 🔊 **Easy Playback** - Play recordings with a single method call
+- 📱 **Multiplatform** - JVM, Android, iOS, Web (JS/Wasm)
+- 🎨 **Compose Integration** - Ready-to-use state holders and UI components
+- 📊 **Live Waveforms** - Real-time amplitude data for visualizations
+- 🔒 **Permission Handling** - Built-in permission management
+- 💾 **File I/O** - Save/load WAV files easily
+
+## Quick Start
+
+### Simple Recording
+
+```kotlin
+import space.kodio.core.Kodio
+import kotlin.time.Duration.Companion.seconds
+
 suspend fun main() {
-   // Record some audio for 5 seconds
-   val recording = SystemAudioSystem.createRecordingSession()
-   recording.start()
-   delay(5000)
-   recording.stop()
-   val audioFlow = recording.audioflow.value
-       ?: error("Audio flow should not be null")
-   // Playback the recorded audio
-   val playback = SystemAudioSystem.createPlaybackSession()
-   playback.load(audioFlow)
-   playback.play()
+    // Record audio for 5 seconds
+    val recording = Kodio.record(duration = 5.seconds)
+    
+    // Play it back
+    recording.play()
+    
+    // Save to file
+    recording.saveAs(Path("voice_note.wav"))
 }
 ```
-You can also write it to a file (using kotlinx.io)
-```Kotlin
- audioFlow.writeToFile(
-     format = AudioFileFormat.Wav,
-     path = Path("test.wav")
- )
+
+### Manual Recording Control
+
+```kotlin
+suspend fun manualRecording() {
+    Kodio.record { recorder ->
+        recorder.start()
+        
+        // Wait for user to stop...
+        delay(userDuration)
+        
+        recorder.stop()
+        
+        // Access the recording
+        val recording = recorder.getRecording()
+        recording?.play()
+    }
+}
 ```
 
-## Setup
+### Structured Concurrency with `use`
 
-It is best to fork/clone the repo and build it locally at this point in development. 
-But releases are also published to Maven Central semi-frequently.
+```kotlin
+suspend fun recordWithAutoCleanup() {
+    val recorder = Kodio.recorder(quality = AudioQuality.Voice)
+    
+    // Resources automatically released after use block
+    recorder.use { r ->
+        r.start()
+        delay(3.seconds)
+        r.stop()
+        r.getRecording()?.saveAs(Path("memo.wav"))
+    }
+}
+```
+
+### Compose Integration
+
+```kotlin
+@Composable
+fun VoiceRecorder() {
+    val recorderState = rememberRecorderState(
+        quality = AudioQuality.Standard,
+        onRecordingComplete = { recording ->
+            // Handle completed recording
+        }
+    )
+    
+    Column {
+        // Status display
+        Text(
+            when {
+                recorderState.isRecording -> "Recording..."
+                recorderState.isProcessing -> "Processing..."
+                recorderState.hasRecording -> "Recording ready"
+                else -> "Ready to record"
+            }
+        )
+        
+        // Waveform visualization
+        if (recorderState.isRecording) {
+            AudioWaveform(amplitudes = recorderState.liveAmplitudes)
+        }
+        
+        // Record button
+        Button(
+            onClick = { recorderState.toggle() },
+            enabled = !recorderState.isProcessing
+        ) {
+            Text(if (recorderState.isRecording) "Stop" else "Record")
+        }
+        
+        // Play the recording
+        recorderState.recording?.let { recording ->
+            val playerState = rememberPlayerState(
+                recording = recording,
+                onPlaybackComplete = { /* Handle completion */ }
+            )
+            
+            Button(
+                onClick = { playerState.toggle() },
+                enabled = playerState.isReady
+            ) {
+                Text(
+                    when {
+                        playerState.isPlaying -> "Pause"
+                        playerState.isPaused -> "Resume"
+                        else -> "Play"
+                    }
+                )
+            }
+        }
+        
+        // Error handling
+        recorderState.error?.let { error ->
+            Text("Error: ${error.message}", color = Color.Red)
+            Button(onClick = { recorderState.clearError() }) {
+                Text("Dismiss")
+            }
+        }
+    }
+}
+```
+
+## Audio Quality Presets
+
+Kodio provides simple quality presets for common use cases:
+
+| Preset | Sample Rate | Channels | Bit Depth | Use Case |
+|--------|-------------|----------|-----------|----------|
+| `Voice` | 16 kHz | Mono | 16-bit | Speech, voice memos |
+| `Standard` | 44.1 kHz | Mono | 16-bit | General audio |
+| `High` | 48 kHz | Stereo | 16-bit | Professional audio |
+| `Lossless` | 96 kHz | Stereo | 24-bit | Studio quality |
+
+```kotlin
+// Voice (mono, 16kHz) - great for speech
+Kodio.record(duration = 5.seconds, quality = AudioQuality.Voice)
+
+// Standard (mono, 44.1kHz) - balanced quality/size
+Kodio.record(duration = 5.seconds, quality = AudioQuality.Standard)
+
+// High (stereo, 48kHz) - professional quality
+Kodio.record(duration = 5.seconds, quality = AudioQuality.High)
+
+// Lossless (stereo, 96kHz) - studio quality
+Kodio.record(duration = 5.seconds, quality = AudioQuality.Lossless)
+```
+
+## Installation
 
 ### Gradle
-```Kotlin
+
+```kotlin
 dependencies {
+    // Core library
     implementation("space.kodio:core:0.0.6")
+    
+    // Optional: Compose extensions
+    implementation("space.kodio:compose:0.0.6")
 }
 ```
 
 ### Platform-Specific Setup
 
 #### Android
+
 1. **Manifest permission**: Add the `RECORD_AUDIO` permission to your `AndroidManifest.xml`:
     ```xml
-        <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     ```
-   You are also responsible for handling the runtime permission request dialog. If permission is denied, the library will throw an `AudioPermissionDeniedException`.
-2. **Initialization**: Before using the library, you must initialize the `AndroidAudioSystem` with an application `Context` and an `Activity` (which is used to launch the permission request dialog). This is typically done in your `Application` or `MainActivity`'s `onCreate` method.
+
+2. **Initialization**: Initialize Kodio in your `Application` class:
     ```kotlin
-        // In your MainActivity or Application class
-        AndroidAudioSystem.setApplicationContext(applicationContext)
-        AndroidAudioSystem.setMicrophonePermissionRequestActivity(this)
+    class App : Application() {
+        override fun onCreate() {
+            super.onCreate()
+            Kodio.initialize(this)
+        }
+    }
     ```
-3. **Handle runtime permission requests**: The library will automatically handle runtime permission requests when a `RecordingSession` is created. If the user denies the permission, the library will throw `AudioPermissionDeniedException`. In your MainActivity override the following:
-   ```kotlin
-       override fun onRequestPermissionsResult(
-           requestCode: Int,
-           permissions: Array<out String?>,
-           grantResults: IntArray,
-           deviceId: Int
-       ) {
-           //...
-           AndroidAudioPermissionManager.onRequestPermissionsResult(requestCode, grantResults)
-       }
-   ```
+
+3. **Runtime permissions**: Kodio handles permission requests automatically. Check permission state:
+    ```kotlin
+    val recorderState = rememberRecorderState()
+    
+    if (recorderState.needsPermission) {
+        Button(onClick = { recorderState.requestPermission() }) {
+            Text("Grant Microphone Access")
+        }
+    }
+    ```
 
 #### iOS
-1. **Permissions**: You must provide a description for microphone usage in your `Info.plist` file. Add the `NSMicrophoneUsageDescription` key with a string explaining why your app needs microphone access.
-2. **Device Selection**: On iOS, it is not possible to programmatically select a specific audio output device. The `PlaybackSession` will always use the system's current default output.
 
-#### JVM
-No special setup is required. The library should work out of the box on any system with available audio input and output devices.
+1. Add `NSMicrophoneUsageDescription` to your `Info.plist`:
+    ```xml
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This app needs microphone access to record audio.</string>
+    ```
 
-#### MacOs (Experimental)
-**TODO** (not sure if additional setup is required).
+#### JVM (Desktop)
+
+No special setup required. Works out of the box with available audio devices.
+
+#### macOS
+
+Similar to iOS, ensure proper permissions are configured in your app's entitlements.
+
+## Error Handling
+
+Kodio uses a sealed class hierarchy for errors:
+
+```kotlin
+when (val error = recorderState.error) {
+    is AudioError.PermissionDenied -> {
+        // Request permission or show explanation
+    }
+    is AudioError.DeviceNotFound -> {
+        // Handle missing device: ${error.deviceId}
+    }
+    is AudioError.FormatNotSupported -> {
+        // Fall back to different format
+    }
+    is AudioError.DeviceError -> {
+        // Hardware issue: ${error.message}
+    }
+    is AudioError.NotInitialized -> {
+        // Call Kodio.initialize() on Android
+    }
+    is AudioError.AlreadyRecording -> {
+        // Stop current recording first
+    }
+    is AudioError.Unknown -> {
+        // Check error.originalCause for details
+    }
+    null -> { /* No error */ }
+}
+```
+
+## Advanced Usage
+
+### Using the Low-Level API
+
+For advanced use cases, you can access the underlying session APIs:
+
+```kotlin
+// Direct session access
+val session = SystemAudioSystem.createRecordingSession()
+session.start()
+delay(5000)
+session.stop()
+val audioFlow = session.audioFlow.value
+
+// Play back using the session API
+val playback = SystemAudioSystem.createPlaybackSession()
+audioFlow?.let { playback.setAudioFlow(it) }
+playback.start()
+```
+
+### Custom Audio Formats
+
+```kotlin
+val customFormat = AudioFormat(
+    sampleRate = 48000,
+    channels = Channels.Stereo,
+    encoding = SampleEncoding.PcmInt(IntBitDepth.Sixteen)
+)
+
+val recorder = Kodio.recorder {
+    quality = AudioQuality.High
+    device = specificMicrophone
+}
+```
+
+### Device Selection
+
+```kotlin
+// List available devices
+val inputs = Kodio.listInputDevices()
+val outputs = Kodio.listOutputDevices()
+
+// Record from specific device
+val recorder = Kodio.recorder(device = inputs.firstOrNull())
+
+// Play to specific device
+Kodio.play(recording, device = outputs.firstOrNull())
+```
+
+## API Reference
+
+### Core Classes
+
+| Class | Description |
+|-------|-------------|
+| `Kodio` | Main entry point facade for recording and playback |
+| `AudioRecording` | A completed audio recording with save/play methods |
+| `Recorder` | Recording controller with start/stop/pause/resume |
+| `Player` | Playback controller with load/play/pause/stop |
+| `AudioQuality` | Preset quality configurations (Voice, Standard, High, Lossless) |
+| `AudioError` | Sealed error hierarchy for all audio operations |
+| `AudioSessionState` | Unified state enum (Idle, Active, Paused, Complete, Failed) |
+
+### Compose State Holders
+
+| Class | Description |
+|-------|-------------|
+| `RecorderState` | Reactive state holder with `isRecording`, `isProcessing`, `liveAmplitudes`, `error` |
+| `PlayerState` | Reactive state holder with `isPlaying`, `isPaused`, `isReady`, `isFinished` |
+
+### Compose Functions
+
+| Function | Description |
+|----------|-------------|
+| `rememberRecorderState()` | Creates a remembered RecorderState with lifecycle handling |
+| `rememberPlayerState()` | Creates a remembered PlayerState for playback control |
+| `AudioWaveform()` | Waveform visualization component |
+
+## Migration from 0.0.5
+
+### Breaking Changes
+
+1. **`AudioPermissionDeniedException`** is now a `class` instead of an `object`:
+   ```kotlin
+   // Old
+   throw AudioPermissionDeniedException
+   
+   // New
+   throw AudioPermissionDeniedException()
+   throw AudioPermissionDeniedException("Custom message", cause)
+   ```
+
+2. **`AudioError` subtypes** are now classes instead of objects for proper exception semantics:
+   ```kotlin
+   // Old
+   AudioError.PermissionDenied
+   AudioError.NotInitialized
+   
+   // New
+   AudioError.PermissionDenied()
+   AudioError.NotInitialized()
+   ```
+
+### Migrating Recording Code
+
+The new API is largely additive - existing code using `SystemAudioSystem` continues to work:
+
+```kotlin
+// Old API (still works)
+val session = SystemAudioSystem.createRecordingSession()
+session.start()
+delay(5000)
+session.stop()
+val audioFlow = session.audioFlow.value!!
+val playback = SystemAudioSystem.createPlaybackSession()
+playback.setAudioFlow(audioFlow)
+playback.start()
+
+// New simplified API
+val recording = Kodio.record(duration = 5.seconds)
+recording.play()
+```
+
+### macOS Audio Improvements
+
+The macOS native audio recording has been improved:
+- Fixed buffer re-enqueue bug that caused choppy audio
+- Increased buffer size from 20ms to 50ms for better headroom
+- Increased buffer count from 3 to 5 for better resilience
+
+## Testing
+
+Run tests across all platforms:
+
+```bash
+./gradlew check
+```
+
+Run JVM tests only:
+
+```bash
+./gradlew :kodio-core:jvmTest
+```
+
+## License
+
+See [LICENSE](LICENSE) file.
 
 ## Credits
-This project is inspired by https://github.com/theolm/kmp-record
+
+This project is inspired by [kmp-record](https://github.com/theolm/kmp-record).

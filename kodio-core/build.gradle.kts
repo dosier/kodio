@@ -49,9 +49,6 @@ kotlin {
     }
     wasmJs {
         browser()
-        compilerOptions {
-            freeCompilerArgs.add("-Xwasm-attach-js-exception")
-        }
     }
 
     sourceSets {

@@ -61,7 +61,7 @@ abstract class AudioPermissionManager {
             if (state.value == State.Granted)
                 block()
             else
-                throw AudioPermissionDeniedException
+                throw AudioPermissionDeniedException()
         } else
             block()
     }

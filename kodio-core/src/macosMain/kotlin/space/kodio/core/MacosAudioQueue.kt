@@ -197,9 +197,10 @@ sealed class MacosAudioQueue<S : Any>(
                             logAb("Input callback called but state is not running")
                         else {
                             val audioData = inBuffer.pointed.readFully()
-                            if (audioData.isEmpty())
+                            if (audioData.isEmpty()) {
                                 logAb("Input callback called but audioData is empty, re-enqueuing")
-                            else {
+                                inAQ.enqueueBuffer(inBuffer) // Must re-enqueue to prevent buffer starvation
+                            } else {
                                 val result = state.channel.trySend(audioData)
                                     .onFailure { if (it != null) logAb("Input callback failed to send audio data: $it") }
                                if (!result.isClosed)

@@ -45,9 +45,9 @@ private suspend fun recordSaveAndPlayback() {
         path = Path("test.wav")
     )
 
-//    val playback = SystemAudioSystem.createPlaybackSession(speaker)
-//    playback.load(flow)
-//    playback.play()
-//    delay(5.seconds)
-//    println("Playback finished")
+    val playback = SystemAudioSystem.createPlaybackSession(speaker)
+    playback.load(flow)
+    playback.play()
+    delay(5.seconds)
+    println("Playback finished")
 }
