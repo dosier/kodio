@@ -6,12 +6,9 @@ import space.kodio.core.AudioFlow
 /**
  * Core interface for speech-to-text transcription engines.
  * 
- * Implementations can be cloud-based (Deepgram, AssemblyAI, OpenAI) or
- * on-device (platform native APIs, local Whisper models).
- * 
  * ## Usage Example
  * ```kotlin
- * val engine = DeepgramEngine(apiKey = "your-api-key")
+ * val engine = OpenAIWhisperEngine(apiKey = "your-api-key")
  * 
  * recorder.liveAudioFlow?.let { flow ->
  *     val audioFlow = AudioFlow(recorder.format, flow)
@@ -35,9 +32,7 @@ interface TranscriptionEngine {
     
     /**
      * Whether this engine is currently available for use.
-     * 
-     * For cloud engines, this typically returns true if configured with valid credentials.
-     * For on-device engines, this checks if the required models/APIs are available.
+     * Returns true if configured with valid credentials.
      */
     val isAvailable: Boolean
     
@@ -63,10 +58,7 @@ interface TranscriptionEngine {
     
     /**
      * Releases any resources held by this engine.
-     * 
      * After calling this method, the engine should not be used for further transcription.
-     * For cloud engines, this closes any open connections.
-     * For on-device engines, this releases loaded models.
      */
     fun release()
 }

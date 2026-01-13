@@ -48,15 +48,7 @@ data class TranscriptionConfig(
  * Supported transcription providers.
  */
 enum class TranscriptionProvider {
-    /** Deepgram real-time streaming API */
-    DEEPGRAM,
-    /** AssemblyAI real-time streaming API */
-    ASSEMBLY_AI,
-    /** OpenAI Whisper API (chunked, not true streaming) */
-    OPENAI_WHISPER,
-    /** Platform-native speech recognition (Android SpeechRecognizer, iOS Speech) */
-    PLATFORM_NATIVE,
-    /** On-device Whisper model */
-    WHISPER_LOCAL
+    /** OpenAI Whisper API (chunked transcription) */
+    OPENAI_WHISPER
 }
 
