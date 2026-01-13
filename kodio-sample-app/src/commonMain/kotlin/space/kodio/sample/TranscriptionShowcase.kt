@@ -57,7 +57,8 @@ fun TranscriptionShowcase(
     val listState = rememberLazyListState()
     
     // Create the transcription engine (OpenAI Whisper - processes in chunks)
-    val engine = remember { OpenAIWhisperEngine(apiKey = apiKey, chunkDurationSeconds = 5) }
+    // Shorter chunks = faster response but more API calls
+    val engine = remember { OpenAIWhisperEngine(apiKey = apiKey, chunkDurationSeconds = 3) }
     
     // Recorder reference for transcription
     var recorder by remember { mutableStateOf<Recorder?>(null) }
@@ -304,15 +305,24 @@ fun TranscriptionShowcase(
                                 audioFlow.transcribe(engine)
                                     .onStart { log("Transcription flow started") }
                                     .onCompletion { cause -> 
-                                        log("Transcription flow completed, cause: $cause")
+                                        if (cause == null || cause is kotlinx.coroutines.CancellationException) {
+                                            log("Transcription flow completed normally")
+                                        } else {
+                                            log("Transcription flow completed with error: $cause")
+                                        }
                                     }
                                     .catch { e ->
-                                        log("ERROR: Transcription error in catch: ${e.message}")
-                                        e.printStackTrace()
-                                        error = "Transcription error: ${e.message}"
+                                        // Don't treat cancellation as an error
+                                        if (e is kotlinx.coroutines.CancellationException) {
+                                            log("Transcription cancelled")
+                                        } else {
+                                            log("ERROR: Transcription error in catch: ${e.message}")
+                                            e.printStackTrace()
+                                            error = "Transcription error: ${e.message}"
+                                            newRecorder.stop()
+                                            newRecorder.release()
+                                        }
                                         isTranscribing = false
-                                        newRecorder.stop()
-                                        newRecorder.release()
                                     }
                                     .collect { result ->
                                         log("Received transcription result: $result")
@@ -348,9 +358,14 @@ fun TranscriptionShowcase(
                                 isTranscribing = false
                             }
                         } catch (e: Exception) {
-                            log("ERROR: Exception in transcription: ${e.message}")
-                            e.printStackTrace()
-                            error = "Error: ${e.message}"
+                            // Ignore cancellation exceptions (expected when stopping)
+                            if (e is kotlinx.coroutines.CancellationException) {
+                                log("Transcription cancelled (user stopped)")
+                            } else {
+                                log("ERROR: Exception in transcription: ${e.message}")
+                                e.printStackTrace()
+                                error = "Error: ${e.message}"
+                            }
                             isTranscribing = false
                         }
                     }
