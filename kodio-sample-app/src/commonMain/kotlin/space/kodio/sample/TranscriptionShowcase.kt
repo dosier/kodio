@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,8 +19,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.consumeAsFlow
@@ -32,25 +36,53 @@ import space.kodio.core.Recorder
 import space.kodio.core.security.AudioPermissionManager
 import space.kodio.transcription.*
 import space.kodio.transcription.cloud.OpenAIWhisperEngine
+import java.io.File
 
 // Simple logging for debugging
 private fun log(message: String) = println("[TranscriptionShowcase] $message")
 
+// OpenAI Whisper pricing: $0.006 per minute
+private const val WHISPER_COST_PER_MINUTE = 0.006
+
 /**
- * Demonstrates real-time transcription using Kodio's transcription extension.
- * 
- * This showcase:
- * - Records audio using Kodio's recorder
- * - Streams audio to Deepgram for real-time transcription
- * - Displays partial and final results as they arrive
+ * Demonstrates transcription using Kodio's transcription extension.
+ * Supports both live recording and file upload.
  */
 @Composable
 fun TranscriptionShowcase(
     apiKey: String,
     modifier: Modifier = Modifier
 ) {
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf("🎤 Live Recording", "📁 File Upload")
+    
+    Column(modifier = modifier.fillMaxSize()) {
+        // Tab selector
+        TabRow(selectedTabIndex = selectedTab) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = { Text(title) }
+                )
+            }
+        }
+        
+        // Content based on selected tab
+        when (selectedTab) {
+            0 -> LiveRecordingTab(apiKey = apiKey)
+            1 -> FileUploadTab(apiKey = apiKey)
+        }
+    }
+}
+
+/**
+ * Live recording transcription tab.
+ */
+@Composable
+private fun LiveRecordingTab(apiKey: String) {
     var isTranscribing by remember { mutableStateOf(false) }
-    var isFinishing by remember { mutableStateOf(false) } // Waiting for transcription to finish after stop
+    var isFinishing by remember { mutableStateOf(false) }
     var partialText by remember { mutableStateOf("") }
     var finalSegments by remember { mutableStateOf(listOf<TranscriptionSegment>()) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -95,7 +127,7 @@ fun TranscriptionShowcase(
     val needsPermission = permissionState != AudioPermissionManager.State.Granted
     
     Column(
-        modifier = modifier.fillMaxSize().padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -444,6 +476,346 @@ fun TranscriptionShowcase(
                 style = MaterialTheme.typography.titleMedium
             )
         }
+    }
+}
+
+/**
+ * File upload transcription tab.
+ */
+@Composable
+private fun FileUploadTab(apiKey: String) {
+    var isTranscribing by remember { mutableStateOf(false) }
+    var transcriptionResult by remember { mutableStateOf<FileTranscriptionResult?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var selectedFileName by remember { mutableStateOf<String?>(null) }
+    
+    val scope = rememberCoroutineScope()
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Header
+        Text(
+            "File Transcription",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
+        
+        // File picker button
+        Button(
+            onClick = {
+                // Use AWT file dialog for desktop
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Select Audio File", java.awt.FileDialog.LOAD)
+                        dialog.setFilenameFilter { _, name -> 
+                            val ext = name.lowercase().substringAfterLast('.')
+                            ext in listOf("mp3", "wav", "m4a", "mp4", "webm", "ogg", "oga", "flac", "mpeg", "mpga")
+                        }
+                        dialog.isVisible = true
+                        
+                        val directory = dialog.directory
+                        val fileName = dialog.file
+                        
+                        if (directory != null && fileName != null) {
+                            val file = File(directory, fileName)
+                            selectedFileName = file.name
+                            log("File selected: ${file.absolutePath}")
+                            
+                            withContext(Dispatchers.Main) {
+                                isTranscribing = true
+                                error = null
+                                transcriptionResult = null
+                            }
+                            
+                            try {
+                                val result = transcribeFile(file, apiKey)
+                                withContext(Dispatchers.Main) {
+                                    transcriptionResult = result
+                                }
+                                log("Transcription complete: ${result.text.take(100)}...")
+                            } catch (e: Exception) {
+                                log("Transcription error: ${e.message}")
+                                withContext(Dispatchers.Main) {
+                                    error = e.message ?: "Unknown error"
+                                }
+                            } finally {
+                                withContext(Dispatchers.Main) {
+                                    isTranscribing = false
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            error = "Failed to open file: ${e.message}"
+                        }
+                    }
+                }
+            },
+            enabled = !isTranscribing && apiKey.isNotBlank(),
+            modifier = Modifier.fillMaxWidth().height(80.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text("📁 Select Audio File", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "MP3, WAV, M4A, MP4, WEBM, OGG, FLAC",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
+                )
+            }
+        }
+        
+        // Processing indicator
+        if (isTranscribing) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Column {
+                        Text(
+                            "Transcribing: ${selectedFileName ?: "file"}",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            "This may take a moment...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+        
+        // Error display
+        error?.let { errorMessage ->
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Text(
+                    text = errorMessage,
+                    modifier = Modifier.padding(12.dp),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+        
+        // Results
+        transcriptionResult?.let { result ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Results header with cost
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Transcript",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Duration badge
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "⏱️ ${String.format("%.1f", result.durationSeconds)}s",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                            // Cost badge
+                            Surface(
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "💰 $${String.format("%.4f", result.cost)}",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+                    }
+                    
+                    // Transcript content
+                    SelectionContainer {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(12.dp)
+                        ) {
+                            item {
+                                Text(
+                                    text = result.text,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Empty state when no result
+        if (transcriptionResult == null && !isTranscribing && error == null) {
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = "Drop an audio file above to transcribe it",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.weight(1f))
+        }
+    }
+    
+}
+
+/**
+ * Result from file transcription.
+ */
+private data class FileTranscriptionResult(
+    val text: String,
+    val durationSeconds: Double,
+    val cost: Double,
+    val language: String
+)
+
+/**
+ * Transcribes a file using OpenAI Whisper API.
+ */
+private suspend fun transcribeFile(
+    file: File,
+    apiKey: String
+): FileTranscriptionResult = withContext(Dispatchers.IO) {
+    log("Transcribing file: ${file.name} (${file.length()} bytes)")
+    
+    val boundary = "----WebKitFormBoundary${System.currentTimeMillis()}"
+    val url = java.net.URL("https://api.openai.com/v1/audio/transcriptions")
+    val connection = url.openConnection() as java.net.HttpURLConnection
+    
+    try {
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.setRequestProperty("Authorization", "Bearer $apiKey")
+        connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        
+        val outputStream = connection.outputStream
+        val writer = outputStream.bufferedWriter()
+        
+        // File part
+        writer.write("--$boundary\r\n")
+        writer.write("Content-Disposition: form-data; name=\"file\"; filename=\"${file.name}\"\r\n")
+        writer.write("Content-Type: ${guessContentType(file.name)}\r\n")
+        writer.write("\r\n")
+        writer.flush()
+        file.inputStream().copyTo(outputStream)
+        outputStream.flush()
+        writer.write("\r\n")
+        
+        // Model part
+        writer.write("--$boundary\r\n")
+        writer.write("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
+        writer.write("whisper-1\r\n")
+        
+        // Response format part
+        writer.write("--$boundary\r\n")
+        writer.write("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n")
+        writer.write("verbose_json\r\n")
+        
+        // End boundary
+        writer.write("--$boundary--\r\n")
+        writer.flush()
+        writer.close()
+        
+        val responseCode = connection.responseCode
+        val responseText = if (responseCode in 200..299) {
+            connection.inputStream.bufferedReader().readText()
+        } else {
+            val errorText = connection.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
+            throw Exception("API error $responseCode: $errorText")
+        }
+        
+        log("API response: ${responseText.take(200)}...")
+        
+        // Parse JSON manually (simple extraction)
+        val text = extractJsonString(responseText, "text") ?: ""
+        val language = extractJsonString(responseText, "language") ?: "unknown"
+        val duration = extractJsonNumber(responseText, "duration") ?: 0.0
+        val cost = (duration / 60.0) * WHISPER_COST_PER_MINUTE
+        
+        FileTranscriptionResult(
+            text = text,
+            durationSeconds = duration,
+            cost = cost,
+            language = language
+        )
+    } finally {
+        connection.disconnect()
+    }
+}
+
+/**
+ * Simple JSON string extraction (avoids adding serialization dependency).
+ */
+private fun extractJsonString(json: String, key: String): String? {
+    val pattern = "\"$key\"\\s*:\\s*\"([^\"]*)\""
+    val regex = Regex(pattern)
+    return regex.find(json)?.groupValues?.get(1)
+}
+
+/**
+ * Simple JSON number extraction.
+ */
+private fun extractJsonNumber(json: String, key: String): Double? {
+    val pattern = "\"$key\"\\s*:\\s*([0-9.]+)"
+    val regex = Regex(pattern)
+    return regex.find(json)?.groupValues?.get(1)?.toDoubleOrNull()
+}
+
+/**
+ * Guesses content type from file extension.
+ */
+private fun guessContentType(fileName: String): String {
+    return when (fileName.substringAfterLast('.').lowercase()) {
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        "m4a" -> "audio/m4a"
+        "mp4" -> "audio/mp4"
+        "webm" -> "audio/webm"
+        "ogg", "oga" -> "audio/ogg"
+        "flac" -> "audio/flac"
+        else -> "audio/mpeg"
     }
 }
 
