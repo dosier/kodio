@@ -95,7 +95,7 @@ Add the microphone usage description key:
 
 ## macOS {id="macos"}
 
-macOS requires both an Info.plist entry and a sandbox entitlement.
+macOS requires both an Info.plist entry and a sandbox entitlement for production apps.
 
 <procedure title="Set up macOS" id="macos-setup">
 <step>
@@ -120,9 +120,27 @@ Add the audio input entitlement to your `.entitlements` file:
 </step>
 </procedure>
 
+### Native audio backend {id="macos-native-audio"}
+
+On macOS, Kodio uses native CoreAudio via Panama FFI for optimal audio quality and device support. This requires **Java 21 or later**.
+
+If the native library isn't available, Kodio automatically falls back to JavaSound.
+
+### Development troubleshooting {id="macos-dev-troubleshooting" collapsible="true"}
+
+When running from an IDE or Terminal during development, you may encounter silent audio (all zeros). This happens because macOS grants microphone permissions **per-app**, not per-process.
+
+**Solution**: Go to **System Settings → Privacy & Security → Microphone** and enable access for:
+- Your IDE (IntelliJ IDEA, Android Studio, Cursor, etc.)
+- Terminal.app (if running from command line)
+
+> The Kodio permission check may report "Granted" while audio is silent. This is because the permission API checks AVFoundation permissions, but audio capture uses CoreAudio which has a separate permission scope tied to the parent app.
+>
+{style="warning"}
+
 ## JVM (Desktop) {id="jvm"}
 
-No setup required. ✅
+No setup required for basic usage. ✅
 
 Kodio uses the Java Sound API which is available on all JVM platforms. Recording and playback work out of the box.
 
@@ -131,6 +149,38 @@ fun main() = runBlocking {
     val recording = Kodio.record(duration = 5.seconds)
     recording.play()
 }
+```
+
+### System properties {id="jvm-system-properties" collapsible="true"}
+
+Kodio supports the following system properties for JVM configuration:
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `kodio.useJavaSound` | `false` | Force using JavaSound (javax.sound.sampled) instead of native CoreAudio on macOS. |
+
+**When to use `kodio.useJavaSound`:**
+- Debugging audio issues on macOS
+- If the native CoreAudio library fails to load
+- When you need guaranteed cross-platform behavior
+
+Set it in code before any Kodio calls:
+
+```kotlin
+fun main() {
+    System.setProperty("kodio.useJavaSound", "true")
+    
+    runBlocking {
+        val recording = Kodio.record(duration = 5.seconds)
+        recording.play()
+    }
+}
+```
+
+Or via command line:
+
+```bash
+java -Dkodio.useJavaSound=true -jar your-app.jar
 ```
 
 ## Web (JS / Wasm) {id="web"}
@@ -169,6 +219,6 @@ That's it! The browser will automatically prompt the user for microphone permiss
 |----------|------------|----------------|-------|
 | 🤖 Android | Manifest + Runtime | `Kodio.initialize(context)` | — |
 | 🍎 iOS | Info.plist | — | — |
-| 🍏 macOS | Info.plist | — | Entitlement |
-| ☕ JVM | — | — | — |
+| 🍏 macOS | Info.plist | — | Entitlement, Java 21+ |
+| ☕ JVM | — | — | `kodio.useJavaSound` option |
 | 🌐 Web | Browser prompt | — | HTTPS |

@@ -1,6 +1,9 @@
 package space.kodio.core
 
 import space.kodio.core.security.AudioPermissionManager
+import space.kodio.core.util.namedLogger
+
+private val logger = namedLogger("JvmPermissions")
 
 object JvmAudioPermissionManager : AudioPermissionManager() {
 
@@ -18,13 +21,17 @@ object JvmAudioPermissionManager : AudioPermissionManager() {
     init {
         // This block runs once when the object is first accessed.
         nativeLibraryLoaded = loadNativeLibraryFromJar("audiopermissions")
+        logger.info { "Native permissions library loaded: $nativeLibraryLoaded" }
     }
 
     override suspend fun requestPermission() {
-        if (nativeLibraryLoaded)
-            nativeRequestPermission()
-        else
+        logger.debug { "requestPermission() called, nativeLibraryLoaded=$nativeLibraryLoaded" }
+        if (nativeLibraryLoaded) {
+            val result = nativeRequestPermission()
+            logger.debug { "nativeRequestPermission() returned: $result" }
+        } else {
             error("Native permissions library not loaded")
+        }
     }
 
     override fun requestRedirectToSettings() {
@@ -34,12 +41,23 @@ object JvmAudioPermissionManager : AudioPermissionManager() {
             throw Error.SettingsRedirectionNotSupported
     }
 
-    override suspend fun checkState(): State = when {
-        nativeLibraryLoaded -> when (nativeCheckPermission()) {
-            1 -> State.Denied
-            2 -> State.Granted
-            else -> State.Unknown
+    override suspend fun checkState(): State {
+        val state = when {
+            nativeLibraryLoaded -> {
+                val nativeResult = nativeCheckPermission()
+                logger.debug { "nativeCheckPermission() returned: $nativeResult (0=Unknown, 1=Denied, 2=Granted)" }
+                when (nativeResult) {
+                    1 -> State.Denied
+                    2 -> State.Granted
+                    else -> State.Unknown
+                }
+            }
+            else -> {
+                logger.warn { "Native library not loaded, returning Unknown" }
+                State.Unknown
+            }
         }
-        else -> State.Unknown
+        logger.info { "Permission state: $state" }
+        return state
     }
 }

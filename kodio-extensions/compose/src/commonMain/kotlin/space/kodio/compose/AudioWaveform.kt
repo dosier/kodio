@@ -1,154 +1,232 @@
 package space.kodio.compose
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import kotlin.math.absoluteValue
+import androidx.compose.ui.input.pointer.pointerInput
+import space.kodio.compose.internal.renderBarStyle
+import space.kodio.compose.internal.renderFilledStyle
+import space.kodio.compose.internal.renderLineStyle
+import space.kodio.compose.internal.renderMirroredStyle
+import space.kodio.compose.internal.renderSpikeStyle
 
 /**
- * A composable that displays an audio waveform visualization.
- * 
- * ## Example Usage
+ * A highly customizable audio waveform visualization composable.
+ *
+ * Supports multiple visualization styles, smooth animations, playback progress tracking,
+ * and interactive seeking.
+ *
+ * ## Basic Usage
  * ```kotlin
- * @Composable
- * fun RecordingScreen() {
- *     val recorderState = rememberRecorderState()
- *     
- *     AudioWaveform(
- *         amplitudes = recorderState.liveAmplitudes,
- *         modifier = Modifier
- *             .fillMaxWidth()
- *             .height(64.dp)
- *     )
- * }
+ * AudioWaveform(
+ *     amplitudes = recorderState.liveAmplitudes,
+ *     modifier = Modifier.fillMaxWidth().height(64.dp)
+ * )
  * ```
- * 
- * @param amplitudes List of amplitude values (0.0 to 1.0)
- * @param modifier Modifier for the waveform
- * @param barColor Primary color for the waveform bars
- * @param barWidth Width of each bar
- * @param barSpacing Spacing between bars
- * @param maxBars Maximum number of bars to display
+ *
+ * ## With Custom Style
+ * ```kotlin
+ * AudioWaveform(
+ *     amplitudes = amplitudes,
+ *     style = WaveformStyle.Mirrored(barWidth = 4.dp, gap = 4.dp),
+ *     colors = WaveformColors.PurpleGradient,
+ *     modifier = Modifier.fillMaxWidth().height(80.dp)
+ * )
+ * ```
+ *
+ * ## With Playback Progress
+ * ```kotlin
+ * AudioWaveform(
+ *     amplitudes = amplitudes,
+ *     progress = playbackProgress,
+ *     onProgressChange = { newProgress -> seekTo(newProgress) },
+ *     colors = WaveformColors(
+ *         waveColor = SolidColor(Color.Gray),
+ *         progressColor = SolidColor(Color.Green),
+ *     ),
+ *     modifier = Modifier.fillMaxWidth().height(48.dp)
+ * )
+ * ```
+ *
+ * ## Available Styles
+ * - [WaveformStyle.Bar] - Classic vertical bars (default)
+ * - [WaveformStyle.Spike] - Thin spikes like SoundCloud
+ * - [WaveformStyle.Line] - Smooth connected line graph
+ * - [WaveformStyle.Mirrored] - Symmetric bars (ideal for recording)
+ * - [WaveformStyle.Filled] - Filled area under the curve
+ *
+ * @param amplitudes List of amplitude values (0.0 to 1.0). Values outside this range are clamped.
+ * @param modifier Modifier for the waveform. **Must include size constraints** (e.g., `fillMaxWidth()`, `height()`).
+ * @param style Visualization style. Defaults to [WaveformStyle.Bar].
+ * @param colors Color configuration. Defaults to [WaveformColors.default].
+ * @param progress Playback progress (0.0 to 1.0). Bars before this point use `progressColor`.
+ * @param onProgressChange Callback when user seeks via tap/drag. Pass `null` to disable interaction.
+ * @param animate Whether to animate amplitude changes. Defaults to `true`.
+ * @param animationSpec Animation specification for amplitude transitions.
+ *
+ * @see WaveformStyle
+ * @see WaveformColors
  */
 @Composable
 fun AudioWaveform(
     amplitudes: List<Float>,
     modifier: Modifier = Modifier,
-    barColor: Color = Color(0xFF4CAF50),
-    barWidth: Dp = 3.dp,
-    barSpacing: Dp = 2.dp,
-    maxBars: Int = 50
+    style: WaveformStyle = WaveformStyle.Bar(),
+    colors: WaveformColors = WaveformColors.default(),
+    progress: Float = 1f,
+    onProgressChange: ((Float) -> Unit)? = null,
+    animate: Boolean = true,
+    animationSpec: AnimationSpec<Float> = spring(
+        dampingRatio = Spring.DampingRatioMediumBouncy,
+        stiffness = Spring.StiffnessLow
+    ),
 ) {
+    // Animated amplitudes state
+    val animatedAmplitudes = remember { mutableStateListOf<Animatable<Float, *>>() }
+
+    // Keep callbacks up to date
+    val currentOnProgressChange by rememberUpdatedState(onProgressChange)
+
+    // Update animated amplitudes when input changes
+    LaunchedEffect(amplitudes.size) {
+        // Resize the list to match input
+        while (animatedAmplitudes.size > amplitudes.size) {
+            animatedAmplitudes.removeLast()
+        }
+        while (animatedAmplitudes.size < amplitudes.size) {
+            animatedAmplitudes.add(Animatable(0f))
+        }
+    }
+
+    // Animate each amplitude value
+    LaunchedEffect(amplitudes) {
+        amplitudes.forEachIndexed { index, targetValue ->
+            if (index < animatedAmplitudes.size) {
+                val animatable = animatedAmplitudes[index]
+                if (animate) {
+                    animatable.animateTo(targetValue, animationSpec)
+                } else {
+                    animatable.snapTo(targetValue)
+                }
+            }
+        }
+    }
+
+    // Get current amplitude values
+    val currentAmplitudes = if (animate && animatedAmplitudes.isNotEmpty()) {
+        animatedAmplitudes.map { it.value }
+    } else {
+        amplitudes
+    }
+
+    // Handle interaction
+    val interactionModifier = if (onProgressChange != null) {
+        modifier
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val newProgress = (offset.x / size.width).coerceIn(0f, 1f)
+                    currentOnProgressChange?.invoke(newProgress)
+                }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { change, _ ->
+                    change.consume()
+                    val newProgress = (change.position.x / size.width).coerceIn(0f, 1f)
+                    currentOnProgressChange?.invoke(newProgress)
+                }
+            }
+    } else {
+        modifier
+    }
+
+    // Get brushes from colors
+    val waveBrush = colors.effectiveInactiveColor
+    val progressBrush = colors.effectiveProgressColor
+
     Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(48.dp)
+        modifier = interactionModifier
+            .background(colors.backgroundColor)
     ) {
-        val barWidthPx = barWidth.toPx()
-        val barSpacingPx = barSpacing.toPx()
-        val totalBarWidth = barWidthPx + barSpacingPx
-        
-        val availableBars = (size.width / totalBarWidth).toInt().coerceAtMost(maxBars)
-        val displayAmplitudes = amplitudes.takeLast(availableBars)
-        
-        val centerY = size.height / 2
-        val maxHeight = size.height * 0.9f
-        
-        displayAmplitudes.forEachIndexed { index, amplitude ->
-            val x = index * totalBarWidth + barWidthPx / 2
-            val normalizedAmplitude = amplitude.coerceIn(0f, 1f)
-            val barHeight = (maxHeight * normalizedAmplitude).coerceAtLeast(2f)
-            
-            drawLine(
-                color = barColor,
-                start = Offset(x, centerY - barHeight / 2),
-                end = Offset(x, centerY + barHeight / 2),
-                strokeWidth = barWidthPx,
-                cap = StrokeCap.Round
+        when (style) {
+            is WaveformStyle.Bar -> renderBarStyle(
+                amplitudes = currentAmplitudes,
+                style = style,
+                brush = waveBrush,
+                progressBrush = progressBrush,
+                progress = progress
+            )
+
+            is WaveformStyle.Spike -> renderSpikeStyle(
+                amplitudes = currentAmplitudes,
+                style = style,
+                brush = waveBrush,
+                progressBrush = progressBrush,
+                progress = progress
+            )
+
+            is WaveformStyle.Line -> renderLineStyle(
+                amplitudes = currentAmplitudes,
+                style = style,
+                brush = waveBrush,
+                progressBrush = progressBrush,
+                progress = progress
+            )
+
+            is WaveformStyle.Mirrored -> renderMirroredStyle(
+                amplitudes = currentAmplitudes,
+                style = style,
+                brush = waveBrush,
+                progressBrush = progressBrush,
+                progress = progress
+            )
+
+            is WaveformStyle.Filled -> renderFilledStyle(
+                amplitudes = currentAmplitudes,
+                style = style,
+                brush = waveBrush,
+                progressBrush = progressBrush,
+                progress = progress
             )
         }
     }
 }
 
 /**
- * A gradient-styled audio waveform visualization.
- * 
+ * Simplified overload for basic waveform display without progress tracking.
+ *
  * @param amplitudes List of amplitude values (0.0 to 1.0)
  * @param modifier Modifier for the waveform
- * @param brush Brush for the waveform gradient
- * @param barWidth Width of each bar
- * @param barSpacing Spacing between bars
- * @param maxBars Maximum number of bars to display
+ * @param style Visualization style
+ * @param colors Color configuration
+ * @param animate Whether to animate amplitude changes
  */
 @Composable
 fun AudioWaveform(
     amplitudes: List<Float>,
     modifier: Modifier = Modifier,
-    brush: Brush,
-    barWidth: Dp = 3.dp,
-    barSpacing: Dp = 2.dp,
-    maxBars: Int = 50
+    style: WaveformStyle = WaveformStyle.Bar(),
+    colors: WaveformColors = WaveformColors.default(),
+    animate: Boolean = true,
 ) {
-    Canvas(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(48.dp)
-    ) {
-        val barWidthPx = barWidth.toPx()
-        val barSpacingPx = barSpacing.toPx()
-        val totalBarWidth = barWidthPx + barSpacingPx
-        
-        val availableBars = (size.width / totalBarWidth).toInt().coerceAtMost(maxBars)
-        val displayAmplitudes = amplitudes.takeLast(availableBars)
-        
-        val centerY = size.height / 2
-        val maxHeight = size.height * 0.9f
-        
-        displayAmplitudes.forEachIndexed { index, amplitude ->
-            val x = index * totalBarWidth + barWidthPx / 2
-            val normalizedAmplitude = amplitude.coerceIn(0f, 1f)
-            val barHeight = (maxHeight * normalizedAmplitude).coerceAtLeast(2f)
-            
-            drawLine(
-                brush = brush,
-                start = Offset(x, centerY - barHeight / 2),
-                end = Offset(x, centerY + barHeight / 2),
-                strokeWidth = barWidthPx,
-                cap = StrokeCap.Round
-            )
-        }
-    }
-}
-
-/**
- * Pre-configured waveform colors for common use cases.
- */
-object WaveformColors {
-    val Green = Color(0xFF4CAF50)
-    val Blue = Color(0xFF2196F3)
-    val Red = Color(0xFFF44336)
-    val Purple = Color(0xFF9C27B0)
-    val Orange = Color(0xFFFF9800)
-    
-    val GreenGradient = Brush.horizontalGradient(
-        colors = listOf(Color(0xFF4CAF50), Color(0xFF8BC34A))
-    )
-    
-    val BlueGradient = Brush.horizontalGradient(
-        colors = listOf(Color(0xFF2196F3), Color(0xFF03A9F4))
-    )
-    
-    val PurpleGradient = Brush.horizontalGradient(
-        colors = listOf(Color(0xFF9C27B0), Color(0xFFE91E63))
+    AudioWaveform(
+        amplitudes = amplitudes,
+        modifier = modifier,
+        style = style,
+        colors = colors,
+        progress = 1f,
+        onProgressChange = null,
+        animate = animate,
     )
 }
-
-

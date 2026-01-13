@@ -19,12 +19,18 @@ private val logger = namedLogger("AudioSystem")
  * it falls back to the pure JVM implementation using javax.sound.sampled.
  *
  * On other platforms (Windows, Linux), uses javax.sound.sampled directly.
+ * 
+ * Set system property `kodio.useJavaSound=true` to force JavaSound on macOS.
  */
 actual val SystemAudioSystem: AudioSystem = run {
     val osName = System.getProperty("os.name").lowercase()
     val isMacOS = "mac" in osName
+    val forceJavaSound = System.getProperty("kodio.useJavaSound")?.toBoolean() == true
 
-    if (isMacOS && NativeMacosAudioSystem.isAvailable) {
+    if (forceJavaSound) {
+        logger.info { "Using JavaSound audio system (forced via kodio.useJavaSound=true)" }
+        JvmAudioSystem
+    } else if (isMacOS && NativeMacosAudioSystem.isAvailable) {
         logger.info { "Using native macOS audio system (CoreAudio via FFI)" }
         NativeMacosAudioSystem
     } else {

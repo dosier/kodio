@@ -222,9 +222,36 @@ dependencies {
 
 No special setup required. Works out of the box with available audio devices.
 
+**System Properties:**
+
+| Property | Default | Description |
+|----------|---------|-------------|
+| `kodio.useJavaSound` | `false` | Set to `true` to force using JavaSound (javax.sound.sampled) instead of native CoreAudio on macOS. Useful for debugging or if the native library has issues. |
+
+Example:
+```kotlin
+fun main() {
+    // Force JavaSound backend on macOS
+    System.setProperty("kodio.useJavaSound", "true")
+    
+    // Now start your app...
+}
+```
+
+Or via command line:
+```bash
+java -Dkodio.useJavaSound=true -jar your-app.jar
+```
+
 #### macOS
 
-Similar to iOS, ensure proper permissions are configured in your app's entitlements.
+On macOS, Kodio uses native CoreAudio via Panama FFI for optimal audio quality. This requires:
+
+1. **Microphone Permission**: The app (or Terminal/IDE if running in development) must have microphone access in **System Settings → Privacy & Security → Microphone**.
+
+2. **Java 21+**: The native audio bridge uses Panama FFI which requires Java 21 or later.
+
+> **Note**: If you're running from an IDE or Terminal and getting silent audio, make sure that app has microphone permission in macOS Privacy settings. macOS grants permissions per-app, not per-process.
 
 ## Error Handling
 

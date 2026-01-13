@@ -14,6 +14,7 @@ import space.kodio.compose.AudioWaveform
 import space.kodio.compose.PlayerState
 import space.kodio.compose.RecorderState
 import space.kodio.compose.WaveformColors
+import space.kodio.compose.WaveformStyle
 import space.kodio.compose.rememberPlayerState
 import space.kodio.compose.rememberRecorderState
 import space.kodio.core.AudioRecording
@@ -89,7 +90,9 @@ private fun RecordingSection(
         )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -111,14 +114,15 @@ private fun RecordingSection(
                 }
             }
             
-            // Waveform visualization
+            // Waveform visualization (using new mirrored style for recording)
             if (recorderState.isRecording) {
                 AudioWaveform(
                     amplitudes = recorderState.liveAmplitudes,
-                    barColor = WaveformColors.Green,
+                    style = WaveformStyle.Mirrored(),
+                    colors = WaveformColors.GreenGradient,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(64.dp)
+                        .height(80.dp)
                 )
             }
             
