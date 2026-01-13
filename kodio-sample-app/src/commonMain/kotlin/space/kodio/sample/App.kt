@@ -28,14 +28,23 @@ import space.kodio.core.AudioRecording
  * - AudioWaveform visualization
  * - Real-time transcription with Deepgram
  */
+// Read API key from system property (set via local.properties -> build.gradle.kts)
+private fun getOpenAIApiKey(): String {
+    return try {
+        System.getProperty("openai.api.key", "") ?: ""
+    } catch (e: Exception) {
+        ""
+    }
+}
+
 @Composable
 @Preview
 fun App() {
     MaterialTheme(colorScheme = darkColorScheme()) {
         var selectedTab by remember { mutableStateOf(0) }
         
-        // API Key for transcription (in production, use secure storage)
-        var apiKey by remember { mutableStateOf("") }
+        // API Key - try to get from system property first (set via local.properties)
+        var apiKey by remember { mutableStateOf(getOpenAIApiKey()) }
         var showApiKeyDialog by remember { mutableStateOf(false) }
         
         Scaffold(

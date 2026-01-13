@@ -16,6 +16,9 @@ import kotlin.time.Duration.Companion.seconds
 
 private val logger = KotlinLogging.logger {}
 
+// OpenAI Whisper pricing: $0.006 per minute
+private const val WHISPER_COST_PER_MINUTE = 0.006
+
 /**
  * OpenAI Whisper API transcription engine.
  * 
@@ -90,6 +93,8 @@ class OpenAIWhisperEngine(
         var chunkIndex = 0
         var totalBytesReceived = 0L
         var audioChunkCount = 0
+        var totalSecondsTranscribed = 0.0
+        var totalCost = 0.0
         
         logger.info { "Starting to collect audio flow..." }
         
@@ -116,7 +121,12 @@ class OpenAIWhisperEngine(
                 val wavData = createWavData(format, chunkData)
                 logger.info { "Created WAV data: ${wavData.size} bytes (PCM: ${chunkData.size} bytes)" }
                 
-                val result = transcribeChunk(wavData, config, chunkIndex)
+                val (result, usage) = transcribeChunk(wavData, config, chunkIndex)
+                if (usage != null) {
+                    totalSecondsTranscribed += usage.seconds
+                    totalCost += usage.cost
+                    logger.info { "Chunk $chunkIndex: ${usage.seconds}s transcribed, cost: \$${String.format("%.4f", usage.cost)}" }
+                }
                 logger.info { "Chunk $chunkIndex result: $result" }
                 if (result != null) {
                     emit(result)
@@ -134,7 +144,12 @@ class OpenAIWhisperEngine(
             val remainingData = buffer.readByteArray()
             val wavData = createWavData(format, remainingData)
             logger.info { "Created final WAV data: ${wavData.size} bytes" }
-            val result = transcribeChunk(wavData, config, chunkIndex)
+            val (result, usage) = transcribeChunk(wavData, config, chunkIndex)
+            if (usage != null) {
+                totalSecondsTranscribed += usage.seconds
+                totalCost += usage.cost
+                logger.info { "Final chunk: ${usage.seconds}s transcribed, cost: \$${String.format("%.4f", usage.cost)}" }
+            }
             logger.info { "Final chunk result: $result" }
             if (result != null) {
                 emit(result)
@@ -144,6 +159,10 @@ class OpenAIWhisperEngine(
         }
         
         logger.info { "=== OpenAI Whisper Transcription Complete ===" }
+        logger.info { "📊 USAGE SUMMARY:" }
+        logger.info { "   Total audio transcribed: ${totalSecondsTranscribed}s (${String.format("%.2f", totalSecondsTranscribed / 60)} minutes)" }
+        logger.info { "   Total cost: \$${String.format("%.4f", totalCost)}" }
+        logger.info { "   Chunks processed: $chunkIndex" }
     }
     
     private fun createWavData(format: AudioFormat, pcmData: ByteArray): ByteArray {
@@ -192,11 +211,16 @@ class OpenAIWhisperEngine(
         return buffer.readByteArray()
     }
     
+    /**
+     * Usage information from a transcription chunk.
+     */
+    private data class ChunkUsage(val seconds: Double, val cost: Double)
+    
     private suspend fun transcribeChunk(
         wavData: ByteArray,
         config: TranscriptionConfig,
         chunkIndex: Int
-    ): TranscriptionResult? {
+    ): Pair<TranscriptionResult?, ChunkUsage?> {
         return try {
             logger.info { ">>> Sending chunk $chunkIndex (${wavData.size} bytes) to OpenAI Whisper API..." }
             logger.debug { "Config: language=${config.language}, model=$model" }
@@ -231,34 +255,43 @@ class OpenAIWhisperEngine(
             if (response.status.isSuccess()) {
                 val responseText = response.bodyAsText()
                 logger.info { "Response body (first 500 chars): ${responseText.take(500)}" }
-                parseResponse(responseText, chunkIndex)
+                parseResponseWithUsage(responseText, chunkIndex)
             } else {
                 val errorText = response.bodyAsText()
                 logger.error { "OpenAI API error: ${response.status}" }
                 logger.error { "Error response: $errorText" }
-                TranscriptionResult.Error(
+                Pair(TranscriptionResult.Error(
                     message = "API error: ${response.status} - $errorText",
                     code = response.status.value.toString(),
                     isRecoverable = response.status.value in 500..599
-                )
+                ), null)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Cancellation is expected when user stops - don't log as error
+            logger.info { "Chunk $chunkIndex transcription cancelled (user stopped)" }
+            Pair(null, null)
         } catch (e: Exception) {
             logger.error(e) { "Failed to transcribe chunk $chunkIndex: ${e.message}" }
             logger.error { "Exception type: ${e::class.simpleName}" }
-            TranscriptionResult.Error(
+            Pair(TranscriptionResult.Error(
                 message = "Transcription failed: ${e.message}",
                 cause = e,
                 isRecoverable = true
-            )
+            ), null)
         }
     }
     
-    private fun parseResponse(responseText: String, chunkIndex: Int): TranscriptionResult? {
+    private fun parseResponseWithUsage(responseText: String, chunkIndex: Int): Pair<TranscriptionResult?, ChunkUsage?> {
         return try {
             val response = json.decodeFromString<WhisperResponse>(responseText)
             
+            // Calculate usage
+            val durationSeconds = response.duration ?: chunkDurationSeconds.toDouble()
+            val cost = (durationSeconds / 60.0) * WHISPER_COST_PER_MINUTE
+            val usage = ChunkUsage(durationSeconds, cost)
+            
             if (response.text.isBlank()) {
-                return null
+                return Pair(null, usage)
             }
             
             val words = response.words?.map { word ->
@@ -270,16 +303,18 @@ class OpenAIWhisperEngine(
                 )
             } ?: emptyList()
             
-            TranscriptionResult.Final(
+            val result = TranscriptionResult.Final(
                 text = response.text,
                 confidence = 1f, // Whisper doesn't provide overall confidence
                 words = words,
                 startTime = (chunkIndex * chunkDurationSeconds).seconds,
                 endTime = ((chunkIndex + 1) * chunkDurationSeconds).seconds
             )
+            
+            Pair(result, usage)
         } catch (e: Exception) {
             logger.warn(e) { "Failed to parse Whisper response: $responseText" }
-            null
+            Pair(null, null)
         }
     }
     

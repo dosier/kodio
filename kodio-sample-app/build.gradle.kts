@@ -5,6 +5,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.targets.js.webpack.KotlinWebpackConfig
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -171,9 +172,20 @@ dependencies {
     debugImplementation(compose.uiTooling)
 }
 
+// Read API key from local.properties (gitignored)
+val localPropsFile = rootProject.file("local.properties")
+val openaiApiKey: String = if (localPropsFile.exists()) {
+    val props = Properties()
+    localPropsFile.inputStream().use { props.load(it) }
+    props.getProperty("openai.api.key", "")
+} else ""
+
 compose.desktop {
     application {
         mainClass = "space.kodio.sample.MainKt"
+        
+        // Pass API key as system property
+        jvmArgs("-Dopenai.api.key=$openaiApiKey")
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
