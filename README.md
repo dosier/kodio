@@ -1,5 +1,5 @@
 ![Maven Central Version](https://img.shields.io/maven-central/v/space.kodio/core)
-[![Kotlin](https://img.shields.io/badge/kotlin-2.2.0-blue.svg?logo=kotlin)](http://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/kotlin-2.2.20-blue.svg?logo=kotlin)](http://kotlinlang.org)
 
 > [!CAUTION]  
 > This library is still in very early development.
@@ -173,10 +173,10 @@ Kodio.record(duration = 5.seconds, quality = AudioQuality.Lossless)
 ```kotlin
 dependencies {
     // Core library
-    implementation("space.kodio:core:0.0.6")
+    implementation("space.kodio:core:0.1.0")
     
     // Optional: Compose extensions
-    implementation("space.kodio:compose:0.0.6")
+    implementation("space.kodio:compose:0.1.0")
 }
 ```
 
@@ -362,7 +362,7 @@ Kodio.play(recording, device = outputs.firstOrNull())
 | `rememberPlayerState()` | Creates a remembered PlayerState for playback control |
 | `AudioWaveform()` | Waveform visualization component |
 
-## Migration from 0.0.5
+## Migration from 0.0.6
 
 ### Breaking Changes
 
