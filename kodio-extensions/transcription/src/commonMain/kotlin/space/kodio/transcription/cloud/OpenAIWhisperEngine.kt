@@ -65,7 +65,12 @@ class OpenAIWhisperEngine(
         audioFlow: AudioFlow,
         config: TranscriptionConfig
     ): Flow<TranscriptionResult> = flow {
+        logger.info { "=== OpenAI Whisper Transcription Starting ===" }
+        logger.info { "API Key present: ${apiKey.isNotBlank()}, Key prefix: ${apiKey.take(10)}..." }
+        logger.info { "Model: $model, Chunk duration: ${chunkDurationSeconds}s" }
+        
         if (!isAvailable) {
+            logger.error { "API key not configured!" }
             emit(TranscriptionResult.Error(
                 message = "OpenAI API key not configured",
                 code = "NO_API_KEY",
@@ -78,14 +83,28 @@ class OpenAIWhisperEngine(
         val bytesPerSecond = format.sampleRate * format.bytesPerFrame
         val chunkSize = bytesPerSecond * chunkDurationSeconds
         
+        logger.info { "Audio format: sampleRate=${format.sampleRate}, channels=${format.channels}, encoding=${format.encoding}" }
+        logger.info { "Bytes per second: $bytesPerSecond, Chunk size target: $chunkSize bytes (${chunkDurationSeconds}s)" }
+        
         var buffer = Buffer()
         var chunkIndex = 0
+        var totalBytesReceived = 0L
+        var audioChunkCount = 0
+        
+        logger.info { "Starting to collect audio flow..." }
         
         audioFlow.collect { audioChunk ->
+            audioChunkCount++
+            totalBytesReceived += audioChunk.size
             buffer.write(audioChunk)
+            
+            if (audioChunkCount <= 5 || audioChunkCount % 50 == 0) {
+                logger.debug { "Audio chunk #$audioChunkCount: ${audioChunk.size} bytes, buffer: ${buffer.size}/$chunkSize bytes, total received: $totalBytesReceived" }
+            }
             
             // When we have enough data, send a chunk
             if (buffer.size >= chunkSize) {
+                logger.info { ">>> Buffer full! Preparing chunk $chunkIndex for transcription..." }
                 val chunkData = buffer.readByteArray(chunkSize.toInt())
                 buffer = Buffer().apply { 
                     // Keep remaining data
@@ -95,8 +114,10 @@ class OpenAIWhisperEngine(
                 
                 // Create WAV data for this chunk
                 val wavData = createWavData(format, chunkData)
+                logger.info { "Created WAV data: ${wavData.size} bytes (PCM: ${chunkData.size} bytes)" }
                 
                 val result = transcribeChunk(wavData, config, chunkIndex)
+                logger.info { "Chunk $chunkIndex result: $result" }
                 if (result != null) {
                     emit(result)
                 }
@@ -104,15 +125,25 @@ class OpenAIWhisperEngine(
             }
         }
         
+        logger.info { "Audio flow collection ended. Total chunks received: $audioChunkCount, Total bytes: $totalBytesReceived" }
+        logger.info { "Remaining buffer size: ${buffer.size} bytes" }
+        
         // Process remaining audio
         if (buffer.size > 0) {
+            logger.info { "Processing remaining ${buffer.size} bytes as final chunk..." }
             val remainingData = buffer.readByteArray()
             val wavData = createWavData(format, remainingData)
+            logger.info { "Created final WAV data: ${wavData.size} bytes" }
             val result = transcribeChunk(wavData, config, chunkIndex)
+            logger.info { "Final chunk result: $result" }
             if (result != null) {
                 emit(result)
             }
+        } else {
+            logger.warn { "No remaining audio data to process" }
         }
+        
+        logger.info { "=== OpenAI Whisper Transcription Complete ===" }
     }
     
     private fun createWavData(format: AudioFormat, pcmData: ByteArray): ByteArray {
@@ -167,7 +198,10 @@ class OpenAIWhisperEngine(
         chunkIndex: Int
     ): TranscriptionResult? {
         return try {
-            logger.debug { "Sending chunk $chunkIndex (${wavData.size} bytes) to OpenAI Whisper" }
+            logger.info { ">>> Sending chunk $chunkIndex (${wavData.size} bytes) to OpenAI Whisper API..." }
+            logger.debug { "Config: language=${config.language}, model=$model" }
+            
+            val startTime = System.currentTimeMillis()
             
             val response = httpClient.post("https://api.openai.com/v1/audio/transcriptions") {
                 headers {
@@ -191,20 +225,26 @@ class OpenAIWhisperEngine(
                 ))
             }
             
+            val elapsed = System.currentTimeMillis() - startTime
+            logger.info { "<<< API response received in ${elapsed}ms, status: ${response.status}" }
+            
             if (response.status.isSuccess()) {
                 val responseText = response.bodyAsText()
+                logger.info { "Response body (first 500 chars): ${responseText.take(500)}" }
                 parseResponse(responseText, chunkIndex)
             } else {
                 val errorText = response.bodyAsText()
-                logger.error { "OpenAI API error: ${response.status} - $errorText" }
+                logger.error { "OpenAI API error: ${response.status}" }
+                logger.error { "Error response: $errorText" }
                 TranscriptionResult.Error(
-                    message = "API error: ${response.status}",
+                    message = "API error: ${response.status} - $errorText",
                     code = response.status.value.toString(),
                     isRecoverable = response.status.value in 500..599
                 )
             }
         } catch (e: Exception) {
-            logger.error(e) { "Failed to transcribe chunk $chunkIndex" }
+            logger.error(e) { "Failed to transcribe chunk $chunkIndex: ${e.message}" }
+            logger.error { "Exception type: ${e::class.simpleName}" }
             TranscriptionResult.Error(
                 message = "Transcription failed: ${e.message}",
                 cause = e,

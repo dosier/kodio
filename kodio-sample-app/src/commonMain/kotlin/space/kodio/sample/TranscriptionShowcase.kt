@@ -21,6 +21,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import space.kodio.core.AudioFlow
 import space.kodio.core.Kodio
@@ -28,6 +30,9 @@ import space.kodio.core.Recorder
 import space.kodio.core.security.AudioPermissionManager
 import space.kodio.transcription.*
 import space.kodio.transcription.cloud.OpenAIWhisperEngine
+
+// Simple logging for debugging
+private fun log(message: String) = println("[TranscriptionShowcase] $message")
 
 /**
  * Demonstrates real-time transcription using Kodio's transcription extension.
@@ -271,33 +276,53 @@ fun TranscriptionShowcase(
                     
                     transcriptionJob = scope.launch {
                         try {
+                            log("=== Starting Transcription ===")
+                            log("API Key present: ${apiKey.isNotBlank()}, prefix: ${apiKey.take(10)}...")
+                            
                             // Create a new recorder
+                            log("Creating recorder...")
                             val newRecorder = Kodio.recorder()
                             recorder = newRecorder
+                            log("Recorder created, format: ${newRecorder.format}")
                             
                             // Start recording
+                            log("Starting recording...")
                             newRecorder.start()
+                            log("Recording started!")
                             
                             // Get the live audio flow
                             val liveFlow = newRecorder.liveAudioFlow
                             val format = newRecorder.format
                             
+                            log("Live flow available: ${liveFlow != null}")
+                            
                             if (liveFlow != null) {
                                 val audioFlow = AudioFlow(format, liveFlow)
+                                log("AudioFlow created with format: $format")
                                 
+                                log("Starting transcription flow...")
                                 audioFlow.transcribe(engine)
+                                    .onStart { log("Transcription flow started") }
+                                    .onCompletion { cause -> 
+                                        log("Transcription flow completed, cause: $cause")
+                                    }
                                     .catch { e ->
+                                        log("ERROR: Transcription error in catch: ${e.message}")
+                                        e.printStackTrace()
                                         error = "Transcription error: ${e.message}"
                                         isTranscribing = false
                                         newRecorder.stop()
                                         newRecorder.release()
                                     }
                                     .collect { result ->
+                                        log("Received transcription result: $result")
                                         when (result) {
                                             is TranscriptionResult.Partial -> {
+                                                log("Partial: ${result.text}")
                                                 partialText = result.text
                                             }
                                             is TranscriptionResult.Final -> {
+                                                log("Final: ${result.text}")
                                                 if (result.text.isNotBlank()) {
                                                     finalSegments = finalSegments + TranscriptionSegment(
                                                         text = result.text,
@@ -307,6 +332,7 @@ fun TranscriptionShowcase(
                                                 partialText = ""
                                             }
                                             is TranscriptionResult.Error -> {
+                                                log("ERROR result: ${result.message}")
                                                 error = result.message
                                                 if (!result.isRecoverable) {
                                                     isTranscribing = false
@@ -317,10 +343,13 @@ fun TranscriptionShowcase(
                                         }
                                     }
                             } else {
+                                log("ERROR: Failed to get live audio flow!")
                                 error = "Failed to get audio stream"
                                 isTranscribing = false
                             }
                         } catch (e: Exception) {
+                            log("ERROR: Exception in transcription: ${e.message}")
+                            e.printStackTrace()
                             error = "Error: ${e.message}"
                             isTranscribing = false
                         }
