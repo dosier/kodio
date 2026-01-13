@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.launch
 import space.kodio.compose.internal.renderBarStyle
 import space.kodio.compose.internal.renderFilledStyle
 import space.kodio.compose.internal.renderLineStyle
@@ -112,13 +113,18 @@ fun AudioWaveform(
 
     // Animate each amplitude value
     LaunchedEffect(amplitudes) {
+        // IMPORTANT: animateTo() is a suspend function. If we call it sequentially for many bars,
+        // live updates will backlog and the waveform will appear delayed. Launch per-bar so updates
+        // happen concurrently; this LaunchedEffect will also cancel in-flight animations on new data.
         amplitudes.forEachIndexed { index, targetValue ->
-            if (index < animatedAmplitudes.size) {
-                val animatable = animatedAmplitudes[index]
+            if (index >= animatedAmplitudes.size) return@forEachIndexed
+            val animatable = animatedAmplitudes[index]
+            val clampedTarget = targetValue.coerceIn(0f, 1f)
+            launch {
                 if (animate) {
-                    animatable.animateTo(targetValue, animationSpec)
+                    animatable.animateTo(clampedTarget, animationSpec)
                 } else {
-                    animatable.snapTo(targetValue)
+                    animatable.snapTo(clampedTarget)
                 }
             }
         }
