@@ -20,7 +20,9 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -64,6 +66,8 @@ fun TranscriptionShowcase(
     // Recorder reference for transcription
     var recorder by remember { mutableStateOf<Recorder?>(null) }
     var transcriptionJob by remember { mutableStateOf<Job?>(null) }
+    var audioForwardJob by remember { mutableStateOf<Job?>(null) }
+    var audioChannel by remember { mutableStateOf<Channel<ByteArray>?>(null) }
     
     // Check permission on launch
     LaunchedEffect(Unit) {
@@ -73,6 +77,8 @@ fun TranscriptionShowcase(
     // Cleanup on dispose
     DisposableEffect(Unit) {
         onDispose {
+            audioForwardJob?.cancel()
+            audioChannel?.close()
             transcriptionJob?.cancel()
             recorder?.release()
             engine.release()
@@ -274,6 +280,9 @@ fun TranscriptionShowcase(
                     log("=== Stopping Recording (will finish transcribing buffered audio) ===")
                     isFinishing = true
                     recorder?.stop()
+                    audioForwardJob?.cancel() // Stop forwarding new audio
+                    audioChannel?.close() // Close channel - this signals transcription flow to complete
+                    log("Audio channel closed - transcription will process remaining buffer")
                     // Don't cancel transcriptionJob - let it finish naturally
                     // Don't set isTranscribing = false - the flow completion will do that
                 } else {
@@ -297,15 +306,32 @@ fun TranscriptionShowcase(
                             newRecorder.start()
                             log("Recording started!")
                             
-                            // Get the live audio flow
+                            // Get the live audio flow and forward through a channel
+                            // The channel can be closed to signal end of audio (clean completion)
                             val liveFlow = newRecorder.liveAudioFlow
                             val format = newRecorder.format
                             
                             log("Live flow available: ${liveFlow != null}")
                             
                             if (liveFlow != null) {
-                                val audioFlow = AudioFlow(format, liveFlow)
-                                log("AudioFlow created with format: $format")
+                                // Create a channel that we can close to signal end of audio
+                                val channel = Channel<ByteArray>(Channel.UNLIMITED)
+                                audioChannel = channel
+                                
+                                // Forward audio from liveFlow to channel
+                                audioForwardJob = scope.launch {
+                                    try {
+                                        liveFlow.collect { chunk ->
+                                            channel.send(chunk)
+                                        }
+                                    } catch (e: Exception) {
+                                        log("Audio forwarding ended: ${e.message}")
+                                    }
+                                }
+                                
+                                // Create AudioFlow from channel (will complete when channel is closed)
+                                val audioFlow = AudioFlow(format, channel.consumeAsFlow())
+                                log("AudioFlow created with channel-backed flow, format: $format")
                                 
                                 log("Starting transcription flow...")
                                 audioFlow.transcribe(engine)
@@ -320,6 +346,10 @@ fun TranscriptionShowcase(
                                         }
                                         // Clean up after flow completes naturally
                                         log("Cleaning up after transcription...")
+                                        audioForwardJob?.cancel()
+                                        audioForwardJob = null
+                                        audioChannel?.close()
+                                        audioChannel = null
                                         recorder?.release()
                                         recorder = null
                                         transcriptionJob = null
@@ -380,6 +410,10 @@ fun TranscriptionShowcase(
                                 error = "Error: ${e.message}"
                             }
                             // Ensure cleanup on any exception
+                            audioForwardJob?.cancel()
+                            audioForwardJob = null
+                            audioChannel?.close()
+                            audioChannel = null
                             recorder?.release()
                             recorder = null
                             transcriptionJob = null
