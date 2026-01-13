@@ -20,60 +20,163 @@ import space.kodio.compose.rememberRecorderState
 import space.kodio.core.AudioRecording
 
 /**
- * Sample app demonstrating the new simplified Kodio API.
+ * Sample app demonstrating Kodio features.
  * 
  * This showcases:
- * - rememberRecorderState() for recording
- * - rememberPlayerState() for playback  
- * - AudioWaveform for visualization
- * - AudioRecording for completed recordings
+ * - Recording with rememberRecorderState()
+ * - Playback with rememberPlayerState()  
+ * - AudioWaveform visualization
+ * - Real-time transcription with Deepgram
  */
 @Composable
 @Preview
 fun App() {
     MaterialTheme(colorScheme = darkColorScheme()) {
-        Surface(Modifier.fillMaxSize()) {
-            var recordings by remember { mutableStateOf(listOf<AudioRecording>()) }
-            
-            // New simplified recorder state
-            val recorderState = rememberRecorderState(
-                onRecordingComplete = { recording ->
-                    recordings = recordings + recording
-                }
-            )
-            
-            val scope = rememberCoroutineScope()
-            
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                // Recording section
-                item {
-                    RecordingSection(recorderState, scope)
-                }
-                
-                item { 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) 
-                }
-                
-                // Recordings list
-                item {
-                    Text(
-                        "Recordings (${recordings.size})",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                }
-                
-                items(recordings) { recording ->
-                    RecordingItem(
-                        recording = recording,
-                        onSave = { scope.launch { saveWavFile(recording.asAudioFlow()) } },
-                        onDelete = { recordings = recordings - recording }
-                    )
+        var selectedTab by remember { mutableStateOf(0) }
+        
+        // API Key for transcription (in production, use secure storage)
+        var apiKey by remember { mutableStateOf("") }
+        var showApiKeyDialog by remember { mutableStateOf(false) }
+        
+        Scaffold(
+            topBar = {
+                Column {
+                    TabRow(selectedTabIndex = selectedTab) {
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = { Text("Recording") }
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text("Transcription") }
+                        )
+                    }
                 }
             }
+        ) { paddingValues ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                when (selectedTab) {
+                    0 -> RecordingDemo()
+                    1 -> {
+                        if (apiKey.isBlank()) {
+                            // Show API key input
+                            ApiKeyInputScreen(
+                                onApiKeySubmit = { key ->
+                                    apiKey = key
+                                }
+                            )
+                        } else {
+                            TranscriptionShowcase(apiKey = apiKey)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Screen to input the Deepgram API key.
+ */
+@Composable
+private fun ApiKeyInputScreen(
+    onApiKeySubmit: (String) -> Unit
+) {
+    var inputKey by remember { mutableStateOf("") }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            "Deepgram API Key Required",
+            style = MaterialTheme.typography.headlineSmall
+        )
+        
+        Spacer(Modifier.height(8.dp))
+        
+        Text(
+            "Enter your Deepgram API key to enable real-time transcription.\n" +
+            "Get a free key at deepgram.com",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        Spacer(Modifier.height(24.dp))
+        
+        OutlinedTextField(
+            value = inputKey,
+            onValueChange = { inputKey = it },
+            label = { Text("API Key") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        
+        Spacer(Modifier.height(16.dp))
+        
+        Button(
+            onClick = { onApiKeySubmit(inputKey) },
+            enabled = inputKey.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Continue")
+        }
+    }
+}
+
+/**
+ * The original recording demo section.
+ */
+@Composable
+private fun RecordingDemo() {
+    var recordings by remember { mutableStateOf(listOf<AudioRecording>()) }
+    
+    // New simplified recorder state
+    val recorderState = rememberRecorderState(
+        onRecordingComplete = { recording ->
+            recordings = recordings + recording
+        }
+    )
+    
+    val scope = rememberCoroutineScope()
+    
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        // Recording section
+        item {
+            RecordingSection(recorderState, scope)
+        }
+        
+        item { 
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) 
+        }
+        
+        // Recordings list
+        item {
+            Text(
+                "Recordings (${recordings.size})",
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        
+        items(recordings) { recording ->
+            RecordingItem(
+                recording = recording,
+                onSave = { scope.launch { saveWavFile(recording.asAudioFlow()) } },
+                onDelete = { recordings = recordings - recording }
+            )
         }
     }
 }

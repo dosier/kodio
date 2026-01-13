@@ -111,6 +111,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.kodio.kodioCore)
             api(projects.kodio.kodioExtensions.composeMaterial3)
+            api(projects.kodio.kodioExtensions.transcription)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
