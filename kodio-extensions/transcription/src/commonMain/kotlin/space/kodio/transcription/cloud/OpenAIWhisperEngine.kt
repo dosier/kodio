@@ -165,10 +165,14 @@ class OpenAIWhisperEngine(
         logger.info { "   Chunks processed: $chunkIndex" }
     }
     
+    /**
+     * Creates WAV data from raw PCM bytes.
+     * Note: Core's writeWav is internal (uses private AudioSource constructor),
+     * so we use a simple inline implementation here.
+     */
     private fun createWavData(format: AudioFormat, pcmData: ByteArray): ByteArray {
         val buffer = Buffer()
         
-        // Derive WAV header fields
         val numChannels = format.channels.count
         val sampleRate = format.sampleRate
         
@@ -186,12 +190,10 @@ class OpenAIWhisperEngine(
         val dataSize = pcmData.size
         val riffSize = 36 + dataSize
         
-        // Write RIFF/WAVE header
+        // RIFF/WAVE header
         buffer.writeString("RIFF")
         buffer.writeIntLe(riffSize)
         buffer.writeString("WAVE")
-        
-        // fmt subchunk
         buffer.writeString("fmt ")
         buffer.writeIntLe(16)
         buffer.writeShortLe(audioFormatCode.toShort())
@@ -200,12 +202,8 @@ class OpenAIWhisperEngine(
         buffer.writeIntLe(byteRate)
         buffer.writeShortLe(blockAlign.toShort())
         buffer.writeShortLe(bitsPerSample.toShort())
-        
-        // data subchunk
         buffer.writeString("data")
         buffer.writeIntLe(dataSize)
-        
-        // Write PCM data
         buffer.write(pcmData)
         
         return buffer.readByteArray()
