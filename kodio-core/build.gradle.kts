@@ -32,7 +32,7 @@ kotlin {
         macosArm64()
     ).forEach { macosTarget ->
         macosTarget.binaries.executable {
-            entryPoint = "main"
+            entryPoint = "main"  // Change to "main" for full recording+playback test
         }
     }
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
@@ -56,6 +56,7 @@ kotlin {
             dependencies {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.io)
+                implementation(libs.kotlin.logging)
                 api(libs.bignum)
             }
         }

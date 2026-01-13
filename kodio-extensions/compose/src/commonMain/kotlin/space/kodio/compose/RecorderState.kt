@@ -6,8 +6,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import io.github.oshai.kotlinlogging.KotlinLogging
 import space.kodio.core.*
 import space.kodio.core.security.AudioPermissionManager
+
+private val logger = KotlinLogging.logger("RecorderState")
 
 /**
  * State holder for audio recording in Compose.
@@ -151,8 +154,12 @@ class RecorderState internal constructor(
      * Starts recording audio (suspend version).
      */
     suspend fun startAsync() {
+        logger.debug { "startAsync() called, isRecording=${_isRecording.value}, isProcessing=${_isProcessing.value}" }
         stateMutex.withLock {
-            if (_isRecording.value || _isProcessing.value) return
+            if (_isRecording.value || _isProcessing.value) {
+                logger.debug { "Already recording or processing, returning" }
+                return
+            }
             
             _error.value = null
             _liveAmplitudes.value = emptyList()
@@ -163,13 +170,26 @@ class RecorderState internal constructor(
             amplitudeCollectionJob = null
             
             try {
-                val recorder = _recorder ?: createRecorder().also { _recorder = it }
+                // Reset existing recorder or create new one
+                val existingRecorder = _recorder
+                val recorder = if (existingRecorder != null) {
+                    logger.debug { "Resetting existing recorder" }
+                    // Reset before reusing to clear previous state
+                    existingRecorder.reset()
+                    existingRecorder
+                } else {
+                    logger.debug { "Creating new recorder" }
+                    createRecorder().also { _recorder = it }
+                }
+                logger.debug { "Calling recorder.start()" }
                 recorder.start()
                 _isRecording.value = true
+                logger.debug { "Recording started successfully" }
                 
                 // Start collecting amplitudes
                 startAmplitudeCollection(recorder)
             } catch (e: Exception) {
+                logger.error(e) { "Error starting recording: ${e.message}" }
                 _error.value = AudioError.from(e)
                 _isRecording.value = false
             }
@@ -191,8 +211,12 @@ class RecorderState internal constructor(
      * @return The recorded audio, or null if no recording was made
      */
     suspend fun stopAsync(): AudioRecording? {
+        logger.debug { "stopAsync() called, isRecording=${_isRecording.value}" }
         stateMutex.withLock {
-            if (!_isRecording.value) return _recording.value
+            if (!_isRecording.value) {
+                logger.debug { "Not recording, returning existing recording" }
+                return _recording.value
+            }
             
             // Cancel amplitude collection first
             amplitudeCollectionJob?.cancel()
@@ -200,15 +224,19 @@ class RecorderState internal constructor(
             
             val recorder = _recorder ?: return null
             
+            logger.debug { "Calling recorder.stop()" }
             recorder.stop()
             _isRecording.value = false
             _isProcessing.value = true
+            logger.debug { "Recording stopped, processing..." }
         }
         
         // Process recording outside the lock to avoid blocking other operations
         return try {
             val recorder = _recorder ?: return null
+            logger.debug { "Getting recording..." }
             val rec = recorder.getRecording()
+            logger.debug { "Got recording: ${if (rec != null) "available" else "null"}" }
             
             stateMutex.withLock {
                 _recording.value = rec
@@ -220,8 +248,10 @@ class RecorderState internal constructor(
                 getOnRecordingComplete()?.invoke(rec)
             }
             
+            logger.debug { "stopAsync() completed successfully" }
             rec
         } catch (e: Exception) {
+            logger.error(e) { "Error processing recording: ${e.message}" }
             stateMutex.withLock {
                 _error.value = AudioError.from(e)
                 _isProcessing.value = false
@@ -244,11 +274,14 @@ class RecorderState internal constructor(
      * @return true if now recording, false if stopped
      */
     suspend fun toggleAsync(): Boolean {
+        logger.debug { "toggleAsync() called, isRecording=${_isRecording.value}" }
         return if (_isRecording.value) {
             stopAsync()
+            logger.debug { "toggleAsync() -> stopped" }
             false
         } else {
             startAsync()
+            logger.debug { "toggleAsync() -> started" }
             true
         }
     }

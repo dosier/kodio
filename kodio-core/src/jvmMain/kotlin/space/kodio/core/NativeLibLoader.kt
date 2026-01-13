@@ -1,6 +1,9 @@
 package space.kodio.core
 
+import space.kodio.core.util.namedLogger
 import java.io.File
+
+private val logger = namedLogger("NativeLibLoader")
 
 @Suppress("UnsafeDynamicallyLoadedCode")
 internal fun loadNativeLibraryFromJar(name: String): Boolean {
@@ -21,7 +24,7 @@ internal fun loadNativeLibraryFromJar(name: String): Boolean {
     }
 
     if (libPath == null || libName == null) {
-        System.err.println("Native permissions library not supported on this platform: $osName ($osArch)")
+        logger.warn { "Native permissions library not supported on this platform: $osName ($osArch)" }
         return false
     }
 
@@ -39,7 +42,7 @@ internal fun loadNativeLibraryFromJar(name: String): Boolean {
         System.load(tempFile.absolutePath)
         return true
     } catch (e: Exception) {
-        System.err.println("Failed to load native library: ${e.message}")
+        logger.error(e) { "Failed to load native library: ${e.message}" }
     }
 
     return false

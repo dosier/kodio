@@ -52,6 +52,7 @@ kotlin {
                 // Project Libraries
                 implementation(projects.kodio.kodioCore)
                 implementation(libs.bignum)
+                implementation(libs.kotlin.logging)
                 // Compose Libraries
                 implementation(compose.ui)
                 implementation(compose.foundation)
@@ -63,6 +64,14 @@ kotlin {
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
+                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+                implementation(compose.uiTest)
+            }
+        }
+        jvmTest {
+            dependencies {
+                // Skiko runtime needed for Compose UI tests on JVM
+                implementation(compose.desktop.currentOs)
             }
         }
         androidMain {

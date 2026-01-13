@@ -10,8 +10,11 @@ import kotlinx.io.readByteArray
 import space.kodio.core.*
 import space.kodio.core.SampleEncoding.PcmFloat
 import space.kodio.core.SampleEncoding.PcmInt
+import space.kodio.core.util.namedLogger
 import kotlin.math.floor
 import kotlin.math.min
+
+private val logger = namedLogger("AudioConversion")
 
 /**
  * Convert an AudioFlow to a different AudioFormat.
@@ -124,8 +127,11 @@ fun AudioFlow.convertAudio(
     }
 
     return AudioFlow(targetFormat, transform { chunk ->
+        logger.trace { "Processing chunk of ${chunk.size} bytes" }
+        
         // 1) Bytes -> normalized samples [-1, 1]
         val normalized = decode(chunk, sourceFormat)
+        logger.trace { "Decoded to ${normalized.size} samples" }
 
         // 2) Resample if needed (per-channel, linear)
         val resampled = resample(
@@ -134,12 +140,16 @@ fun AudioFlow.convertAudio(
             targetRate = targetFormat.sampleRate,
             channels = sourceFormat.channels.count
         )
+        logger.trace { "Resampled to ${resampled.size} samples" }
 
         // 3) Channel convert if needed
         val channelConverted = convertChannels(resampled, sourceFormat.channels, targetFormat.channels)
+        logger.trace { "Channel converted to ${channelConverted.size} samples" }
 
         // 4) Encode into target bytes
-        emit(encode(channelConverted, targetFormat))
+        val encoded = encode(channelConverted, targetFormat)
+        logger.trace { "Encoded to ${encoded.size} bytes" }
+        emit(encoded)
     })
 }
 
@@ -196,10 +206,17 @@ private fun encodePcmFloat(
     out: Buffer
 ) {
     for (s in samples) {
-        val v = s.coerceIn(BigDecimal.ONE.negate(), BigDecimal.ONE).doubleValue()
+        // Safely convert BigDecimal to float/double, handling edge cases
+        val clamped = s.coerceIn(BigDecimal.ONE.negate(), BigDecimal.ONE)
+        val v: Float = try {
+            clamped.floatValue()
+        } catch (e: ArithmeticException) {
+            // Fallback: convert through string to handle precision issues
+            clamped.toStringExpanded().toFloatOrNull() ?: 0f
+        }
         when (enc.precision) {
-            FloatPrecision.F32 -> writeF32(out, v.toFloat(), Endianness.Little) // adjust if you track big-endian floats
-            FloatPrecision.F64 -> writeF64(out, v,            Endianness.Little)
+            FloatPrecision.F32 -> writeF32(out, v, Endianness.Little)
+            FloatPrecision.F64 -> writeF64(out, v.toDouble(), Endianness.Little)
         }
     }
 }

@@ -16,12 +16,15 @@ import space.kodio.core.io.decodeAsAudioFormat
 import space.kodio.core.io.encodeToByteArray
 import space.kodio.core.io.readAudioDevice
 import space.kodio.core.security.AudioPermissionManager
+import space.kodio.core.util.namedLogger
 import java.lang.foreign.*
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+
+private val logger = namedLogger("NativeMacosAudio")
 
 /**
  * Native macOS implementation for [AudioSystem] using Panama FFI to call
@@ -44,7 +47,7 @@ internal object NativeMacosAudioSystem : SystemAudioSystemImpl() {
             NativeMacosLib.linker
             true
         } catch (e: Throwable) {
-            System.err.println("Native macOS audio library not available: ${e.message}")
+            logger.warn { "Native macOS audio library not available: ${e.message}" }
             false
         }
     }
@@ -134,11 +137,12 @@ private class NativeMacosAudioRecordingSession(
     private val _state = MutableStateFlow<AudioRecordingSession.State>(AudioRecordingSession.State.Idle)
     override val state: StateFlow<AudioRecordingSession.State> = _state.asStateFlow()
 
-    private val _audioShared = MutableSharedFlow<ByteArray>(replay = Int.MAX_VALUE)
+    private var _audioShared = MutableSharedFlow<ByteArray>(replay = Int.MAX_VALUE)
     private val _audioFlowHolder = MutableStateFlow<AudioFlow?>(null)
     override val audioFlow: StateFlow<AudioFlow?> = _audioFlowHolder.asStateFlow()
 
-    private val formatDeferred = CompletableDeferred<AudioFormat>()
+    // Mutable so it can be recreated after reset
+    private var formatDeferred = CompletableDeferred<AudioFormat>()
 
     companion object {
         private val IDX = AtomicLong(1L)
@@ -189,7 +193,7 @@ private class NativeMacosAudioRecordingSession(
             dseg.asByteBuffer().get(bytes)
 
             if (!sess._audioShared.tryEmit(bytes))
-                println("failed to emit ${bytes.size} bytes")
+                logger.warn { "Failed to emit ${bytes.size} bytes" }
         }
     }
 
@@ -202,12 +206,17 @@ private class NativeMacosAudioRecordingSession(
     private var started = false
 
     override suspend fun start() {
-        if (started) return
+        logger.debug { "start() called, started=$started" }
+        if (started) {
+            logger.debug { "Already started, returning" }
+            return
+        }
         started = true
 
         val arena = Arena.ofShared().also { runtimeArena = it }
         id = IDX.getAndIncrement()
         SESSIONS[id] = this
+        logger.debug { "Created session id=$id" }
 
         ctxSeg = arena.allocate(ValueLayout.JAVA_LONG).also { it.set(ValueLayout.JAVA_LONG, 0, id) }
 
@@ -259,20 +268,42 @@ private class NativeMacosAudioRecordingSession(
     }
 
     override fun stop() {
-        if (!started) return
+        logger.debug { "stop() called, started=$started" }
+        if (!started) {
+            logger.debug { "Not started, returning" }
+            return
+        }
         NativeMacosLib.macos_recording_session_stop.invokeExact(nativeMemSeq)
         val format = audioFlow.value?.format
         if (format != null) {
             val coldFlow = AudioFlow(format, _audioShared.replayCache.asFlow())
             _audioFlowHolder.value = coldFlow
+            logger.debug { "Created cold flow with ${_audioShared.replayCache.size} chunks" }
         }
+        // Set state to Stopped BEFORE cleanup, as cleanup removes from SESSIONS
+        // which would cause the native state callback to be ignored
+        _state.value = AudioRecordingSession.State.Stopped
         cleanup()
         started = false
+        logger.debug { "stop() completed, state=${_state.value}" }
     }
 
     override fun reset() {
-        NativeMacosLib.macos_recording_session_reset.invokeExact(nativeMemSeq)
-        _audioShared.resetReplayCache()
+        logger.debug { "reset() called, started=$started, state=${_state.value}" }
+        // Only call native reset if we haven't already stopped/cleaned up
+        if (started) {
+            logger.debug { "Calling native reset and cleanup" }
+            NativeMacosLib.macos_recording_session_reset.invokeExact(nativeMemSeq)
+            cleanup()
+            started = false
+        }
+        
+        // Reset all JVM-side state for next recording
+        _state.value = AudioRecordingSession.State.Idle
+        _audioFlowHolder.value = null
+        _audioShared = MutableSharedFlow(replay = Int.MAX_VALUE)
+        formatDeferred = CompletableDeferred()
+        logger.debug { "reset() completed, state=${_state.value}" }
     }
 
     private fun cleanup() {

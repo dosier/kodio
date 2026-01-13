@@ -3,10 +3,13 @@ package space.kodio.core
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import space.kodio.core.security.AudioPermissionManager
+import space.kodio.core.util.namedLogger
 import javax.sound.sampled.DataLine
 import javax.sound.sampled.SourceDataLine
 import javax.sound.sampled.TargetDataLine
 import javax.sound.sampled.AudioSystem as JavaSoundAudioSystem
+
+private val logger = namedLogger("AudioSystem")
 
 /**
  * JVM implementation for [AudioSystem].
@@ -22,11 +25,11 @@ actual val SystemAudioSystem: AudioSystem = run {
     val isMacOS = "mac" in osName
 
     if (isMacOS && NativeMacosAudioSystem.isAvailable) {
-        println("Using native macOS audio system (CoreAudio via FFI)")
+        logger.info { "Using native macOS audio system (CoreAudio via FFI)" }
         NativeMacosAudioSystem
     } else {
         if (isMacOS) {
-            println("Native macOS audio library not available, falling back to JavaSound")
+            logger.warn { "Native macOS audio library not available, falling back to JavaSound" }
         }
         JvmAudioSystem
     }
