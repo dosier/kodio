@@ -1,4 +1,4 @@
-![Maven Central Version](https://img.shields.io/maven-central/v/space.kodio/core)
+[![Maven Central Version](https://img.shields.io/maven-central/v/space.kodio/core)](https://central.sonatype.com/artifact/space.kodio/core)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.2.20-blue.svg?logo=kotlin)](http://kotlinlang.org)
 
 > [!CAUTION]  
