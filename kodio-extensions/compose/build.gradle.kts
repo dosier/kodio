@@ -10,11 +10,15 @@ plugins {
     alias(libs.plugins.composeHotReload)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.vanniktech.mavenPublish)
+    id("kodio-publish-convention")
 }
 
 group = "space.kodio.extensions"
-version = "0.1.0"
+
+kodioPublishing {
+    artifactId = "compose"
+    description = "Compose UI components for Kodio audio library"
+}
 
 kotlin {
     jvm()
@@ -98,38 +102,5 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-}
-
-mavenPublishing {
-    publishToMavenCentral()
-
-    signAllPublications()
-
-    coordinates(group.toString(), "compose", version.toString())
-
-    pom {
-        name = "Kodio Compose"
-        description = "Compose extensions for Kodio audio library."
-        inceptionYear = "2025"
-        url = "https://github.com/dosier/kodio"
-        licenses {
-            license {
-                name = "The Apache License, Version 2.0"
-                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-            }
-        }
-        developers {
-            developer {
-                id = "dosier"
-                name = "Stan"
-                url = "https://github.com/dosier"
-            }
-        }
-        scm {
-            url = "https://github.com/dosier/kodio"
-            connection = "scm:git:git://github.com/dosier/kodio.git"
-            developerConnection = "scm:git:ssh://git@github.com/dosier/kodio.git"
-        }
     }
 }

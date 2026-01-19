@@ -8,10 +8,15 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.kotlinSerialization)
+    id("kodio-publish-convention")
 }
 
 group = "space.kodio.extensions"
-version = "0.0.1"
+
+kodioPublishing {
+    artifactId = "transcription"
+    description = "Audio transcription extension for Kodio using OpenAI Whisper"
+}
 
 kotlin {
     jvm()
