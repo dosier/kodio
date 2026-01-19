@@ -1,24 +1,32 @@
-[![Maven Central Version](https://img.shields.io/maven-central/v/space.kodio/core)](https://central.sonatype.com/artifact/space.kodio/core)
-[![Kotlin](https://img.shields.io/badge/kotlin-2.2.20-blue.svg?logo=kotlin)](http://kotlinlang.org)
-[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://dosier.github.io/kodio/)
+[![Maven Central](https://img.shields.io/maven-central/v/space.kodio/core?style=flat&logo=apachemaven&logoColor=white&label=Maven%20Central)](https://central.sonatype.com/artifact/space.kodio/core)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.2.20-7F52FF?style=flat&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=flat)](LICENSE)
+[![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-4285F4?style=flat&logo=gitbook&logoColor=white)](https://dosier.github.io/kodio/)
+
+![Android](https://img.shields.io/badge/Android-3DDC84?style=flat&logo=android&logoColor=white)
+![iOS](https://img.shields.io/badge/iOS-000000?style=flat&logo=apple&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
+![JVM](https://img.shields.io/badge/JVM-ED8B00?style=flat&logo=openjdk&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JS-F7DF1E?style=flat&logo=javascript&logoColor=black)
+![Wasm](https://img.shields.io/badge/Wasm-654FF0?style=flat&logo=webassembly&logoColor=white)
 
 > [!CAUTION]  
 > This library is still in very early development.
 
-# Kodio - Kotlin Multiplatform Audio Library
+# Kodio
 
-Kodio is a Kotlin Multiplatform library for straightforward audio recording and playback. It leverages coroutines and Flow to provide a modern, asynchronous API for handling audio streams across JVM, Android, Web (JS/Wasm), and iOS.
+**Kotlin Multiplatform Audio Library** — Recording, playback, and transcription with a modern coroutines-based API.
 
 ## Features
 
-- 🎙️ **Simple Recording** - One-line recording with quality presets
-- 🔊 **Easy Playback** - Play recordings with a single method call
-- 📱 **Multiplatform** - JVM, Android, iOS, Web (JS/Wasm)
-- 🎨 **Compose Integration** - Ready-to-use state holders and UI components
-- 📊 **Live Waveforms** - Real-time amplitude data for visualizations
-- 🔒 **Permission Handling** - Built-in permission management
-- 💾 **File I/O** - Save/load WAV files easily
-- 🗣️ **Transcription** - Speech-to-text via OpenAI Whisper API
+- **Simple Recording** — One-line recording with quality presets
+- **Easy Playback** — Play recordings with a single method call
+- **Multiplatform** — JVM, Android, iOS, macOS, JS, Wasm
+- **Compose Integration** — Ready-to-use state holders and UI components
+- **Live Waveforms** — Real-time amplitude data for visualizations
+- **Permission Handling** — Built-in permission management
+- **File I/O** — Save/load WAV files easily
+- **Transcription** — Speech-to-text via OpenAI Whisper API
 
 ## Quick Start
 
@@ -56,20 +64,9 @@ dependencies {
 }
 ```
 
-## Supported Platforms
-
-| Platform | Status |
-|----------|--------|
-| 🤖 Android | ✅ Stable |
-| 🍎 iOS | ✅ Stable |
-| 🍏 macOS | ✅ Stable |
-| ☕ JVM | ✅ Stable |
-| 🌐 JS | ✅ Stable |
-| 🔮 Wasm | ✅ Stable |
-
 ## Documentation
 
-📚 **Full documentation:** [dosier.github.io/kodio](https://dosier.github.io/kodio/)
+📚 **[dosier.github.io/kodio](https://dosier.github.io/kodio/)**
 
 - [Getting Started](https://dosier.github.io/kodio/getting-started.html)
 - [Installation](https://dosier.github.io/kodio/installation.html)
@@ -80,8 +77,8 @@ dependencies {
 
 ## License
 
-See [LICENSE](LICENSE) file.
+[Apache 2.0](LICENSE)
 
 ## Credits
 
-This project is inspired by [kmp-record](https://github.com/theolm/kmp-record).
+Inspired by [kmp-record](https://github.com/theolm/kmp-record).
