@@ -100,6 +100,18 @@ gh release view <tag>
 - `.github/workflows/gradle.yml` - CI tests (jvmTest)
 - `.github/workflows/publish.yml` - Tag-triggered release & publish
 - `.github/workflows/release-drafter.yml` - Auto-draft release notes
+- `.github/workflows/docs.yml` - Build and deploy docs to GitHub Pages
+
+### CI Skip Behavior
+Tests are automatically skipped for documentation-only changes:
+- `**.md` - Markdown files
+- `docs/**`, `kodio-docs/**` - Documentation directories
+- `.cursorrules`, `LICENSE`, `.gitignore` - Config files
+
+Tests always run for:
+- Code changes (`*.kt`, `*.gradle.kts`, etc.)
+- Version tags (`v*`)
+- Workflow calls from publish.yml
 
 ### Secrets Required for Publishing
 - `MAVEN_CENTRAL_USERNAME`
