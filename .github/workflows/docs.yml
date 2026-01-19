@@ -2,12 +2,12 @@ name: Build and Deploy Docs
 
 on:
   push:
-    branches: ["main"]
+    branches: ["master"]
     paths:
       - 'kodio-docs/**'
       - '.github/workflows/docs.yml'
   pull_request:
-    branches: ["main"]
+    branches: ["master"]
     paths:
       - 'kodio-docs/**'
   workflow_dispatch:
@@ -74,7 +74,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     needs: [build, test]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master'
     
     steps:
       - name: Download artifacts
