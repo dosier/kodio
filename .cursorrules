@@ -1,0 +1,153 @@
+# Kodio Project Rules
+
+## Project Overview
+Kodio is a Kotlin Multiplatform (KMP) audio library with extensions for Compose UI and transcription (OpenAI Whisper).
+
+## Repository Structure
+- `kodio-core/` - Core audio library
+- `kodio-extensions/compose/` - Compose UI components
+- `kodio-extensions/compose-material3/` - Material 3 themed components
+- `kodio-extensions/transcription/` - Audio transcription (OpenAI Whisper)
+- `kodio-sample-app/` - Demo application
+- `build-logic/` - Shared Gradle convention plugins
+
+## GitHub CLI Commands
+
+The project uses GitHub CLI (`gh`) for managing releases, issues, and PRs.
+
+### Common Commands
+```bash
+# List recent workflow runs
+gh run list --limit 5
+
+# Watch a specific workflow run
+gh run watch <run-id>
+
+# View failed job logs
+gh run view <run-id> --log-failed
+
+# List releases
+gh release list
+
+# View release details
+gh release view <tag>
+
+# Create an issue
+gh issue create --title "Title" --body "Description"
+
+# List issues
+gh issue list
+
+# Create a PR
+gh pr create --title "Title" --body "Description"
+
+# Merge a PR
+gh pr merge <pr-number>
+```
+
+## Release Process
+
+### Tag-Based Releases
+Releases are automated via GitHub Actions when you push a version tag:
+
+```bash
+# 1. Ensure you're on master with latest changes
+git checkout master
+git pull origin master
+
+# 2. Create and push a version tag
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+This automatically:
+1. Runs the full test suite
+2. Creates a GitHub Release with auto-generated changelog
+3. Publishes all artifacts to Maven Central
+
+### Tag Naming Convention
+- Release versions: `v1.0.0`, `v0.2.0`, `v1.2.3`
+- Pre-releases: `v1.0.0-alpha`, `v1.0.0-beta.1`, `v1.0.0-rc.1` (auto-marked as prerelease)
+
+### Release Drafter
+The repository uses release-drafter to auto-draft release notes as PRs are merged.
+- Draft releases accumulate changes until you push a tag
+- PRs are auto-labeled based on branch names (`feature/*`, `fix/*`, etc.)
+
+### Cleaning Up a Bad Release
+```bash
+# Delete a release and its tag
+gh release delete <tag> --yes
+git tag -d <tag>
+git push origin :refs/tags/<tag>
+```
+
+### Checking Release Status
+```bash
+# Check if workflows triggered
+gh run list --limit 5
+
+# Watch the publish workflow
+gh run watch <run-id>
+
+# Verify release was created
+gh release view <tag>
+```
+
+## CI/CD Workflows
+
+### Workflows
+- `.github/workflows/gradle.yml` - CI tests (jvmTest)
+- `.github/workflows/publish.yml` - Tag-triggered release & publish
+- `.github/workflows/release-drafter.yml` - Auto-draft release notes
+
+### Secrets Required for Publishing
+- `MAVEN_CENTRAL_USERNAME`
+- `MAVEN_CENTRAL_PASSWORD`
+- `SIGNING_KEY_ID`
+- `SIGNING_PASSWORD`
+- `GPG_KEY_CONTENTS`
+
+## Local Development
+
+### Prerequisites
+- JDK 21+
+- Android SDK (set in `local.properties`)
+
+### Key Commands
+```bash
+# Run JVM tests
+./gradlew jvmTest
+
+# Run desktop sample app
+./gradlew :kodio-sample-app:desktopRun
+
+# Publish to Maven Local (for testing)
+./gradlew publishToMavenLocal
+```
+
+### Configuration Files
+- `local.properties` - SDK paths, API keys (gitignored)
+- `gradle.properties` - Version (`kodio.version=X.X.X`)
+
+## Transcription Module
+
+The transcription module uses OpenAI Whisper API.
+
+### API Key Setup
+Add to `local.properties`:
+```properties
+openai.api.key=sk-proj-...
+```
+
+### Usage
+```kotlin
+val engine = OpenAIWhisperEngine(apiKey)
+audioFlow.transcribe(engine).collect { result ->
+    when (result) {
+        is TranscriptionResult.Partial -> println(result.text)
+        is TranscriptionResult.Final -> println(result.text)
+        is TranscriptionResult.Error -> println(result.message)
+    }
+}
+```
