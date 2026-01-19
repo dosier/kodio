@@ -17,6 +17,7 @@ Kodio is a Kotlin Multiplatform library for straightforward audio recording and 
 - 📊 **Live Waveforms** - Real-time amplitude data for visualizations
 - 🔒 **Permission Handling** - Built-in permission management
 - 💾 **File I/O** - Save/load WAV files easily
+- 🗣️ **Transcription** - Speech-to-text via OpenAI Whisper API
 
 ## Quick Start
 
@@ -177,6 +178,12 @@ dependencies {
     
     // Optional: Compose extensions
     implementation("space.kodio:compose:0.1.0")
+    
+    // Optional: Material 3 components
+    implementation("space.kodio:compose-material3:0.1.0")
+    
+    // Optional: Transcription (OpenAI Whisper)
+    implementation("space.kodio:transcription:0.1.0")
 }
 ```
 
@@ -333,6 +340,29 @@ val recorder = Kodio.recorder(device = inputs.firstOrNull())
 Kodio.play(recording, device = outputs.firstOrNull())
 ```
 
+### Transcription
+
+Transcribe audio to text using OpenAI Whisper API:
+
+```kotlin
+import space.kodio.transcription.OpenAIWhisperEngine
+import space.kodio.transcription.transcribe
+
+// Create engine with your API key
+val engine = OpenAIWhisperEngine(apiKey = "sk-...")
+
+// Transcribe audio flow
+audioFlow.transcribe(engine).collect { result ->
+    when (result) {
+        is TranscriptionResult.Partial -> println("Partial: ${result.text}")
+        is TranscriptionResult.Final -> println("Final: ${result.text}")
+        is TranscriptionResult.Error -> println("Error: ${result.message}")
+    }
+}
+```
+
+> **Note**: Requires the `space.kodio:transcription` dependency and an OpenAI API key.
+
 ## API Reference
 
 ### Core Classes
@@ -435,5 +465,6 @@ See [LICENSE](LICENSE) file.
 ## Credits
 
 This project is inspired by [kmp-record](https://github.com/theolm/kmp-record).
- 
+
+ 
  

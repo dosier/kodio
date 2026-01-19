@@ -35,6 +35,7 @@ kodio = "%kodio-version%"
 kodio-core = { module = "space.kodio:core", version.ref = "kodio" }
 kodio-compose = { module = "space.kodio:compose", version.ref = "kodio" }
 kodio-compose-material3 = { module = "space.kodio:compose-material3", version.ref = "kodio" }
+kodio-transcription = { module = "space.kodio:transcription", version.ref = "kodio" }
 ```
 
 </step>
@@ -90,6 +91,9 @@ commonMain.dependencies {
     
     // Material 3 UI components
     implementation(libs.kodio.compose.material3)
+    
+    // Audio transcription (OpenAI Whisper)
+    implementation(libs.kodio.transcription)
 }
 ```
 
@@ -106,6 +110,9 @@ commonMain.dependencies {
     
     // Material 3 UI components
     implementation("space.kodio:compose-material3:%kodio-version%")
+    
+    // Audio transcription (OpenAI Whisper)
+    implementation("space.kodio:transcription:%kodio-version%")
 }
 ```
 
@@ -119,6 +126,7 @@ commonMain.dependencies {
 | `core` | Recording, playback, file I/O | Always required |
 | `compose` | `rememberRecorderState`, `rememberPlayerState`, `AudioWaveform` | Compose Multiplatform apps |
 | `compose-material3` | `RecordAudioButton`, `PlayAudioButton`, `ErrorDialog` | Quick Material 3 UIs |
+| `transcription` | `OpenAIWhisperEngine`, `AudioFlow.transcribe()` | Speech-to-text transcription |
 
 ## Verify installation {id="verify"}
 

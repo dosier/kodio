@@ -103,6 +103,9 @@ Compose Multiplatform state holders (<code>rememberRecorderState</code>, <code>r
 <def title="space.kodio:compose-material3">
 Pre-built Material 3 UI components like <code>RecordAudioButton</code>, <code>PlayAudioButton</code>, and <code>ErrorDialog</code>.
 </def>
+<def title="space.kodio:transcription">
+Audio transcription using OpenAI Whisper API. Provides <code>OpenAIWhisperEngine</code> and the <code>AudioFlow.transcribe()</code> extension.
+</def>
 </deflist>
 
 ## What's next {id="next"}

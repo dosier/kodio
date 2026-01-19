@@ -2,7 +2,7 @@
 <!DOCTYPE vars SYSTEM "https://resources.jetbrains.com/writerside/1.0/vars.dtd">
 <vars>
     <!-- Version numbers -->
-    <var name="kodio-version" value="0.0.6"/>
+    <var name="kodio-version" value="0.1.0"/>
     <var name="kotlin-version" value="2.2.20"/>
     <var name="compose-version" value="1.9.0"/>
     <var name="coroutines-version" value="1.10.2"/>
@@ -12,6 +12,7 @@
     <var name="core-artifact" value="core"/>
     <var name="compose-artifact" value="compose"/>
     <var name="compose-material3-artifact" value="compose-material3"/>
+    <var name="transcription-artifact" value="transcription"/>
     
     <!-- Links -->
     <var name="github-repo" value="https://github.com/dosier/kodio"/>
