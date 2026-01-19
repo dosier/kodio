@@ -31,7 +31,7 @@ object RecorderStateTestTags {
  * TODO: Fix SLF4J initialization issues on CI.
  * See: https://github.com/dosier/kodio/issues/15
  */
-@Ignore("Skipped on CI - SLF4J initialization issues. See #15")
+@Ignore // Skipped on CI - SLF4J initialization issues. See #15
 @OptIn(ExperimentalTestApi::class)
 class RecorderStateTest {
 

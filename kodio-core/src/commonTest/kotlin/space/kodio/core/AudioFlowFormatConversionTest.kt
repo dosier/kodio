@@ -12,7 +12,7 @@ import space.kodio.core.io.convertAudio
  * TODO: Fix native dependency issues on Linux CI.
  * See: https://github.com/dosier/kodio/issues/15
  */
-@Ignore("Skipped on CI - native dependency loading issues on Linux. See #15")
+@Ignore // Skipped on CI - native dependency loading issues on Linux. See #15
 class AudioFlowFormatConversionTest {
 
     /* -------------------- Helpers -------------------- */
