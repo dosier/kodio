@@ -185,7 +185,7 @@ private fun LiveRecordingTab() {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "Platform: ${System.getProperty("os.name")} | Permission: ${recorderState.permissionState}" +
+                "Platform: ${getPlatformName()} | Permission: ${recorderState.permissionState}" +
                     if (recorderState.permissionState.toString() != "Granted") 
                         "\n⚠️ Check System Preferences → Privacy & Security → Microphone" 
                     else "",
@@ -254,7 +254,7 @@ private fun LiveRecordingTab() {
                         val maxAmplitude = recorderState.liveAmplitudes.maxOrNull() ?: 0f
                         val nonZeroCount = recorderState.liveAmplitudes.count { it > 0.001f }
                         Text(
-                            text = "Samples: ${recorderState.liveAmplitudes.size} | Max: ${"%.4f".format(maxAmplitude)} | Non-zero: $nonZeroCount",
+                            text = "Samples: ${recorderState.liveAmplitudes.size} | Max: ${formatDecimal(maxAmplitude.toDouble(), 4)} | Non-zero: $nonZeroCount",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (maxAmplitude > 0.01f) Color(0xFF4CAF50) else Color(0xFFFF5252)
                         )
@@ -346,7 +346,7 @@ private fun LiveWaveformShowcase(
     // Debug info
     Text(
         text = "Amplitudes: ${amplitudes.size} samples" + 
-            if (amplitudes.isNotEmpty()) ", max: ${amplitudes.maxOrNull()?.let { "%.3f".format(it) }}" else "",
+            if (amplitudes.isNotEmpty()) ", max: ${amplitudes.maxOrNull()?.let { formatDecimal(it.toDouble(), 3) }}" else "",
         style = MaterialTheme.typography.bodySmall,
         color = Color.White.copy(alpha = 0.5f)
     )

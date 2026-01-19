@@ -121,12 +121,7 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtimeCompose)
-        }
-        nonWebMacosMain.dependencies {
-            implementation(libs.filekit.core)
-            implementation(libs.filekit.dialogs.compose)
-        }
-        webMain.dependencies {
+            // FileKit for cross-platform file operations
             implementation(libs.filekit.core)
             implementation(libs.filekit.dialogs.compose)
         }

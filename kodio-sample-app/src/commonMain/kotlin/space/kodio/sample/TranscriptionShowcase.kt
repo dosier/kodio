@@ -21,9 +21,10 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.consumeAsFlow
@@ -36,7 +37,6 @@ import space.kodio.core.Recorder
 import space.kodio.core.security.AudioPermissionManager
 import space.kodio.transcription.*
 import space.kodio.transcription.cloud.OpenAIWhisperEngine
-import java.io.File
 
 // Simple logging for debugging
 private fun log(message: String) = println("[TranscriptionShowcase] $message")
@@ -481,6 +481,7 @@ private fun LiveRecordingTab(apiKey: String) {
 
 /**
  * File upload transcription tab.
+ * Uses FileKit for cross-platform file picking.
  */
 @Composable
 private fun FileUploadTab(apiKey: String) {
@@ -490,6 +491,37 @@ private fun FileUploadTab(apiKey: String) {
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     
     val scope = rememberCoroutineScope()
+    
+    // FileKit file picker launcher
+    val filePicker = rememberFilePickerLauncher(
+        type = FileKitType.File(
+            extensions = listOf("mp3", "wav", "m4a", "mp4", "webm", "ogg", "oga", "flac", "mpeg", "mpga")
+        )
+    ) { platformFile ->
+        if (platformFile != null) {
+            // Get file name from the platform file
+            val fileName = getFileName(platformFile)
+            selectedFileName = fileName
+            log("File selected: $fileName")
+            
+            isTranscribing = true
+            error = null
+            transcriptionResult = null
+            
+            scope.launch {
+                try {
+                    val result = transcribeFile(platformFile, apiKey)
+                    transcriptionResult = result
+                    log("Transcription complete: ${result.text.take(100)}...")
+                } catch (e: Exception) {
+                    log("Transcription error: ${e.message}")
+                    error = e.message ?: "Unknown error"
+                } finally {
+                    isTranscribing = false
+                }
+            }
+        }
+    }
     
     Column(
         modifier = Modifier
@@ -505,57 +537,9 @@ private fun FileUploadTab(apiKey: String) {
             fontWeight = FontWeight.Bold
         )
         
-        // File picker button
+        // File picker button using FileKit
         Button(
-            onClick = {
-                // Use AWT file dialog for desktop
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Select Audio File", java.awt.FileDialog.LOAD)
-                        dialog.setFilenameFilter { _, name -> 
-                            val ext = name.lowercase().substringAfterLast('.')
-                            ext in listOf("mp3", "wav", "m4a", "mp4", "webm", "ogg", "oga", "flac", "mpeg", "mpga")
-                        }
-                        dialog.isVisible = true
-                        
-                        val directory = dialog.directory
-                        val fileName = dialog.file
-                        
-                        if (directory != null && fileName != null) {
-                            val file = File(directory, fileName)
-                            selectedFileName = file.name
-                            log("File selected: ${file.absolutePath}")
-                            
-                            withContext(Dispatchers.Main) {
-                                isTranscribing = true
-                                error = null
-                                transcriptionResult = null
-                            }
-                            
-                            try {
-                                val result = transcribeFile(file, apiKey)
-                                withContext(Dispatchers.Main) {
-                                    transcriptionResult = result
-                                }
-                                log("Transcription complete: ${result.text.take(100)}...")
-                            } catch (e: Exception) {
-                                log("Transcription error: ${e.message}")
-                                withContext(Dispatchers.Main) {
-                                    error = e.message ?: "Unknown error"
-                                }
-                            } finally {
-                                withContext(Dispatchers.Main) {
-                                    isTranscribing = false
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            error = "Failed to open file: ${e.message}"
-                        }
-                    }
-                }
-            },
+            onClick = { filePicker.launch() },
             enabled = !isTranscribing && apiKey.isNotBlank(),
             modifier = Modifier.fillMaxWidth().height(80.dp),
             shape = RoundedCornerShape(16.dp)
@@ -648,7 +632,7 @@ private fun FileUploadTab(apiKey: String) {
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = "⏱️ ${String.format("%.1f", result.durationSeconds)}s",
+                                    text = "⏱️ ${formatDecimal(result.durationSeconds, 1)}s",
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     style = MaterialTheme.typography.labelMedium
                                 )
@@ -659,7 +643,7 @@ private fun FileUploadTab(apiKey: String) {
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = "💰 $${String.format("%.4f", result.cost)}",
+                                    text = "💰 $${formatDecimal(result.cost, 4)}",
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     style = MaterialTheme.typography.labelMedium
                                 )
@@ -690,7 +674,7 @@ private fun FileUploadTab(apiKey: String) {
         if (transcriptionResult == null && !isTranscribing && error == null) {
             Spacer(modifier = Modifier.weight(1f))
             Text(
-                text = "Drop an audio file above to transcribe it",
+                text = "Select an audio file to transcribe",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -698,13 +682,12 @@ private fun FileUploadTab(apiKey: String) {
             Spacer(modifier = Modifier.weight(1f))
         }
     }
-    
 }
 
 /**
  * Result from file transcription.
  */
-private data class FileTranscriptionResult(
+data class FileTranscriptionResult(
     val text: String,
     val durationSeconds: Double,
     val cost: Double,
@@ -713,82 +696,17 @@ private data class FileTranscriptionResult(
 
 /**
  * Transcribes a file using OpenAI Whisper API.
+ * Uses PlatformFile from FileKit for cross-platform file reading.
  */
-private suspend fun transcribeFile(
-    file: File,
+expect suspend fun transcribeFile(
+    file: PlatformFile,
     apiKey: String
-): FileTranscriptionResult = withContext(Dispatchers.IO) {
-    log("Transcribing file: ${file.name} (${file.length()} bytes)")
-    
-    val boundary = "----WebKitFormBoundary${System.currentTimeMillis()}"
-    val url = java.net.URL("https://api.openai.com/v1/audio/transcriptions")
-    val connection = url.openConnection() as java.net.HttpURLConnection
-    
-    try {
-        connection.requestMethod = "POST"
-        connection.doOutput = true
-        connection.setRequestProperty("Authorization", "Bearer $apiKey")
-        connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-        
-        val outputStream = connection.outputStream
-        val writer = outputStream.bufferedWriter()
-        
-        // File part
-        writer.write("--$boundary\r\n")
-        writer.write("Content-Disposition: form-data; name=\"file\"; filename=\"${file.name}\"\r\n")
-        writer.write("Content-Type: ${guessContentType(file.name)}\r\n")
-        writer.write("\r\n")
-        writer.flush()
-        file.inputStream().copyTo(outputStream)
-        outputStream.flush()
-        writer.write("\r\n")
-        
-        // Model part
-        writer.write("--$boundary\r\n")
-        writer.write("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-        writer.write("whisper-1\r\n")
-        
-        // Response format part
-        writer.write("--$boundary\r\n")
-        writer.write("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n")
-        writer.write("verbose_json\r\n")
-        
-        // End boundary
-        writer.write("--$boundary--\r\n")
-        writer.flush()
-        writer.close()
-        
-        val responseCode = connection.responseCode
-        val responseText = if (responseCode in 200..299) {
-            connection.inputStream.bufferedReader().readText()
-        } else {
-            val errorText = connection.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
-            throw Exception("API error $responseCode: $errorText")
-        }
-        
-        log("API response: ${responseText.take(200)}...")
-        
-        // Parse JSON manually (simple extraction)
-        val text = extractJsonString(responseText, "text") ?: ""
-        val language = extractJsonString(responseText, "language") ?: "unknown"
-        val duration = extractJsonNumber(responseText, "duration") ?: 0.0
-        val cost = (duration / 60.0) * WHISPER_COST_PER_MINUTE
-        
-        FileTranscriptionResult(
-            text = text,
-            durationSeconds = duration,
-            cost = cost,
-            language = language
-        )
-    } finally {
-        connection.disconnect()
-    }
-}
+): FileTranscriptionResult
 
 /**
  * Simple JSON string extraction (avoids adding serialization dependency).
  */
-private fun extractJsonString(json: String, key: String): String? {
+internal fun extractJsonString(json: String, key: String): String? {
     val pattern = "\"$key\"\\s*:\\s*\"([^\"]*)\""
     val regex = Regex(pattern)
     return regex.find(json)?.groupValues?.get(1)
@@ -797,7 +715,7 @@ private fun extractJsonString(json: String, key: String): String? {
 /**
  * Simple JSON number extraction.
  */
-private fun extractJsonNumber(json: String, key: String): Double? {
+internal fun extractJsonNumber(json: String, key: String): Double? {
     val pattern = "\"$key\"\\s*:\\s*([0-9.]+)"
     val regex = Regex(pattern)
     return regex.find(json)?.groupValues?.get(1)?.toDoubleOrNull()
@@ -806,7 +724,7 @@ private fun extractJsonNumber(json: String, key: String): Double? {
 /**
  * Guesses content type from file extension.
  */
-private fun guessContentType(fileName: String): String {
+internal fun guessContentType(fileName: String): String {
     return when (fileName.substringAfterLast('.').lowercase()) {
         "mp3" -> "audio/mpeg"
         "wav" -> "audio/wav"

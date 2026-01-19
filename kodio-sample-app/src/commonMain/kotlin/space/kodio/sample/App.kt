@@ -26,16 +26,8 @@ import space.kodio.core.AudioRecording
  * - Recording with rememberRecorderState()
  * - Playback with rememberPlayerState()  
  * - AudioWaveform visualization
- * - Real-time transcription with Deepgram
+ * - Real-time transcription with OpenAI Whisper
  */
-// Read API key from system property (set via local.properties -> build.gradle.kts)
-private fun getOpenAIApiKey(): String {
-    return try {
-        System.getProperty("openai.api.key", "") ?: ""
-    } catch (e: Exception) {
-        ""
-    }
-}
 
 @Composable
 @Preview
