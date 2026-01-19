@@ -22,6 +22,10 @@ ktor3 = "3.3.0"
 material-icons = "1.7.3"
 
 [libraries]
+# Build Logic
+vanniktech-mavenPublish = { module = "com.vanniktech:gradle-maven-publish-plugin", version = "0.34.0" }
+
+# Runtime Dependencies
 filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekitDialogsCompose" }
 filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekitCore" }
 kotlin-browser-v202575 = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlinBrowser" }

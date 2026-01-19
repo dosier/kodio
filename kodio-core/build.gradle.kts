@@ -8,11 +8,15 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.kotlinJsPlainObjects)
     alias(libs.plugins.androidLibrary)
-    alias(libs.plugins.vanniktech.mavenPublish)
+    id("kodio-publish-convention")
 }
 
 group = "space.kodio"
-version = "0.1.0"
+
+kodioPublishing {
+    artifactId = "core"
+    description = "A multiplatform library for audio recording and playback"
+}
 
 kotlin {
     jvm()
@@ -133,35 +137,3 @@ tasks.named<Copy>("jvmProcessResources") {
     }
 }
 
-mavenPublishing {
-    publishToMavenCentral()
-
-    signAllPublications()
-
-    coordinates(group.toString(), "core", version.toString())
-
-    pom {
-        name = "Kodio"
-        description = "A multiplatform library for audio recording/playback."
-        inceptionYear = "2025"
-        url = "https://github.com/dosier/kodio"
-        licenses {
-            license {
-                name = "The Apache License, Version 2.0"
-                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-            }
-        }
-        developers {
-            developer {
-                id = "dosier"
-                name = "Stan"
-                url = "https://github.com/dosier"
-            }
-        }
-        scm {
-            url = "https://github.com/dosier/kodio"
-            connection = "scm:git:git://github.com/dosier/kodio.git"
-            developerConnection = "scm:git:ssh://git@github.com/dosier/kodio.git"
-        }
-    }
-}

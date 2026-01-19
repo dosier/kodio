@@ -10,11 +10,15 @@ plugins {
     alias(libs.plugins.composeHotReload)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.vanniktech.mavenPublish)
+    id("kodio-publish-convention")
 }
 
 group = "space.kodio.extensions"
-version = "0.1.0"
+
+kodioPublishing {
+    artifactId = "compose"
+    description = "Compose UI components for Kodio audio library"
+}
 
 kotlin {
     jvm()
