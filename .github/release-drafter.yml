@@ -1,0 +1,97 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+# Categories for organizing changes in release notes
+categories:
+  - title: '🚀 Features'
+    labels:
+      - 'feature'
+      - 'enhancement'
+  - title: '🐛 Bug Fixes'
+    labels:
+      - 'fix'
+      - 'bugfix'
+      - 'bug'
+  - title: '🧰 Maintenance'
+    labels:
+      - 'chore'
+      - 'maintenance'
+      - 'dependencies'
+  - title: '📚 Documentation'
+    labels:
+      - 'documentation'
+      - 'docs'
+  - title: '⚠️ Breaking Changes'
+    labels:
+      - 'breaking'
+      - 'breaking-change'
+
+# Auto-labeling PRs based on branch names and file paths
+autolabeler:
+  - label: 'feature'
+    branch:
+      - '/feature\/.+/'
+  - label: 'fix'
+    branch:
+      - '/fix\/.+/'
+      - '/bugfix\/.+/'
+  - label: 'chore'
+    branch:
+      - '/chore\/.+/'
+  - label: 'documentation'
+    branch:
+      - '/docs?\/.+/'
+    files:
+      - '*.md'
+      - 'docs/**/*'
+  - label: 'dependencies'
+    files:
+      - 'gradle/libs.versions.toml'
+      - '**/build.gradle.kts'
+      - 'gradle.properties'
+
+# How to determine the next version
+version-resolver:
+  major:
+    labels:
+      - 'breaking'
+      - 'breaking-change'
+  minor:
+    labels:
+      - 'feature'
+      - 'enhancement'
+  patch:
+    labels:
+      - 'fix'
+      - 'bugfix'
+      - 'bug'
+      - 'chore'
+      - 'maintenance'
+  default: patch
+
+# Exclude certain contributors or labels
+exclude-labels:
+  - 'skip-changelog'
+
+# Release notes template
+template: |
+  ## What's Changed
+
+  $CHANGES
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+
+  ---
+
+  ### Installation
+
+  Add to your `build.gradle.kts`:
+
+  ```kotlin
+  implementation("space.kodio:kodio-core:$RESOLVED_VERSION")
+  
+  // Optional extensions
+  implementation("space.kodio:kodio-compose:$RESOLVED_VERSION")
+  implementation("space.kodio:kodio-compose-material3:$RESOLVED_VERSION")
+  implementation("space.kodio:kodio-transcription:$RESOLVED_VERSION")
+  ```

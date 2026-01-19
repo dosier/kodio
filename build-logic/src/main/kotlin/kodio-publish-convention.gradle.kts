@@ -1,6 +1,3 @@
-import com.vanniktech.maven.publish.MavenPublishBaseExtension
-import com.vanniktech.maven.publish.SonatypeHost
-
 /**
  * Convention plugin for configuring Maven publishing across all Kodio modules.
  * 
@@ -32,14 +29,13 @@ interface KodioPublishingExtension {
 
 val extension = extensions.create<KodioPublishingExtension>("kodioPublishing")
 
-// Get version from root project's gradle.properties
-val kodioVersion: String by rootProject.extra.properties.getOrElse("kodioVersion") { 
-    project.findProperty("kodio.version")?.toString() ?: "0.0.1-SNAPSHOT"
-}
-
 afterEvaluate {
-    configure<MavenPublishBaseExtension> {
-        publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+    // Get version from gradle.properties
+    val kodioVersion = project.findProperty("kodio.version")?.toString() ?: "0.0.1-SNAPSHOT"
+    
+    mavenPublishing {
+        // Uses Central Portal by default (SonatypeHost was removed in 0.34.0)
+        publishToMavenCentral()
         
         signAllPublications()
         

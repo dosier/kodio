@@ -1,25 +1,79 @@
 name: Publish
+
 on:
-  release:
-    types: [released, prereleased]
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags like v0.1.0, v1.0.0-beta, etc.
+
+permissions:
+  contents: write  # Required to create releases
+
 jobs:
-  publish:
-    name: Release build and publish
-    runs-on: macOS-latest
+  # First, run the full test suite
+  test:
+    name: Run Tests
+    uses: ./.github/workflows/gradle.yml
+
+  # Create GitHub Release with auto-generated changelog
+  create-release:
+    name: Create GitHub Release
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for changelog generation
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          # Strip 'v' prefix from tag to get version number
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.get_version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}  # Mark as prerelease if tag contains hyphen (e.g., v1.0.0-beta)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish to Maven Central
+  publish:
+    name: Publish to Maven Central
+    needs: [test, create-release]
+    runs-on: macOS-latest  # macOS required for iOS/macOS targets
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: 21
-      - name: Publish to MavenCentral
-        run: ./gradlew publishToMavenCentral --no-configuration-cache
+
+      - name: Cache Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: ${{ runner.os }}-konan-${{ hashFiles('**/*.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-konan-
+
+      - name: Publish to Maven Central
+        run: ./gradlew publishToMavenCentral --no-configuration-cache -Pkodio.version=${{ needs.create-release.outputs.version }}
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}
-

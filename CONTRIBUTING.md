@@ -109,7 +109,7 @@ The version for all modules is defined in a single place:
 
 ```properties
 # gradle.properties
-kodio.version=0.0.6
+kodio.version=0.1.0-SNAPSHOT
 ```
 
 To publish with a custom version:
@@ -117,9 +117,59 @@ To publish with a custom version:
 ./gradlew publishToMavenCentral -Pkodio.version=1.0.0-custom
 ```
 
-### Publishing to Maven Central
+### Creating a Release (Tag-Based)
 
-Publishing is automated via GitHub Actions when a release is created. For manual publishing:
+Releases are automated via GitHub Actions when you push a version tag:
+
+```bash
+# 1. Make sure all changes are committed and pushed to main
+git checkout main
+git pull origin main
+
+# 2. Create and push a version tag
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+This will automatically:
+1. Run the full test suite on all platforms
+2. Create a GitHub Release with auto-generated changelog
+3. Publish all artifacts to Maven Central
+
+**Tag Format:**
+- Release versions: `v1.0.0`, `v0.2.0`, `v1.2.3`
+- Pre-releases: `v1.0.0-alpha`, `v1.0.0-beta.1`, `v1.0.0-rc.1` (automatically marked as prerelease)
+
+### Release Drafter (Auto Changelog)
+
+The repository uses [Release Drafter](https://github.com/release-drafter/release-drafter) to automatically draft release notes as PRs are merged. This creates a draft release that accumulates changes until you're ready to publish.
+
+**How it works:**
+1. Every merged PR is automatically categorized based on labels
+2. Draft release notes are updated with each merge
+3. When ready to release, you can review the draft in GitHub Releases
+4. Push a tag to finalize and publish
+
+**PR Labels for Changelog Categories:**
+
+| Label | Category | Version Bump |
+|-------|----------|--------------|
+| `feature`, `enhancement` | Features | Minor |
+| `fix`, `bugfix`, `bug` | Bug Fixes | Patch |
+| `breaking`, `breaking-change` | Breaking Changes | Major |
+| `chore`, `maintenance`, `dependencies` | Maintenance | Patch |
+| `documentation`, `docs` | Documentation | Patch |
+| `skip-changelog` | (excluded) | - |
+
+**Auto-labeling:** PRs are automatically labeled based on branch names:
+- `feature/*` → `feature`
+- `fix/*`, `bugfix/*` → `fix`
+- `chore/*` → `chore`
+- `docs/*` → `documentation`
+
+### Manual Publishing (Maintainers)
+
+For manual publishing without the GitHub Actions workflow:
 
 1. Set up credentials as environment variables:
    ```bash
@@ -132,7 +182,7 @@ Publishing is automated via GitHub Actions when a release is created. For manual
 
 2. Run publish:
    ```bash
-   ./gradlew publishToMavenCentral --no-configuration-cache
+   ./gradlew publishToMavenCentral --no-configuration-cache -Pkodio.version=0.1.0
    ```
 
 ### Publishing to Maven Local (for testing)
@@ -147,7 +197,7 @@ repositories {
     mavenLocal()
 }
 dependencies {
-    implementation("space.kodio:core:0.0.6")
+    implementation("space.kodio:core:0.1.0-SNAPSHOT")
 }
 ```
 
@@ -228,7 +278,11 @@ dependencies {
 
 ## Pull Request Process
 
-1. **Fork** the repository and create a feature branch
+1. **Fork** the repository and create a feature branch:
+   ```bash
+   git checkout -b feature/my-awesome-feature
+   # or: fix/bug-description, docs/update-readme, chore/update-deps
+   ```
 2. **Make changes** following the existing code style
 3. **Add tests** for new functionality
 4. **Update documentation** if needed
@@ -237,6 +291,7 @@ dependencies {
    ./gradlew check
    ```
 6. **Submit PR** with a clear description of changes
+7. **Add labels** to categorize your PR (or let auto-labeling handle it based on branch name)
 
 ### Code Style
 
@@ -247,13 +302,28 @@ dependencies {
 
 ### Commit Messages
 
-Use conventional commits:
+Use [Conventional Commits](https://www.conventionalcommits.org/) for clear changelogs:
+
 ```
 feat: add transcription cost tracking
 fix: handle empty audio chunks gracefully
 docs: update publishing instructions
 refactor: simplify WAV encoding logic
+chore: update dependencies
 ```
+
+**Prefixes:**
+| Prefix | Description | Changelog Category |
+|--------|-------------|--------------------|
+| `feat:` | New feature | Features |
+| `fix:` | Bug fix | Bug Fixes |
+| `docs:` | Documentation only | Documentation |
+| `refactor:` | Code refactoring | Maintenance |
+| `chore:` | Maintenance tasks | Maintenance |
+| `test:` | Adding tests | (excluded) |
+| `ci:` | CI/CD changes | (excluded) |
+
+**Breaking Changes:** Add `BREAKING CHANGE:` in the commit body or use `feat!:` / `fix!:` prefix.
 
 ## Questions?
 
