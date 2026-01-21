@@ -1,6 +1,7 @@
 package space.kodio.sample
 
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
 import platform.UIKit.UIDevice
 
 actual fun getOpenAIApiKey(): String {

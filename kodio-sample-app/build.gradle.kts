@@ -56,14 +56,6 @@ kotlin {
         }
     }
 
-    listOf(
-        macosX64(),
-        macosArm64()
-    ).forEach { macosTarget ->
-        macosTarget.binaries.executable {
-            entryPoint = "main"
-        }
-    }
     
     jvm("desktop")
 
