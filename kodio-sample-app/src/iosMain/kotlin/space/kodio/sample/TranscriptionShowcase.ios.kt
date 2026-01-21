@@ -21,9 +21,11 @@ private const val WHISPER_COST_PER_MINUTE = 0.006
 actual suspend fun transcribeFile(
     file: PlatformFile,
     apiKey: String
-): FileTranscriptionResult = suspendCancellableCoroutine { continuation ->
+): FileTranscriptionResult {
     val fileBytes = file.readBytes()
     val fileName = file.name
+    
+    return suspendCancellableCoroutine { continuation ->
     
     println("[TranscriptionShowcase] Transcribing file: $fileName (${fileBytes.size} bytes)")
     
@@ -104,6 +106,7 @@ actual suspend fun transcribeFile(
     
     continuation.invokeOnCancellation {
         task.cancel()
+    }
     }
 }
 
