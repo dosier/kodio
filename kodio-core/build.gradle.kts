@@ -7,7 +7,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.kotlinJsPlainObjects)
-    alias(libs.plugins.androidLibrary)
+    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     id("kodio-publish-convention")
 }
 
@@ -21,8 +21,10 @@ kodioPublishing {
 kotlin {
     jvm()
     jvmToolchain(21)
-    androidTarget {
-        publishLibraryVariants("release")
+    androidLibrary {
+        namespace = "space.kodio"
+        compileSdk = 36
+        minSdk = 24
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -81,18 +83,6 @@ kotlin {
                 implementation(libs.kotlin.browser.v202575)
             }
         }
-    }
-}
-
-android {
-    namespace = "space.kodio"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
-    defaultConfig {
-        minSdk = libs.versions.android.minSdk.get().toInt()
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 
