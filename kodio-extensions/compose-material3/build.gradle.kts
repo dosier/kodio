@@ -71,7 +71,7 @@ kotlin {
 }
 
 android {
-    namespace = "space.kodio"
+    namespace = "space.kodio.extensions.compose.material3"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()

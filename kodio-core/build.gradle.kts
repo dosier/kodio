@@ -85,7 +85,7 @@ kotlin {
 }
 
 android {
-    namespace = "space.kodio"
+    namespace = "space.kodio.core"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
