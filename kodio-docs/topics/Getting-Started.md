@@ -97,13 +97,13 @@ Kodio is split into modules so you can include only what you need:
 <def title="space.kodio:core">
 The foundation module providing recording, playback, and file I/O. This is the only required module.
 </def>
-<def title="space.kodio:compose">
+<def title="space.kodio.extensions:compose">
 Compose Multiplatform state holders (<code>rememberRecorderState</code>, <code>rememberPlayerState</code>) and the <code>AudioWaveform</code> component.
 </def>
-<def title="space.kodio:compose-material3">
+<def title="space.kodio.extensions:compose-material3">
 Pre-built Material 3 UI components like <code>RecordAudioButton</code>, <code>PlayAudioButton</code>, and <code>ErrorDialog</code>.
 </def>
-<def title="space.kodio:transcription">
+<def title="space.kodio.extensions:transcription">
 Audio transcription using OpenAI Whisper API. Provides <code>OpenAIWhisperEngine</code> and the <code>AudioFlow.transcribe()</code> extension.
 </def>
 </deflist>

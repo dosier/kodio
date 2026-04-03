@@ -22,7 +22,7 @@ implementation(libs.kodio.compose.material3)
 <tab title="Direct">
 
 ```kotlin
-implementation("space.kodio:compose-material3:%kodio-version%")
+implementation("space.kodio.extensions:compose-material3:%kodio-version%")
 ```
 
 </tab>

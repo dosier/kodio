@@ -33,9 +33,9 @@ kodio = "%kodio-version%"
 
 [libraries]
 kodio-core = { module = "space.kodio:core", version.ref = "kodio" }
-kodio-compose = { module = "space.kodio:compose", version.ref = "kodio" }
-kodio-compose-material3 = { module = "space.kodio:compose-material3", version.ref = "kodio" }
-kodio-transcription = { module = "space.kodio:transcription", version.ref = "kodio" }
+kodio-compose = { module = "space.kodio.extensions:compose", version.ref = "kodio" }
+kodio-compose-material3 = { module = "space.kodio.extensions:compose-material3", version.ref = "kodio" }
+kodio-transcription = { module = "space.kodio.extensions:transcription", version.ref = "kodio" }
 ```
 
 </step>
@@ -106,13 +106,13 @@ commonMain.dependencies {
     implementation("space.kodio:core:%kodio-version%")
     
     // Compose state holders + AudioWaveform
-    implementation("space.kodio:compose:%kodio-version%")
+    implementation("space.kodio.extensions:compose:%kodio-version%")
     
     // Material 3 UI components
-    implementation("space.kodio:compose-material3:%kodio-version%")
+    implementation("space.kodio.extensions:compose-material3:%kodio-version%")
     
     // Audio transcription (OpenAI Whisper)
-    implementation("space.kodio:transcription:%kodio-version%")
+    implementation("space.kodio.extensions:transcription:%kodio-version%")
 }
 ```
 
@@ -133,8 +133,8 @@ commonMain.dependencies {
 After syncing Gradle, verify the installation by importing Kodio:
 
 ```kotlin
-import space.kodio.Kodio
-import space.kodio.AudioQuality
+import space.kodio.core.Kodio
+import space.kodio.core.AudioQuality
 
 suspend fun test() {
     // If this compiles, you're good!
