@@ -14,6 +14,7 @@
         <toc-element topic="Playback.md"/>
         <toc-element topic="Audio-Quality.md"/>
         <toc-element topic="Audio-Format.md"/>
+        <toc-element topic="File-IO.md"/>
         <toc-element topic="Error-Handling.md"/>
     </toc-element>
     

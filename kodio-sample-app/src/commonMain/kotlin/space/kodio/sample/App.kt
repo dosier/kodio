@@ -51,6 +51,11 @@ fun App() {
                         Tab(
                             selected = selectedTab == 1,
                             onClick = { selectedTab = 1 },
+                            text = { Text("Playback") }
+                        )
+                        Tab(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
                             text = { Text("Transcription") }
                         )
                     }
@@ -64,7 +69,8 @@ fun App() {
             ) {
                 when (selectedTab) {
                     0 -> RecordingDemo()
-                    1 -> {
+                    1 -> PlaybackShowcase()
+                    2 -> {
                         if (apiKey.isBlank()) {
                             // Show API key input
                             ApiKeyInputScreen(

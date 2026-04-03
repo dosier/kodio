@@ -129,6 +129,7 @@ Suspend until playback finishes.
 <seealso style="cards">
     <category ref="core-api">
         <a href="Recording.md" summary="Record audio">Recording</a>
+        <a href="File-IO.md" summary="Save and load audio files">Audio File I/O</a>
         <a href="Device-Selection.md" summary="Choose input/output devices">Device Selection</a>
         <a href="Error-Handling.md" summary="Handle playback errors">Error Handling</a>
     </category>

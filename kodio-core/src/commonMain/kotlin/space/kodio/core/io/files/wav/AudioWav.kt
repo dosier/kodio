@@ -1,13 +1,11 @@
 package space.kodio.core.io.files.wav
 
-import kotlinx.io.Sink
-import kotlinx.io.writeIntLe
-import kotlinx.io.writeShortLe
-import kotlinx.io.writeString
+import kotlinx.io.*
 import space.kodio.core.*
 import space.kodio.core.SampleEncoding.PcmFloat
 import space.kodio.core.SampleEncoding.PcmInt
 import space.kodio.core.io.AudioSource
+import space.kodio.core.io.files.AudioFileReadError
 import space.kodio.core.io.files.AudioFileWriteError
 
 /**
@@ -78,4 +76,113 @@ internal fun writeWav(from: AudioSource, to: Sink) {
 
     // --- Write payload ---
     to.write(from.source, from.byteCount)
+}
+
+/**
+ * Reads a RIFF/WAVE file from [from] and returns an [AudioSource] containing
+ * the decoded PCM data and its [AudioFormat].
+ *
+ * Supports PCM-Int (format code 1) and IEEE-Float (format code 3).
+ * Tolerates unknown chunks between `fmt ` and `data` (e.g. LIST, INFO, JUNK).
+ */
+internal fun readWav(from: Source): AudioSource {
+    // --- RIFF header ---
+    val riffId = try {
+        from.readString(4)
+    } catch (e: Exception) {
+        throw AudioFileReadError.InvalidFile("Cannot read RIFF header: file is too short or unreadable.")
+    }
+    if (riffId != "RIFF")
+        throw AudioFileReadError.InvalidFile("Not a RIFF file (got '$riffId').")
+
+    from.readIntLe() // file size minus 8 — not needed for parsing
+
+    val waveId = from.readString(4)
+    if (waveId != "WAVE")
+        throw AudioFileReadError.InvalidFile("Not a WAVE file (got '$waveId').")
+
+    // --- Chunk-scanning loop ---
+    var audioFormatCode = -1
+    var numChannels = -1
+    var sampleRate = -1
+    var bitsPerSample = -1
+    var fmtFound = false
+
+    while (true) {
+        val chunkId = try {
+            from.readString(4)
+        } catch (_: Exception) {
+            throw AudioFileReadError.InvalidFile("Unexpected end of file before 'data' chunk.")
+        }
+        val chunkSize = from.readIntLe().toLong()
+
+        when (chunkId) {
+            "fmt " -> {
+                audioFormatCode = from.readShortLe().toInt() and 0xFFFF
+                numChannels = from.readShortLe().toInt() and 0xFFFF
+                sampleRate = from.readIntLe()
+                from.readIntLe()  // byteRate — derived, not stored
+                from.readShortLe() // blockAlign — derived, not stored
+                bitsPerSample = from.readShortLe().toInt() and 0xFFFF
+
+                // Skip any extra fmt bytes (e.g. cbSize in extended format)
+                val extraBytes = chunkSize - 16
+                if (extraBytes > 0) from.skip(extraBytes)
+
+                fmtFound = true
+            }
+
+            "data" -> {
+                if (!fmtFound)
+                    throw AudioFileReadError.InvalidFile("'data' chunk found before 'fmt ' chunk.")
+
+                val encoding: SampleEncoding = when (audioFormatCode) {
+                    1 -> PcmInt(
+                        bitDepth = when (bitsPerSample) {
+                            8 -> IntBitDepth.Eight
+                            16 -> IntBitDepth.Sixteen
+                            24 -> IntBitDepth.TwentyFour
+                            32 -> IntBitDepth.ThirtyTwo
+                            else -> throw AudioFileReadError.UnsupportedFormat(
+                                "Unsupported PCM bit depth: $bitsPerSample"
+                            )
+                        },
+                        endianness = Endianness.Little,
+                        layout = SampleLayout.Interleaved,
+                        signed = bitsPerSample != 8 // WAV convention: 8-bit is unsigned
+                    )
+
+                    3 -> PcmFloat(
+                        precision = when (bitsPerSample) {
+                            32 -> FloatPrecision.F32
+                            64 -> FloatPrecision.F64
+                            else -> throw AudioFileReadError.UnsupportedFormat(
+                                "Unsupported float precision: $bitsPerSample-bit"
+                            )
+                        },
+                        layout = SampleLayout.Interleaved
+                    )
+
+                    else -> throw AudioFileReadError.UnsupportedFormat(
+                        "Unsupported WAV audio format code: $audioFormatCode"
+                    )
+                }
+
+                val format = AudioFormat(
+                    sampleRate = sampleRate,
+                    channels = Channels.fromInt(numChannels),
+                    encoding = encoding
+                )
+
+                val buffer = Buffer()
+                from.readTo(buffer, chunkSize)
+                return AudioSource.of(format, buffer)
+            }
+
+            else -> {
+                // Skip unknown chunks (LIST, INFO, JUNK, bext, etc.)
+                from.skip(chunkSize)
+            }
+        }
+    }
 }

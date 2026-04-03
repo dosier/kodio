@@ -128,6 +128,7 @@ Get the completed recording, or <code>null</code> if none available.
 <seealso style="cards">
     <category ref="core-api">
         <a href="Playback.md" summary="Play back recorded audio">Playback</a>
+        <a href="File-IO.md" summary="Save and load audio files">Audio File I/O</a>
         <a href="Audio-Quality.md" summary="Quality presets explained">Audio Quality</a>
         <a href="Error-Handling.md" summary="Handle recording errors">Error Handling</a>
     </category>
