@@ -42,15 +42,25 @@ import kotlin.time.Duration
  * 
  * ### Platform Initialization
  * 
- * **Android** - In your Application class:
+ * **Android** - Call from your Activity (recommended) to wire up both
+ * context and permission handling:
  * ```kotlin
- * class App : Application() {
- *     override fun onCreate() {
- *         super.onCreate()
+ * class MainActivity : ComponentActivity() {
+ *     override fun onCreate(savedInstanceState: Bundle?) {
+ *         super.onCreate(savedInstanceState)
  *         Kodio.initialize(this)
+ *     }
+ *     override fun onRequestPermissionsResult(
+ *         requestCode: Int, permissions: Array<out String?>,
+ *         grantResults: IntArray, deviceId: Int
+ *     ) {
+ *         Kodio.onRequestPermissionsResult(requestCode, grantResults)
  *     }
  * }
  * ```
+ * 
+ * Alternatively, call `Kodio.initialize(context)` from an `Application`
+ * subclass to set the context only.
  * 
  * Other platforms (JVM, iOS, JS) work without explicit initialization.
  */

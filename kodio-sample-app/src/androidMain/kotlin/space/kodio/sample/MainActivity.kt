@@ -9,8 +9,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
 import io.github.vinceglb.filekit.manualFileKitCoreInitialization
-import space.kodio.core.AndroidAudioPermissionManager
-import space.kodio.core.AndroidAudioSystem
+import space.kodio.core.Kodio
+import space.kodio.core.initialize
+import space.kodio.core.onRequestPermissionsResult
 
 class MainActivity : ComponentActivity() {
 
@@ -18,8 +19,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         FileKit.init(this)
-        AndroidAudioSystem.setApplicationContext(applicationContext)
-        AndroidAudioPermissionManager.setMicrophonePermissionRequestActivity(this)
+        Kodio.initialize(this)
         setContent {
             App()
         }
@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray,
         deviceId: Int
     ) {
-        AndroidAudioPermissionManager.onRequestPermissionsResult(requestCode, grantResults)
+        Kodio.onRequestPermissionsResult(requestCode, grantResults)
     }
 }
 

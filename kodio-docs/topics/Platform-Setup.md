@@ -24,27 +24,51 @@ Add the microphone permission to your `AndroidManifest.xml`:
 </step>
 <step>
 
-Initialize Kodio in your `Application` class before recording:
+Initialize Kodio before recording. The recommended approach is to call `Kodio.initialize()` from your main Activity, which wires up both the application context and permission handling in one step:
+
+<tabs>
+<tab title="From an Activity (recommended)" group-key="activity">
+
+```kotlin
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        Kodio.initialize(this) // sets context + permission activity
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String?>,
+        grantResults: IntArray, deviceId: Int
+    ) {
+        Kodio.onRequestPermissionsResult(requestCode, grantResults)
+    }
+}
+```
+
+</tab>
+<tab title="From an Application" group-key="application">
+
+If you prefer initializing in your `Application` class, note that this only sets the application context. Permission handling must be wired separately from an Activity.
 
 ```kotlin
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        Kodio.initialize(this)
+        Kodio.initialize(this) // context only
     }
 }
 ```
 
-</step>
-<step>
-
-Make sure your Application class is registered in the manifest:
+Register it in your manifest:
 
 ```xml
 <application
     android:name=".MyApp"
     ...>
 ```
+
+</tab>
+</tabs>
 
 </step>
 </procedure>
@@ -217,7 +241,7 @@ That's it! The browser will automatically prompt the user for microphone permiss
 
 | Platform | Permission | Initialization | Extra |
 |----------|------------|----------------|-------|
-| 🤖 Android | Manifest + Runtime | `Kodio.initialize(context)` | — |
+| 🤖 Android | Manifest + Runtime | `Kodio.initialize(activity)` | — |
 | 🍎 iOS | Info.plist | — | — |
 | 🍏 macOS | Info.plist | — | Entitlement, Java 21+ |
 | ☕ JVM | — | — | `kodio.useJavaSound` option |
