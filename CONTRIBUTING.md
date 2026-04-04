@@ -123,8 +123,8 @@ Releases are automated via GitHub Actions when you push a version tag:
 
 ```bash
 # 1. Make sure all changes are committed and pushed to main
-git checkout main
-git pull origin main
+git checkout master
+git pull origin master
 
 # 2. Create and push a version tag
 git tag v0.1.0

@@ -33,4 +33,5 @@
     
     <toc-element topic="Migration.md"/>
     <toc-element topic="API-Reference.md"/>
+    <toc-element topic="Release-Process.md"/>
 </instance-profile>
