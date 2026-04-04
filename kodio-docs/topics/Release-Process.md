@@ -59,7 +59,7 @@ gh run list --branch master --limit 3
 
 ### 2. Update version numbers
 
-There are two files that hold version references:
+There are three files that hold version references:
 
 **`gradle.properties`** — the Gradle build version (used for local dev; CI overrides from the tag):
 
@@ -73,12 +73,14 @@ kodio.version=X.Y.Z
 <var name="kodio-version" value="X.Y.Z"/>
 ```
 
-Update both to the new release version.
+**`README.md`** — the installation section has hardcoded version strings for all four artifacts. Update each `implementation(...)` line to the new version.
+
+Update all three to the new release version.
 
 ### 3. Commit and push version bump
 
 ```bash
-git add gradle.properties kodio-docs/v.list
+git add gradle.properties kodio-docs/v.list README.md
 git commit -m "chore: bump version to X.Y.Z"
 git push origin master
 ```
@@ -229,3 +231,4 @@ Then add `mavenLocal()` to the consuming project's repositories block.
 | `build-logic/src/main/kotlin/kodio-publish-convention.gradle.kts` | Maven publishing convention plugin |
 | `gradle.properties` | Build version (`kodio.version`) |
 | `kodio-docs/v.list` | Documentation version variable |
+| `README.md` | Hardcoded installation snippet versions |
