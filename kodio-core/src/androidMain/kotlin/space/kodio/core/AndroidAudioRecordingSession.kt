@@ -23,28 +23,31 @@ class AndroidAudioRecordingSession(
     private var androidChannelMask: Int = 0
 
     override suspend fun prepareRecording(): AudioFormat {
-        ensureInterleaved(format) // AudioRecord needs interleaved frames
+        val effectiveFormat = tryPrepareWithFormat(format)
+            ?: if (format != DefaultAndroidRecordingAudioFormat) {
+                tryPrepareWithFormat(DefaultAndroidRecordingAudioFormat)
+            } else null
+            ?: error("No supported audio format found for this device")
 
-        androidEncoding = format.toAndroidEncoding()
-        androidChannelMask = format.channels.toAndroidChannelInMask()
+        return effectiveFormat
+    }
 
-        if (androidEncoding == AndroidAudioFormat.ENCODING_INVALID)
-            error("$format is not supported by the device")
+    private fun tryPrepareWithFormat(fmt: AudioFormat): AudioFormat? {
+        val interleavedFmt = fmt.asInterleaved() ?: return null
 
-        val minBufferSize = AudioRecord.getMinBufferSize(
-            /* sampleRateInHz = */ format.sampleRate,
-            /* channelConfig  = */ androidChannelMask,
-            /* audioFormat    = */ androidEncoding
-        )
-        if (minBufferSize == AudioRecord.ERROR_BAD_VALUE) error("$format is not supported by the device")
-        if (minBufferSize == AudioRecord.ERROR) error("Failed to get min buffer size")
+        val encoding = interleavedFmt.toAndroidEncoding()
+        if (encoding == AndroidAudioFormat.ENCODING_INVALID) return null
 
-        // Give ourselves headroom to avoid xruns
+        val channelMask = interleavedFmt.channels.toAndroidChannelInMask()
+        val minBufferSize = AudioRecord.getMinBufferSize(interleavedFmt.sampleRate, channelMask, encoding)
+        if (minBufferSize == AudioRecord.ERROR_BAD_VALUE || minBufferSize == AudioRecord.ERROR)
+            return null
+
         val bufferBytes = minBufferSize.coerceAtLeast(4096) * 2
 
         val record = AudioRecord.Builder()
             .setAudioSource(MediaRecorder.AudioSource.MIC)
-            .setAudioFormat(format.toAndroidInputAudioFormat()) // from your Android interop helpers
+            .setAudioFormat(interleavedFmt.toAndroidInputAudioFormat())
             .setBufferSizeInBytes(bufferBytes)
             .build()
 
@@ -52,8 +55,10 @@ class AndroidAudioRecordingSession(
 
         record.startRecording()
         audioRecord = record
-        preparedFormat = format
-        return format
+        androidEncoding = encoding
+        androidChannelMask = channelMask
+        preparedFormat = interleavedFmt
+        return interleavedFmt
     }
 
     override suspend fun startRecording(channel: SendChannel<ByteArray>) {
@@ -101,12 +106,13 @@ class AndroidAudioRecordingSession(
 
 /* -------------------- Helpers -------------------- */
 
-private fun ensureInterleaved(fmt: AudioFormat) {
-    val ok = when (val e = fmt.encoding) {
-        is SampleEncoding.PcmInt   -> e.layout == SampleLayout.Interleaved
-        is SampleEncoding.PcmFloat -> e.layout == SampleLayout.Interleaved
-    }
-    require(ok) { "Android AudioRecord requires interleaved PCM frames." }
+private fun AudioFormat.asInterleaved(): AudioFormat? = when (val e = encoding) {
+    is SampleEncoding.PcmInt ->
+        if (e.layout == SampleLayout.Interleaved) this
+        else copy(encoding = e.copy(layout = SampleLayout.Interleaved))
+    is SampleEncoding.PcmFloat ->
+        if (e.layout == SampleLayout.Interleaved) this
+        else copy(encoding = e.copy(layout = SampleLayout.Interleaved))
 }
 
 /** Convert FloatArray (interleaved frames) to little-endian IEEE-754 bytes for the first `framesRead` frames. */

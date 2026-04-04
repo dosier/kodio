@@ -17,7 +17,11 @@ import space.kodio.compose.WaveformColors
 import space.kodio.compose.WaveformStyle
 import space.kodio.compose.rememberPlayerState
 import space.kodio.compose.rememberRecorderState
+import space.kodio.core.AudioFormat
+import space.kodio.core.AudioQuality
 import space.kodio.core.AudioRecording
+import space.kodio.core.Channels
+import space.kodio.core.SampleEncoding
 
 /**
  * Sample app demonstrating Kodio features.
@@ -146,9 +150,10 @@ private fun ApiKeyInputScreen(
 @Composable
 private fun RecordingDemo() {
     var recordings by remember { mutableStateOf(listOf<AudioRecording>()) }
+    var selectedQuality by remember { mutableStateOf(AudioQuality.Default) }
     
-    // New simplified recorder state
     val recorderState = rememberRecorderState(
+        quality = selectedQuality,
         onRecordingComplete = { recording ->
             recordings = recordings + recording
         }
@@ -161,7 +166,14 @@ private fun RecordingDemo() {
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // Recording section
+        item {
+            QualitySelector(
+                selected = selectedQuality,
+                onSelect = { selectedQuality = it },
+                enabled = !recorderState.isRecording,
+            )
+        }
+
         item {
             RecordingSection(recorderState, scope)
         }
@@ -170,7 +182,6 @@ private fun RecordingDemo() {
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) 
         }
         
-        // Recordings list
         item {
             Text(
                 "Recordings (${recordings.size})",
@@ -254,6 +265,47 @@ private fun RecordingSection(
 }
 
 @Composable
+private fun QualitySelector(
+    selected: AudioQuality,
+    onSelect: (AudioQuality) -> Unit,
+    enabled: Boolean,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Audio Quality", style = MaterialTheme.typography.titleSmall)
+
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                AudioQuality.entries.forEachIndexed { index, quality ->
+                    SegmentedButton(
+                        selected = quality == selected,
+                        onClick = { onSelect(quality) },
+                        enabled = enabled,
+                        shape = SegmentedButtonDefaults.itemShape(
+                            index = index,
+                            count = AudioQuality.entries.size
+                        ),
+                    ) {
+                        Text(quality.name, maxLines = 1)
+                    }
+                }
+            }
+
+            Text(
+                text = selected.format.label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
 private fun RecordingItem(
     recording: AudioRecording,
     onSave: () -> Unit,
@@ -261,48 +313,54 @@ private fun RecordingItem(
 ) {
     val playerState = rememberPlayerState(recording)
     
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Play/Pause button
-            IconButton(
-                onClick = { playerState.toggle() }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    when {
-                        playerState.isPlaying -> "⏸"
-                        else -> "▶️"
-                    }
-                )
-            }
-            
-            // Recording info
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    "Duration: ${recording.calculatedDuration}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    "Size: ${recording.sizeInBytes} bytes",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            // Save button
-            TextButton(onClick = onSave) {
-                Text("Save")
-            }
-            
-            // Delete button
-            IconButton(onClick = onDelete) {
-                Text("🗑️")
+                IconButton(onClick = { playerState.toggle() }) {
+                    Text(if (playerState.isPlaying) "⏸" else "▶️")
+                }
+                
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Duration: ${recording.calculatedDuration}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        recording.format.label,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        formatBytes(recording.sizeInBytes),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                
+                TextButton(onClick = onSave) { Text("Save") }
+                IconButton(onClick = onDelete) { Text("🗑️") }
             }
         }
     }
+}
+
+private val AudioFormat.label: String
+    get() = buildString {
+        append("${sampleRate / 1000.0}kHz")
+        append(" / ")
+        append(if (channels == Channels.Mono) "Mono" else "Stereo")
+        append(" / ")
+        when (val enc = encoding) {
+            is SampleEncoding.PcmInt -> append("${enc.bitDepth.bits}-bit int")
+            is SampleEncoding.PcmFloat -> append("${if (enc.precision == space.kodio.core.FloatPrecision.F32) "32" else "64"}-bit float")
+        }
+    }
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0)} KB"
+    else -> "${"%.2f".format(bytes / (1024.0 * 1024.0))} MB"
 }

@@ -55,8 +55,13 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
         }
     }
 
-    override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession =
-        permissionManager.withMicrophonePermission { MacosAudioRecordingSession(requestedDevice) }
+    override suspend fun createRecordingSession(
+        requestedDevice: AudioDevice.Input?,
+        requestedFormat: AudioFormat?,
+    ): AudioRecordingSession =
+        permissionManager.withMicrophonePermission {
+            MacosAudioRecordingSession(requestedDevice, requestedFormat)
+        }
 
     @ExperimentalForeignApi
     override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession =

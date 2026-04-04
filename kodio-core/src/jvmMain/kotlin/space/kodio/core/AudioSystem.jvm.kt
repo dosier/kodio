@@ -95,8 +95,14 @@ internal object JvmAudioSystem : SystemAudioSystemImpl() {
             }
     }
 
-    override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession =
-        JvmAudioRecordingSession(requestedDevice ?: listInputDevices().first())
+    override suspend fun createRecordingSession(
+        requestedDevice: AudioDevice.Input?,
+        requestedFormat: AudioFormat?,
+    ): AudioRecordingSession =
+        JvmAudioRecordingSession(
+            requestedDevice ?: listInputDevices().first(),
+            requestedFormat ?: DefaultJvmRecordingAudioFormat,
+        )
 
     override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession =
         JvmAudioPlaybackSession(requestedDevice ?: listOutputDevices().first())

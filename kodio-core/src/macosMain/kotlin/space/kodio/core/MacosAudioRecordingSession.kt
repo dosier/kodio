@@ -3,6 +3,9 @@ package space.kodio.core
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.channels.SendChannel
 import space.kodio.core.MacosAudioQueueProperty.CurrentDevice
+import space.kodio.core.util.namedLogger
+
+private val logger = namedLogger("MacosRecording")
 
 /**
  * macOS implementation for [AVAudioRecordingSession] using AudioQueue input.
@@ -18,16 +21,58 @@ class MacosAudioRecordingSession(
     private lateinit var audioQueue: MacosAudioQueue.ReadOnly
 
     override suspend fun prepareRecording(): AudioFormat {
-        val format = requestedFormat?:DefaultRecordingInt16
-        audioQueue = MacosAudioQueue.createInput(
-            format = format,
-            bufferCount = bufferCount,
-            bufferDurationSec = bufferDurationSec
-        )
-        val device: AudioDevice.Input? = requestedDevice
-        if (device != null)
-            audioQueue.setPropertyValue(CurrentDevice, device.id)
-        return format
+        val preferred = requestedFormat ?: DefaultRecordingInt16
+        for (candidate in recordingFormatCandidates(preferred)) {
+            tryCreateAudioQueue(candidate)?.let { resolved ->
+                if (resolved != preferred) {
+                    logger.info {
+                        "Using recording format $resolved (requested $preferred was not accepted by AudioQueue)"
+                    }
+                }
+                val device: AudioDevice.Input? = requestedDevice
+                if (device != null)
+                    audioQueue.setPropertyValue(CurrentDevice, device.id)
+                return resolved
+            }
+        }
+        error("No supported audio format found for this device")
+    }
+
+    /**
+     * Ordered fallbacks: preferred format, then device default when CoreAudio reports known
+     * virtual formats, then [DefaultRecordingInt16].
+     */
+    private fun recordingFormatCandidates(preferred: AudioFormat): List<AudioFormat> =
+        buildSet {
+            add(preferred)
+            when (val fs = requestedDevice?.formatSupport) {
+                is AudioFormatSupport.Known -> {
+                    if (preferred !in fs.supportedFormats) {
+                        logger.warn {
+                            "Requested format $preferred is not among ${fs.supportedFormats.size} virtual " +
+                                "formats reported for input device \"${requestedDevice?.name}\" — trying " +
+                                "AudioQueue anyway, then device default and platform default"
+                        }
+                    }
+                    add(fs.defaultFormat)
+                }
+                else -> Unit
+            }
+            add(DefaultRecordingInt16)
+        }.toList()
+
+    private fun tryCreateAudioQueue(format: AudioFormat): AudioFormat? {
+        return try {
+            audioQueue = MacosAudioQueue.createInput(
+                format = format,
+                bufferCount = bufferCount,
+                bufferDurationSec = bufferDurationSec
+            )
+            format
+        } catch (e: Exception) {
+            logger.warn(e) { "AudioQueue input creation failed for format $format" }
+            null
+        }
     }
 
     override suspend fun startRecording(channel: SendChannel<ByteArray>) {

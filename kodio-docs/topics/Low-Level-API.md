@@ -21,6 +21,18 @@ val audioFlow = session.audioFlow.value
 val recording = AudioRecording.fromAudioFlow(audioFlow!!)
 ```
 
+You can request a specific audio format. The platform will try to honor it, falling back to a supported format if necessary:
+
+```kotlin
+val session = SystemAudioSystem.createRecordingSession(
+    requestedFormat = AudioFormat(
+        sampleRate = 16000,
+        channels = Channels.Mono,
+        encoding = SampleEncoding.PcmInt(IntBitDepth.Sixteen)
+    )
+)
+```
+
 ## Playback session {id="playback-session"}
 
 ```kotlin
@@ -64,7 +76,10 @@ val audioFlow = AudioFlow(
 ```kotlin
 val inputs = SystemAudioSystem.listInputDevices()
 val outputs = SystemAudioSystem.listOutputDevices()
-val recordingSession = SystemAudioSystem.createRecordingSession(device)
+val recordingSession = SystemAudioSystem.createRecordingSession(
+    requestedDevice = device,
+    requestedFormat = AudioQuality.Voice.format
+)
 val playbackSession = SystemAudioSystem.createPlaybackSession(device)
 ```
 

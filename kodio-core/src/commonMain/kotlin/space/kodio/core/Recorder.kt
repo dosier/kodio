@@ -67,10 +67,13 @@ class Recorder internal constructor(
         get() = false // Recording sessions don't have a paused state currently
 
     /**
-     * The audio format of this recorder (derived from quality).
+     * The audio format of this recorder.
+     * Before recording starts, returns the requested format from [quality].
+     * After recording starts, returns the actual negotiated format from the session
+     * (which may differ if the platform couldn't honor the exact request).
      */
     val format: AudioFormat
-        get() = quality.format
+        get() = session.audioFlow.value?.format ?: quality.format
 
     /**
      * Whether the recorder is in stopped state with a recording available.

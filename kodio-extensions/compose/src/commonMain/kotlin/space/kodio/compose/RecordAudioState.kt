@@ -3,6 +3,7 @@ package space.kodio.compose
 import androidx.compose.runtime.*
 import space.kodio.core.AudioDevice
 import space.kodio.core.AudioFlow
+import space.kodio.core.AudioFormat
 import space.kodio.core.AudioRecordingSession
 import space.kodio.core.SystemAudioSystem
 import space.kodio.core.security.AudioPermissionManager
@@ -30,14 +31,15 @@ sealed class RecordAudioState {
 @Composable
 public fun rememberRecordAudioState(
     preferredInput: AudioDevice.Input? = null,
+    requestedFormat: AudioFormat? = null,
     onFinishRecording: (AudioFlow) -> Unit = {},
 ): RecordAudioState {
     val permissionState by SystemAudioSystem.permissionManager.state.collectAsState()
     var state : RecordAudioState by remember { mutableStateOf(RecordAudioState.NotReady(permissionState)) }
-    LaunchedEffect(permissionState, preferredInput) {
+    LaunchedEffect(permissionState, preferredInput, requestedFormat) {
         val previousState = state
         state = if (permissionState == AudioPermissionManager.State.Granted) {
-            runCatching { SystemAudioSystem.createRecordingSession(preferredInput) }
+            runCatching { SystemAudioSystem.createRecordingSession(preferredInput, requestedFormat) }
                 .onSuccess { session ->
                     when(previousState) {
                         is RecordAudioState.Ready -> previousState.session.stop()

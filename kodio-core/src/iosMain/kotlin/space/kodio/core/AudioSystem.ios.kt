@@ -52,8 +52,13 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
             }
     }
 
-    override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession =
-        permissionManager.withMicrophonePermission { IosAudioRecordingSession(requestedDevice) }
+    override suspend fun createRecordingSession(
+        requestedDevice: AudioDevice.Input?,
+        requestedFormat: AudioFormat?,
+    ): AudioRecordingSession =
+        permissionManager.withMicrophonePermission {
+            IosAudioRecordingSession(requestedDevice, requestedFormat ?: DefaultAppleRecordingAudioFormat)
+        }
 
     /**
      * In IOS, there is no control over the output device, so we ignore it.

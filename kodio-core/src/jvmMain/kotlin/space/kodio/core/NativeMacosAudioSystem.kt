@@ -65,19 +65,41 @@ internal object NativeMacosAudioSystem : SystemAudioSystemImpl() {
         return listAudioDevice<AudioDevice.Output>(NativeMacosLib.macos_list_output_devices)
     }
 
-    override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession {
+    override suspend fun createRecordingSession(
+        requestedDevice: AudioDevice.Input?,
+        requestedFormat: AudioFormat?,
+    ): AudioRecordingSession {
         check(isAvailable) { "Native macOS audio library not available" }
         return Arena.ofShared().use { arena ->
-            val sessionSeq = if (requestedDevice != null) {
-                val deviceData = requestedDevice.encodeToByteArray()
-                val deviceDataLen = deviceData.size
-                val deviceDataSeq = arena.allocate(deviceDataLen.toLong())
-                sessionSeqWrite(deviceDataSeq, deviceData)
-                NativeMacosLib.macos_create_recording_session_with_device
-                    .invokeExact(deviceDataLen, deviceDataSeq) as MemorySegment
-            } else {
-                NativeMacosLib.macos_create_recording_session_with_default_device
-                    .invokeExact() as MemorySegment
+            val sessionSeq = when {
+                requestedDevice != null && requestedFormat != null -> {
+                    val deviceData = requestedDevice.encodeToByteArray()
+                    val deviceDataSeq = arena.allocate(deviceData.size.toLong())
+                    sessionSeqWrite(deviceDataSeq, deviceData)
+                    val formatData = requestedFormat.encodeToByteArray()
+                    val formatDataSeq = arena.allocate(formatData.size.toLong())
+                    sessionSeqWrite(formatDataSeq, formatData)
+                    NativeMacosLib.macos_create_recording_session_with_device_and_format
+                        .invokeExact(deviceData.size, deviceDataSeq, formatData.size, formatDataSeq) as MemorySegment
+                }
+                requestedDevice != null -> {
+                    val deviceData = requestedDevice.encodeToByteArray()
+                    val deviceDataSeq = arena.allocate(deviceData.size.toLong())
+                    sessionSeqWrite(deviceDataSeq, deviceData)
+                    NativeMacosLib.macos_create_recording_session_with_device
+                        .invokeExact(deviceData.size, deviceDataSeq) as MemorySegment
+                }
+                requestedFormat != null -> {
+                    val formatData = requestedFormat.encodeToByteArray()
+                    val formatDataSeq = arena.allocate(formatData.size.toLong())
+                    sessionSeqWrite(formatDataSeq, formatData)
+                    NativeMacosLib.macos_create_recording_session_with_format
+                        .invokeExact(formatData.size, formatDataSeq) as MemorySegment
+                }
+                else -> {
+                    NativeMacosLib.macos_create_recording_session_with_default_device
+                        .invokeExact() as MemorySegment
+                }
             }
             NativeMacosAudioRecordingSession(
                 nativeMemSeq = sessionSeq,
@@ -457,6 +479,8 @@ private object NativeMacosLib {
     val macos_free: MethodHandle
     val macos_create_recording_session_with_device: MethodHandle
     val macos_create_recording_session_with_default_device: MethodHandle
+    val macos_create_recording_session_with_format: MethodHandle
+    val macos_create_recording_session_with_device_and_format: MethodHandle
     val macos_recording_session_start: MethodHandle
     val macos_recording_session_stop: MethodHandle
     val macos_recording_session_reset: MethodHandle
@@ -496,6 +520,17 @@ private object NativeMacosLib {
         macos_create_recording_session_with_default_device = lookupMethod(
             name = "macos_create_recording_session_with_default_device",
             res = ValueLayout.ADDRESS
+        )
+        macos_create_recording_session_with_format = lookupMethod(
+            name = "macos_create_recording_session_with_format",
+            res = ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS
+        )
+        macos_create_recording_session_with_device_and_format = lookupMethod(
+            name = "macos_create_recording_session_with_device_and_format",
+            res = ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS
         )
 
         macos_recording_session_start = lookupMethodVoid(

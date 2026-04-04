@@ -29,8 +29,17 @@ object AndroidAudioSystem : SystemAudioSystemImpl() {
     override suspend fun listOutputDevices(): List<AudioDevice.Output> =
         requireContext().audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { it.toOutputDevice() }
 
-    override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession =
-        permissionManager.withMicrophonePermission { AndroidAudioRecordingSession(requireContext(), requestedDevice) }
+    override suspend fun createRecordingSession(
+        requestedDevice: AudioDevice.Input?,
+        requestedFormat: AudioFormat?,
+    ): AudioRecordingSession =
+        permissionManager.withMicrophonePermission {
+            AndroidAudioRecordingSession(
+                requireContext(),
+                requestedDevice,
+                requestedFormat ?: DefaultAndroidRecordingAudioFormat,
+            )
+        }
 
     override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession =
         AndroidAudioPlaybackSession(requireContext(), requestedDevice)

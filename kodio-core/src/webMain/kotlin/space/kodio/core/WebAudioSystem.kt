@@ -22,8 +22,11 @@ open class WebAudioSystem : SystemAudioSystemImpl() {
         listDevices(MediaDeviceKind.audiooutput)
             .map(::toOutputDevice)
 
-    override suspend fun createRecordingSession(requestedDevice: AudioDevice.Input?): AudioRecordingSession =
-        WebAudioRecordingSession(requestedDevice)
+    override suspend fun createRecordingSession(
+        requestedDevice: AudioDevice.Input?,
+        requestedFormat: AudioFormat?,
+    ): AudioRecordingSession =
+        WebAudioRecordingSession(requestedDevice, requestedFormat ?: DefaultWebRecordingAudioFormat)
 
     override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession =
         WebAudioPlaybackSession()

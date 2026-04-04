@@ -125,7 +125,10 @@ object Kodio {
         device: AudioDevice.Input? = null
     ): Recorder {
         return try {
-            val session = SystemAudioSystem.createRecordingSession(device)
+            val session = SystemAudioSystem.createRecordingSession(
+                requestedDevice = device,
+                requestedFormat = quality.format,
+            )
             Recorder(session, quality)
         } catch (e: Exception) {
             throw AudioError.from(e)

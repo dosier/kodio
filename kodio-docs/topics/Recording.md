@@ -94,6 +94,9 @@ recorder.liveAudioFlow?.collect { chunk ->
 <def title="quality: AudioQuality">
 The quality preset used for this recorder.
 </def>
+<def title="format: AudioFormat">
+The audio format of this recorder. Before recording starts, returns the requested format from <code>quality</code>. After recording starts, returns the actual negotiated format from the platform (which may differ if the exact format is unsupported).
+</def>
 <def title="liveAudioFlow: Flow<ByteArray>?">
 Real-time audio data while recording. May be <code>null</code> on some platforms.
 </def>

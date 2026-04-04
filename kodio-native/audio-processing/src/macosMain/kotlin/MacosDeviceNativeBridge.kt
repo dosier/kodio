@@ -7,6 +7,7 @@ import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import space.kodio.core.AudioDevice
 import space.kodio.core.AudioFlow
+import space.kodio.core.AudioFormat
 import space.kodio.core.AudioPlaybackSession
 import space.kodio.core.AudioRecordingSession
 import space.kodio.core.SystemAudioSystem
@@ -27,11 +28,7 @@ fun macos_create_recording_session_with_device(
     deviceDataSize: Int,
     deviceDataPtr: CArrayPointer<ByteVar>
 ): COpaquePointer {
-    val deviceData = deviceDataPtr.readBytes(deviceDataSize)
-    val buf = Buffer().apply { write(deviceData) }
-    val device = buf.readAudioDevice()
-    if (device !is AudioDevice.Input)
-        error("Can only create a recording session from an input device, got $device.")
+    val device = decodeInputDevice(deviceDataSize, deviceDataPtr)
     return createRecordingSession(device)
 }
 
@@ -39,8 +36,45 @@ fun macos_create_recording_session_with_device(
 fun macos_create_recording_session_with_default_device(): COpaquePointer =
     createRecordingSession(null)
 
-private fun createRecordingSession(device: AudioDevice.Input?): COpaquePointer {
-    val session = runBlocking { SystemAudioSystem.createRecordingSession(device) }
+@CName("macos_create_recording_session_with_format")
+fun macos_create_recording_session_with_format(
+    formatDataSize: Int,
+    formatDataPtr: CArrayPointer<ByteVar>
+): COpaquePointer {
+    val format = formatDataPtr.readBytes(formatDataSize).decodeAsAudioFormat()
+    return createRecordingSession(device = null, format = format)
+}
+
+@CName("macos_create_recording_session_with_device_and_format")
+fun macos_create_recording_session_with_device_and_format(
+    deviceDataSize: Int,
+    deviceDataPtr: CArrayPointer<ByteVar>,
+    formatDataSize: Int,
+    formatDataPtr: CArrayPointer<ByteVar>
+): COpaquePointer {
+    val device = decodeInputDevice(deviceDataSize, deviceDataPtr)
+    val format = formatDataPtr.readBytes(formatDataSize).decodeAsAudioFormat()
+    return createRecordingSession(device, format)
+}
+
+private fun decodeInputDevice(
+    dataSize: Int,
+    dataPtr: CArrayPointer<ByteVar>
+): AudioDevice.Input {
+    val buf = Buffer().apply { write(dataPtr.readBytes(dataSize)) }
+    val device = buf.readAudioDevice()
+    if (device !is AudioDevice.Input)
+        error("Can only create a recording session from an input device, got $device.")
+    return device
+}
+
+private fun createRecordingSession(
+    device: AudioDevice.Input?,
+    format: AudioFormat? = null,
+): COpaquePointer {
+    val session = runBlocking {
+        SystemAudioSystem.createRecordingSession(device, format)
+    }
     return StableRef.create(session).asCPointer()
 }
 

@@ -92,6 +92,24 @@ Approximate sizes for uncompressed WAV files:
 >
 {style="note"}
 
+## Platform negotiation {id="negotiation"}
+
+Quality presets are forwarded to the platform's audio system as a *request*. If the exact format isn't supported, the platform gracefully falls back to the closest supported format:
+
+| Platform | Negotiation behavior |
+|----------|---------------------|
+| Android | Tries the requested format first, falls back to 48 kHz/mono/16-bit if `AudioRecord` rejects it |
+| JVM (JavaSound) | Checks mixer support, falls back to the device's default format |
+| macOS (CoreAudio) | Tries AudioQueue with the requested format, falls back through device default and platform default |
+| iOS (AVAudioEngine) | Converts from hardware format; falls back to 48 kHz/mono/16-bit if the target format isn't representable in AVAudioFormat (e.g., 24-bit int) |
+| Web (AudioWorklet) | Sample rate is a hint to `getUserMedia`; output is always mono 16-bit PCM due to worklet constraints |
+
+After recording starts, `Recorder.format` returns the actual negotiated format, which you can compare against the requested `quality.format`.
+
+> If your application depends on a specific format (e.g., 16 kHz for speech recognition), check `recorder.format` after starting to confirm the platform honored it.
+>
+{style="note"}
+
 ## Custom formats {id="custom"}
 
 Need something different? Create a custom `AudioFormat`:
