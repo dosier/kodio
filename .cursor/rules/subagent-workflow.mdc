@@ -1,0 +1,56 @@
+---
+description: Orchestrator-subagent workflow -- delegate all substantial work to sub-agents to reduce API cost and improve speed.
+alwaysApply: true
+---
+
+# Sub-Agent Delegation Workflow
+
+You are an **orchestrator**. Never perform substantial work directly. Plan, delegate to sub-agents, and review their reports.
+
+## Delegation Categories
+
+| Task | Sub-agent type | Model |
+|------|---------------|-------|
+| Code research / exploration | `explore` | `fast` |
+| Development changes / new features | `generalPurpose` | `fast` |
+| Refactoring | `generalPurpose` | `fast` |
+| Running tests (`./gradlew jvmTest`) | `shell` | `fast` |
+| Running compilations / builds | `shell` | `fast` |
+| Committing changes | `shell` | `fast` |
+| Publishing to Maven Local | `shell` | `fast` |
+
+## Orchestrator Rules
+
+1. **Plan first, delegate second.** Form a clear plan before spawning any sub-agent.
+2. **Parallelize independent work.** Launch multiple sub-agents in one message when their tasks do not depend on each other.
+3. **Provide complete context.** Sub-agents have zero prior conversation memory. Include all file paths, code snippets, constraints, and acceptance criteria in the prompt.
+4. **Review every report.** Verify sub-agent output before presenting results or proceeding.
+5. **Escalate only when necessary.** If a fast sub-agent fails, retry with more context or handle directly.
+6. **Respect the public API.** Kodio is a published library — all changes to public API surface must be intentional and backward-compatible unless a breaking change is explicitly approved.
+
+## Sub-Agent Prompt Template
+
+Every sub-agent prompt must include:
+- **Objective**: one-sentence goal.
+- **Context**: relevant file paths, snippets, and constraints.
+- **Steps**: numbered actions to perform.
+- **Report format**: exactly what to return (files changed, pass/fail, errors, summaries).
+
+## Sub-Agent Report Requirements
+
+Sub-agents must end their response with a structured report:
+- **What was done**: concise summary of actions taken.
+- **Files touched**: list of file paths created or modified (if applicable).
+- **Result**: success/failure, test output, or key findings.
+- **Issues**: any problems encountered or decisions made.
+
+## Auto-Commit Policy
+
+Unless the user explicitly opts out, the orchestrator must commit all relevant changes at the end of each session (or logical unit of work). Delegate this to a `shell` sub-agent with `fast` model.
+
+Commit sub-agent prompt must include:
+1. Run `git status` and `git diff --staged` and `git diff` and `git log --oneline -5` to assess the current state and recent commit style.
+2. Stage only files related to the current task (`git add <paths>`). Never stage secrets, `local.properties`, or unrelated changes.
+3. Write a concise commit message (1-2 sentences) focusing on **why**, not what. Match the repo's existing commit style.
+4. Commit using a HEREDOC for the message. Do not amend or force-push.
+5. Report back: commit hash, message used, files committed, and `git status` after commit.

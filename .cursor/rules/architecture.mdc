@@ -1,0 +1,88 @@
+---
+description: Kodio KMP audio library architecture, module boundaries, and development patterns
+globs:
+  - "kodio-core/src/**/*.kt"
+  - "kodio-extensions/**/*.kt"
+  - "kodio-native/**/*.kt"
+  - "kodio-sample-app/**/*.kt"
+alwaysApply: false
+---
+
+# Kodio Architecture
+
+## Module Map
+
+| Module | Purpose | Package |
+|--------|---------|---------|
+| `kodio-core` | Core audio API (recording, playback, devices, formats, file I/O) | `space.kodio.core` |
+| `kodio-extensions/compose` | Compose UI integration (`RecorderState`, `PlayerState`, `AudioWaveform`) | `space.kodio.compose` |
+| `kodio-extensions/compose-material3` | Material 3 themed audio components | `space.kodio.compose.material3` |
+| `kodio-extensions/transcription` | Audio transcription via OpenAI Whisper | `space.kodio.transcription` |
+| `kodio-native/audio-permissions` | Platform permission handling | `space.kodio.native.permissions` |
+| `kodio-native/audio-processing` | Native audio processing utilities | `space.kodio.native.processing` |
+| `kodio-sample-app` | Demo app (desktop, Android, iOS, web) | `space.kodio.sample` |
+| `build-logic` | Gradle convention plugins (includeBuild) | — |
+
+## KMP Source Set Structure
+
+Each module follows the standard Kotlin Multiplatform source set layout:
+
+```
+src/
+├── commonMain/kotlin/     # Shared API (expect declarations, interfaces, pure Kotlin)
+├── commonTest/kotlin/     # Shared tests
+├── jvmMain/kotlin/        # JVM/Desktop (javax.sound.sampled)
+├── androidMain/kotlin/    # Android (AudioRecord, AudioTrack, MediaRecorder)
+├── iosMain/kotlin/        # iOS (AVAudioEngine, AVAudioSession)
+├── macosMain/kotlin/      # macOS (AudioQueue, CoreAudio)
+├── jsMain/kotlin/         # Browser (Web Audio API, MediaRecorder)
+└── nativeMain/kotlin/     # Shared native code (iOS + macOS)
+```
+
+## Core API Layers
+
+### Layer 1: Entry Point — `Kodio` object
+- `Kodio.recorder()` / `Kodio.player()` — create instances
+- `Kodio.record()` / `Kodio.play()` — convenience one-shot methods
+- `Kodio.listInputDevices()` / `Kodio.listOutputDevices()`
+- `Kodio.microphonePermission` — permission state
+
+### Layer 2: High-Level — `Recorder` / `Player`
+- Wraps sessions with simplified start/stop/toggle/release lifecycle
+- `Recorder.getRecording()` → `AudioRecording`
+- `Player.load(recording)` → ready for playback
+
+### Layer 3: Session — `AudioRecordingSession` / `AudioPlaybackSession`
+- Platform-specific implementations via `expect`/`actual`
+- State machines: `Idle → Recording → Stopped` / `Idle → Ready → Playing ⇄ Paused → Finished`
+- Exposes `StateFlow<State>` and `StateFlow<AudioFlow?>`
+
+### Layer 4: System — `AudioSystem` (expect/actual)
+- Factory for sessions and device enumeration
+- `SystemAudioSystem` singleton per platform
+
+## Key Types
+
+- `AudioFormat` — sample rate, channels, bit depth
+- `AudioQuality` — presets (Low, Standard, High, UltraHigh, Custom)
+- `AudioRecording` — completed recording (format + data)
+- `AudioFlow` — streaming audio data (format + `Flow<ByteArray>`)
+- `AudioDevice.Input` / `AudioDevice.Output` — device descriptors
+- `AudioError` — sealed class hierarchy for typed errors
+
+## Compose Extension Patterns
+
+- `RecorderState` / `PlayerState` — `@Composable` state holders wrapping `Recorder` / `Player`
+- `AudioWaveform` — real-time waveform visualizer composable
+- `RecordAudioButton` / `PlayAudioButton` — ready-to-use UI components
+- `KodioTheme` / `KodioComponents` — theming and component factory
+
+## Development Rules
+
+1. **Public API lives in `commonMain`**. Platform code implements via `expect`/`actual` or interfaces.
+2. **New platform support** = add a new source set with `actual` implementations. Never put platform-specific logic in `commonMain`.
+3. **State is always `StateFlow`**. All observable state uses Kotlin `StateFlow`, never mutable properties or callbacks.
+4. **Errors use `AudioError`**. Wrap platform exceptions into the `AudioError` sealed hierarchy. Never leak platform exceptions.
+5. **Resources must be released**. `Recorder.release()` / `Player.release()` or use the `.use {}` extension.
+6. **Tests run on JVM**. Primary CI runs `./gradlew jvmTest`. Platform-specific tests require their respective environments.
+7. **Version** is in `gradle.properties` (`kodio.version`). Never hardcode versions elsewhere.

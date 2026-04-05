@@ -1,0 +1,53 @@
+---
+description: Writerside documentation conventions and workflow for Kodio docs
+globs:
+  - "kodio-docs/**"
+alwaysApply: false
+---
+
+# Kodio Documentation (Writerside)
+
+## Structure
+
+Documentation lives in `kodio-docs/` as a JetBrains Writerside project. It is **not** a Gradle subproject — it has its own `build.gradle.kts` and is built/deployed via the `.github/workflows/docs.yml` CI workflow to GitHub Pages.
+
+## File Layout
+
+```
+kodio-docs/
+├── topics/           # All documentation pages (Markdown)
+├── images/           # Diagrams and assets (e.g. kodio-architecture.svg)
+├── k.tree            # Table of contents / navigation tree
+├── writerside.cfg    # Writerside project config
+├── cfg/              # Build profiles
+├── v.list            # Variables (version numbers, URLs)
+├── c.list            # Custom elements
+└── labels.list       # Reusable labels
+```
+
+## Topic Inventory
+
+### Getting Started
+- `Getting-Started.md`, `Quick-Start.md`, `Installation.md`, `Platform-Setup.md`
+
+### Core
+- `Recording.md`, `Playback.md`, `Audio-Quality.md`, `Audio-Format.md`, `File-IO.md`, `Error-Handling.md`
+
+### Compose
+- `Recorder-State.md`, `Player-State.md`, `Audio-Waveform.md`, `Material3-Components.md`
+
+### Advanced
+- `Low-Level-API.md`, `Device-Selection.md`, `Custom-Formats.md`
+
+### Meta
+- `Migration.md`, `API-Reference.md`, `Release-Process.md`
+
+## Rules for Documentation Changes
+
+1. **Keep docs in sync with code.** When changing public API in `kodio-core` or `kodio-extensions`, update the corresponding topic page.
+2. **Register new pages in `k.tree`.** Every new `.md` file must have a `<toc-element>` entry in `k.tree` or it won't appear in navigation.
+3. **Use Writerside Markdown extensions.** Tabs, collapsible sections, code snippets with `src` attributes — use the Writerside feature set, not raw GitHub-flavored Markdown.
+4. **Code examples must compile.** Prefer snippets extracted from `kodio-sample-app` or inline examples that match real API signatures.
+5. **Version references** should use variables from `v.list` (e.g. `%kodio-version%`) rather than hardcoded strings.
+6. **Images** go in `kodio-docs/images/`. Reference them with relative paths in Markdown.
+7. **CI builds docs automatically.** The `docs.yml` workflow builds on push to master. Check the build if you're unsure about Writerside syntax.
