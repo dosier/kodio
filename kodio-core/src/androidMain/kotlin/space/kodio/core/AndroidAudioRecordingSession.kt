@@ -24,9 +24,9 @@ class AndroidAudioRecordingSession(
 
     override suspend fun prepareRecording(): AudioFormat {
         val effectiveFormat = tryPrepareWithFormat(format)
-            ?: if (format != DefaultAndroidRecordingAudioFormat) {
+            ?: (if (format != DefaultAndroidRecordingAudioFormat) {
                 tryPrepareWithFormat(DefaultAndroidRecordingAudioFormat)
-            } else null
+            } else null)
             ?: error("No supported audio format found for this device")
 
         return effectiveFormat
