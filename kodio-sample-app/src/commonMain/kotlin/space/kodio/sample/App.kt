@@ -17,10 +17,12 @@ import space.kodio.compose.WaveformColors
 import space.kodio.compose.WaveformStyle
 import space.kodio.compose.rememberPlayerState
 import space.kodio.compose.rememberRecorderState
+import space.kodio.core.AudioDevice
 import space.kodio.core.AudioFormat
 import space.kodio.core.AudioQuality
 import space.kodio.core.AudioRecording
 import space.kodio.core.Channels
+import space.kodio.core.Kodio
 import space.kodio.core.SampleEncoding
 
 /**
@@ -151,9 +153,16 @@ private fun ApiKeyInputScreen(
 private fun RecordingDemo() {
     var recordings by remember { mutableStateOf(listOf<AudioRecording>()) }
     var selectedQuality by remember { mutableStateOf(AudioQuality.Default) }
-    
+    var inputDevices by remember { mutableStateOf<List<AudioDevice.Input>>(emptyList()) }
+    var selectedInputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
+
+    LaunchedEffect(Unit) {
+        inputDevices = Kodio.listInputDevices()
+    }
+
     val recorderState = rememberRecorderState(
         quality = selectedQuality,
+        device = selectedInputDevice,
         onRecordingComplete = { recording ->
             recordings = recordings + recording
         }
@@ -166,6 +175,16 @@ private fun RecordingDemo() {
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        item {
+            DeviceSelector(
+                label = "Input Device",
+                devices = inputDevices,
+                selected = selectedInputDevice,
+                onSelect = { selectedInputDevice = it },
+                enabled = !recorderState.isRecording,
+            )
+        }
+
         item {
             QualitySelector(
                 selected = selectedQuality,
@@ -259,6 +278,67 @@ private fun RecordingSection(
                 )
             ) {
                 Text(if (recorderState.isRecording) "Stop Recording" else "Start Recording")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun <T : AudioDevice> DeviceSelector(
+    label: String,
+    devices: List<T>,
+    selected: T?,
+    onSelect: (T?) -> Unit,
+    enabled: Boolean = true,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(label, style = MaterialTheme.typography.titleSmall)
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { if (enabled) expanded = it }
+            ) {
+                OutlinedTextField(
+                    value = selected?.name ?: "System Default",
+                    onValueChange = {},
+                    readOnly = true,
+                    enabled = enabled,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                    modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("System Default") },
+                        onClick = {
+                            onSelect(null)
+                            expanded = false
+                        }
+                    )
+                    devices.forEach { device ->
+                        DropdownMenuItem(
+                            text = { Text(device.name) },
+                            onClick = {
+                                onSelect(device)
+                                expanded = false
+                            }
+                        )
+                    }
+                }
             }
         }
     }

@@ -29,9 +29,11 @@ class MacosAudioRecordingSession(
                         "Using recording format $resolved (requested $preferred was not accepted by AudioQueue)"
                     }
                 }
-                val device: AudioDevice.Input? = requestedDevice
-                if (device != null)
-                    audioQueue.setPropertyValue(CurrentDevice, device.id)
+                val deviceUID: String? = requestedDevice?.id ?: getDefaultInputDeviceUID()
+                if (deviceUID != null) {
+                    logger.info { "Setting AudioQueue input device to: $deviceUID" }
+                    audioQueue.setPropertyValue(CurrentDevice, deviceUID)
+                }
                 return resolved
             }
         }

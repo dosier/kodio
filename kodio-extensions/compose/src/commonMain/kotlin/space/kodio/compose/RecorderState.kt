@@ -379,22 +379,11 @@ class RecorderState internal constructor(
                 logger.debug { "Starting amplitude collection with format: sampleRate=${format.sampleRate}, channels=${format.channels}, encoding=${format.encoding}, bytesPerSample=${format.bytesPerSample}" }
                 logger.debug { "AudioFlow instance: ${audioFlow.hashCode()}" }
                 
-                var chunkCount = 0
-                var nonZeroChunks = 0
                 audioFlow.collect { chunk ->
-                    chunkCount++
                     val rawAmplitude = calculateAmplitude(chunk, format)
                     val amplitude = mapLiveWaveformAmplitude(rawAmplitude)
-                    val hasNonZero = chunk.any { it != 0.toByte() }
-                    if (hasNonZero) nonZeroChunks++
-                    
-                    if (chunkCount <= 5 || (chunkCount % 20 == 0)) {
-                        val nonZeroCount = chunk.count { it != 0.toByte() }
-                        logger.debug { "Chunk #$chunkCount: size=${chunk.size}, rawAmplitude=$rawAmplitude, displayAmplitude=$amplitude, nonZeroBytes=$nonZeroCount/${chunk.size}, firstBytes=${chunk.take(16).map { it.toInt() and 0xFF }}" }
-                    }
                     _liveAmplitudes.value = (_liveAmplitudes.value + amplitude).takeLast(100)
                 }
-                logger.debug { "Collection finished: $chunkCount chunks, $nonZeroChunks had non-zero data" }
             } catch (e: Exception) {
                 // Collection cancelled or failed - ignore (expected during stop)
                 logger.debug { "Amplitude collection ended: ${e.message}" }

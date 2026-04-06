@@ -267,10 +267,10 @@ sealed class MacosAudioQueue<S : Any>(
                             val audioData = inBuffer.pointed.readFully()
                             if (audioData.isEmpty()) {
                                 logAb("Input callback called but audioData is empty, re-enqueuing")
-                                inAQ.enqueueBuffer(inBuffer) // Must re-enqueue to prevent buffer starvation
+                                inAQ.enqueueBuffer(inBuffer)
                             } else {
                                 val result = state.channel.trySend(audioData)
-                                    .onFailure { if (it != null) logAb("Input callback failed to send audio data: $it") }
+                                    .onFailure { logger.warn { "Input callback trySend failed: $it" } }
                                if (!result.isClosed)
                                    inAQ.enqueueBuffer(inBuffer)
                             }
@@ -278,7 +278,7 @@ sealed class MacosAudioQueue<S : Any>(
                     }
                 }
 
-            val stateRef = StableRef.create(ReadOnly.State(true, Channel()))
+            val stateRef = StableRef.create(ReadOnly.State(true, Channel(Channel.BUFFERED)))
             val aqRefVar: AudioQueueRefVar = nativeHeap.alloc()
             val asbd: AudioStreamBasicDescription = nativeHeap.allocASBD(format)
             return runCatching {

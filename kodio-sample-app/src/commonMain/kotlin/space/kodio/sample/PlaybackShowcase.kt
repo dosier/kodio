@@ -29,8 +29,10 @@ import space.kodio.compose.AudioWaveform
 import space.kodio.compose.WaveformColors
 import space.kodio.compose.WaveformStyle
 import space.kodio.compose.rememberPlayerState
+import space.kodio.core.AudioDevice
 import space.kodio.core.AudioRecording
 import space.kodio.core.Channels
+import space.kodio.core.Kodio
 import space.kodio.core.SampleEncoding
 import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.AudioFileReadError
@@ -43,6 +45,12 @@ fun PlaybackShowcase() {
     var fileName by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var isDragOver by remember { mutableStateOf(false) }
+    var outputDevices by remember { mutableStateOf<List<AudioDevice.Output>>(emptyList()) }
+    var selectedOutputDevice by remember { mutableStateOf<AudioDevice.Output?>(null) }
+
+    LaunchedEffect(Unit) {
+        outputDevices = Kodio.listOutputDevices()
+    }
 
     val scope = rememberCoroutineScope()
 
@@ -88,6 +96,13 @@ fun PlaybackShowcase() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        DeviceSelector(
+            label = "Output Device",
+            devices = outputDevices,
+            selected = selectedOutputDevice,
+            onSelect = { selectedOutputDevice = it },
+        )
+
         FileSelectionCard(
             fileName = fileName,
             isLoading = isLoading,
@@ -114,7 +129,7 @@ fun PlaybackShowcase() {
 
         recording?.let { rec ->
             FileInfoCard(rec, fileName)
-            PlaybackCard(rec)
+            PlaybackCard(rec, selectedOutputDevice)
         }
     }
 }
@@ -275,8 +290,8 @@ private fun FileInfoCard(recording: AudioRecording, fileName: String?) {
 }
 
 @Composable
-private fun PlaybackCard(recording: AudioRecording) {
-    val playerState = rememberPlayerState(recording)
+private fun PlaybackCard(recording: AudioRecording, device: AudioDevice.Output? = null) {
+    val playerState = rememberPlayerState(recording, device = device)
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(

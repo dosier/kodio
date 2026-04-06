@@ -6,21 +6,28 @@ import kotlinx.cinterop.MemScope
 import kotlinx.cinterop.UIntVar
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.allocArray
+import kotlinx.cinterop.convert
 import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.value
 import platform.CoreAudio.AudioObjectGetPropertyData
 import platform.CoreAudio.AudioObjectGetPropertyDataSize
 import platform.CoreAudio.AudioObjectID
+import platform.CoreAudio.AudioObjectIDVar
 import platform.CoreAudio.AudioObjectPropertyAddress
 import platform.CoreAudio.AudioObjectPropertyScope
+import platform.CoreAudio.kAudioDevicePropertyDeviceUID
 import platform.CoreAudio.kAudioDevicePropertyStreamConfiguration
+import platform.CoreAudio.kAudioHardwarePropertyDefaultInputDevice
 import platform.CoreAudio.kAudioObjectPropertyElementMain
+import platform.CoreAudio.kAudioObjectPropertyScopeGlobal
 import platform.CoreAudio.kAudioObjectPropertyScopeInput
 import platform.CoreAudio.kAudioObjectPropertyScopeOutput
+import platform.CoreAudio.kAudioObjectSystemObject
 import platform.CoreAudioTypes.AudioBufferList
 import platform.darwin.noErr
 
@@ -81,6 +88,28 @@ internal fun enumerateDevices(scope: AudioObjectPropertyScope): List<CoreAudioDe
         }
     }
     result
+}
+
+/**
+ * Query the system default input device via CoreAudio HAL and return its UID string,
+ * or null if unavailable.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun getDefaultInputDeviceUID(): String? = memScoped {
+    val address = alloc<AudioObjectPropertyAddress>().apply {
+        mSelector = kAudioHardwarePropertyDefaultInputDevice
+        mScope = kAudioObjectPropertyScopeGlobal
+        mElement = kAudioObjectPropertyElementMain
+    }
+    val deviceIdVar = alloc<AudioObjectIDVar>()
+    val sizeVar = alloc<UIntVar>().apply { value = sizeOf<AudioObjectIDVar>().toUInt() }
+    val status = AudioObjectGetPropertyData(
+        kAudioObjectSystemObject.convert(), address.ptr, 0u, null, sizeVar.ptr, deviceIdVar.ptr
+    )
+    if (status.toUInt() != noErr) return@memScoped null
+    val deviceId = deviceIdVar.value
+    if (deviceId == 0u) return@memScoped null
+    MacosAudioObject.Input(deviceId).uid
 }
 
 /**
