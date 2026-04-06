@@ -1,9 +1,9 @@
 package space.kodio.core
 
-import js.array.JsArray
+import kotlin.js.JsAny
+import kotlin.js.JsArray
 import js.buffer.ArrayBuffer
 import js.buffer.ArrayBufferLike
-import js.core.JsAny
 import js.typedarrays.Float32Array
 import js.typedarrays.Int16Array
 import js.typedarrays.Int8Array
@@ -15,6 +15,9 @@ import web.audio.AudioBuffer
 import web.audio.AudioContext
 import web.audio.AudioContextLatencyCategory
 import web.audio.AudioContextOptions
+import web.audio.AudioWorkletNode
+import web.audio.AudioWorkletProcessorName
+import web.audio.BaseAudioContext
 import web.mediastreams.MediaStreamConstraints
 import web.mediastreams.MediaTrackConstraints
 import web.permissions.PermissionDescriptor
@@ -72,8 +75,12 @@ actual fun AudioContext.createBufferFrom(
 }
 
 actual fun <T : JsAny?> JsArray<T>.toList(): List<T> {
-    return this.toMutableList().toList()
+    return this.toArray().asList()
 }
+
+@Suppress("UNCHECKED_CAST_TO_EXTERNAL_INTERFACE")
+actual fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode =
+    AudioWorkletNode(context, name.unsafeCast<AudioWorkletProcessorName>())
 
 internal fun <B : ArrayBufferLike> Int16Array<B>.to32FloatArray(): Float32Array<B> {
     val floatArray = Float32Array<B>(this.length)

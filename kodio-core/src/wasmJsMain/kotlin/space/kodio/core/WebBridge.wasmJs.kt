@@ -2,12 +2,12 @@
 
 package space.kodio.core
 
-import js.array.JsArray
 import kotlin.js.ExperimentalWasmJsInterop
+import kotlin.js.JsAny
+import kotlin.js.JsArray
+import kotlin.js.toJsString
 import js.buffer.ArrayBuffer
 import js.buffer.ArrayBufferLike
-import js.core.JsPrimitives.toFloat
-import js.core.JsPrimitives.toJsString
 import js.typedarrays.Float32Array
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
@@ -16,6 +16,9 @@ import web.audio.AudioBuffer
 import web.audio.AudioContext
 import web.audio.AudioContextLatencyCategory
 import web.audio.AudioContextOptions
+import web.audio.AudioWorkletNode
+import web.audio.AudioWorkletProcessorName
+import web.audio.BaseAudioContext
 import web.blob.Blob
 import web.mediastreams.MediaStreamConstraints
 import web.mediastreams.MediaTrackConstraints
@@ -44,7 +47,7 @@ private fun BlobPropertyBag(type: String): web.blob.BlobPropertyBag {
 actual fun <B : ArrayBufferLike> Float32Array<B>.encodeAs16BitPcmByteArray(): ByteArray {
     val buffer = Buffer()
     for (i in 0 until this.length) {
-        val s = max(-1.0f, min(1.0f, get(i).toFloat()))
+        val s = max(-1.0f, min(1.0f, get(i).toDouble().toFloat()))
         val value = (s * 32767.0f).toInt().toShort()
         buffer.writeShortLe(value)
     }
@@ -106,5 +109,8 @@ actual fun AudioContext.createBufferFrom(
     return buffer
 }
 
-actual fun <T : js.core.JsAny?> JsArray<T>.toList(): List<T> =
+actual fun <T : JsAny?> JsArray<T>.toList(): List<T> =
     this.toArray().toList()
+
+actual fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode =
+    AudioWorkletNode(context, name.toJsString().unsafeCast<AudioWorkletProcessorName>())
