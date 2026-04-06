@@ -19,9 +19,6 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.launch
@@ -74,21 +71,7 @@ fun PlaybackShowcase() {
         }
     }
 
-    val filePicker = rememberFilePickerLauncher(
-        type = FileKitType.File(extensions = listOf("wav", "wave"))
-    ) { platformFile: PlatformFile? ->
-        if (platformFile != null) {
-            scope.launch {
-                try {
-                    val bytes = platformFile.readBytes()
-                    loadWavBytes(platformFile.name, bytes)
-                } catch (e: Exception) {
-                    error = "Failed to read file: ${e.message}"
-                    isLoading = false
-                }
-            }
-        }
-    }
+    var isPicking by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -106,8 +89,27 @@ fun PlaybackShowcase() {
         FileSelectionCard(
             fileName = fileName,
             isLoading = isLoading,
+            isPicking = isPicking,
             isDragOver = isDragOver,
-            onPickFile = { filePicker.launch() },
+            onPickFile = {
+                if (!isPicking) {
+                    isPicking = true
+                    scope.launch {
+                        try {
+                            val file = pickFile(listOf("wav", "wave"))
+                            if (file != null) {
+                                val bytes = file.readBytes()
+                                loadWavBytes(file.name, bytes)
+                            }
+                        } catch (e: Exception) {
+                            error = "Failed to read file: ${e.message}"
+                            isLoading = false
+                        } finally {
+                            isPicking = false
+                        }
+                    }
+                }
+            },
             onDragStateChange = { isDragOver = it },
             onFileDrop = { name, bytes -> loadWavBytes(name, bytes) }
         )
@@ -138,6 +140,7 @@ fun PlaybackShowcase() {
 private fun FileSelectionCard(
     fileName: String?,
     isLoading: Boolean,
+    isPicking: Boolean,
     isDragOver: Boolean,
     onPickFile: () -> Unit,
     onDragStateChange: (Boolean) -> Unit,
@@ -180,8 +183,8 @@ private fun FileSelectionCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Button(onClick = onPickFile) {
-                        Text("Open File")
+                    Button(onClick = onPickFile, enabled = !isPicking) {
+                        Text(if (isPicking) "Picking..." else "Open File")
                     }
                 }
             }

@@ -22,8 +22,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.PlatformFile
-import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.catch
@@ -490,38 +488,8 @@ private fun FileUploadTab(apiKey: String) {
     var error by remember { mutableStateOf<String?>(null) }
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     
+    var isPicking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    
-    // FileKit file picker launcher
-    val filePicker = rememberFilePickerLauncher(
-        type = FileKitType.File(
-            extensions = listOf("mp3", "wav", "m4a", "mp4", "webm", "ogg", "oga", "flac", "mpeg", "mpga")
-        )
-    ) { platformFile ->
-        if (platformFile != null) {
-            // Get file name from the platform file
-            val fileName = getFileName(platformFile)
-            selectedFileName = fileName
-            log("File selected: $fileName")
-            
-            isTranscribing = true
-            error = null
-            transcriptionResult = null
-            
-            scope.launch {
-                try {
-                    val result = transcribeFile(platformFile, apiKey)
-                    transcriptionResult = result
-                    log("Transcription complete: ${result.text.take(100)}...")
-                } catch (e: Exception) {
-                    log("Transcription error: ${e.message}")
-                    error = e.message ?: "Unknown error"
-                } finally {
-                    isTranscribing = false
-                }
-            }
-        }
-    }
     
     Column(
         modifier = Modifier
@@ -537,10 +505,39 @@ private fun FileUploadTab(apiKey: String) {
             fontWeight = FontWeight.Bold
         )
         
-        // File picker button using FileKit
         Button(
-            onClick = { filePicker.launch() },
-            enabled = !isTranscribing && apiKey.isNotBlank(),
+            onClick = {
+                if (!isPicking) {
+                    isPicking = true
+                    scope.launch {
+                        try {
+                            val file = pickFile(
+                                listOf("mp3", "wav", "m4a", "mp4", "webm", "ogg", "oga", "flac", "mpeg", "mpga")
+                            )
+                            if (file != null) {
+                                val fileName = getFileName(file)
+                                selectedFileName = fileName
+                                log("File selected: $fileName")
+
+                                isTranscribing = true
+                                error = null
+                                transcriptionResult = null
+
+                                val result = transcribeFile(file, apiKey)
+                                transcriptionResult = result
+                                log("Transcription complete: ${result.text.take(100)}...")
+                            }
+                        } catch (e: Exception) {
+                            log("Transcription error: ${e.message}")
+                            error = e.message ?: "Unknown error"
+                        } finally {
+                            isPicking = false
+                            isTranscribing = false
+                        }
+                    }
+                }
+            },
+            enabled = !isTranscribing && !isPicking && apiKey.isNotBlank(),
             modifier = Modifier.fillMaxWidth().height(80.dp),
             shape = RoundedCornerShape(16.dp)
         ) {

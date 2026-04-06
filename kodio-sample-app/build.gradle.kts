@@ -39,6 +39,12 @@ kotlin {
                 withJs()
                 withWasmJs()
             }
+            group("nonIos") {
+                withAndroidTarget()
+                withJvm()
+                withJs()
+                withWasmJs()
+            }
             group("web") {
                 withJs()
                 withWasmJs()
@@ -96,6 +102,7 @@ kotlin {
         val desktopMain by getting
         val nonMacosMain by getting
         val nonWebMacosMain by getting
+        val nonIosMain by getting
         val webMain by getting
         androidMain.dependencies {
             implementation(compose.preview)
