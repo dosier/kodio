@@ -235,6 +235,7 @@ private class NativeMacosAudioRecordingSession(
         }
         started = true
 
+        closePreviousArena()
         val arena = Arena.ofShared().also { runtimeArena = it }
         id = IDX.getAndIncrement()
         SESSIONS[id] = this
@@ -295,6 +296,11 @@ private class NativeMacosAudioRecordingSession(
             logger.debug { "Not started, returning" }
             return
         }
+        // Remove from SESSIONS first so late native callbacks become no-ops.
+        // Do NOT close the arena here — native coroutines may still invoke upcall stubs.
+        val old = id
+        id = 0L
+        if (old != 0L) SESSIONS.remove(old)
         NativeMacosLib.macos_recording_session_stop.invokeExact(nativeMemSeq)
         val format = audioFlow.value?.format
         if (format != null) {
@@ -302,21 +308,19 @@ private class NativeMacosAudioRecordingSession(
             _audioFlowHolder.value = coldFlow
             logger.debug { "Created cold flow with ${_audioShared.replayCache.size} chunks" }
         }
-        // Set state to Stopped BEFORE cleanup, as cleanup removes from SESSIONS
-        // which would cause the native state callback to be ignored
         _state.value = AudioRecordingSession.State.Stopped
-        cleanup()
         started = false
         logger.debug { "stop() completed, state=${_state.value}" }
     }
 
     override fun reset() {
         logger.debug { "reset() called, started=$started, state=${_state.value}" }
-        // Only call native reset if we haven't already stopped/cleaned up
         if (started) {
-            logger.debug { "Calling native reset and cleanup" }
+            logger.debug { "Calling native reset" }
+            val old = id
+            id = 0L
+            if (old != 0L) SESSIONS.remove(old)
             NativeMacosLib.macos_recording_session_reset.invokeExact(nativeMemSeq)
-            cleanup()
             started = false
         }
         
@@ -328,10 +332,7 @@ private class NativeMacosAudioRecordingSession(
         logger.debug { "reset() completed, state=${_state.value}" }
     }
 
-    private fun cleanup() {
-        val old = id
-        id = 0L
-        if (old != 0L) SESSIONS.remove(old)
+    private fun closePreviousArena() {
         runtimeArena?.close()
         runtimeArena = null
         ctxSeg = null
@@ -381,7 +382,8 @@ private class NativeMacosAudioPlaybackSession(
 
     override suspend fun load(audioFlow: AudioFlow) {
         _audioFlowHolder.value = audioFlow
-        
+
+        closePreviousArena()
         val arena = Arena.ofShared().also { runtimeArena = it }
         id = IDX.getAndIncrement()
         SESSIONS[id] = this
@@ -442,19 +444,22 @@ private class NativeMacosAudioPlaybackSession(
     }
 
     override fun stop() {
-        NativeMacosLib.macos_playback_session_stop.invokeExact(nativeMemSeq)
-        cleanup()
-    }
-
-    private fun cleanup() {
+        // Remove from SESSIONS first so any late native callbacks become no-ops.
+        // The arena must NOT be closed here — the native stateJob (running in GlobalScope)
+        // may still invoke the upcall stub after stop() returns. Closing the arena would
+        // free that stub and cause a SIGSEGV.
         val old = id
         id = 0L
         if (old != 0L) SESSIONS.remove(old)
+        NativeMacosLib.macos_playback_session_stop.invokeExact(nativeMemSeq)
+        loaded = false
+    }
+
+    private fun closePreviousArena() {
         runtimeArena?.close()
         runtimeArena = null
         ctxSeg = null
         stateCbStub = null
-        loaded = false
     }
 }
 
