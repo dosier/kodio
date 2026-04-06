@@ -441,6 +441,6 @@ private val AudioFormat.label: String
 
 private fun formatBytes(bytes: Long): String = when {
     bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> "${"%.1f".format(bytes / 1024.0)} KB"
-    else -> "${"%.2f".format(bytes / (1024.0 * 1024.0))} MB"
+    bytes < 1024 * 1024 -> "${formatDecimal(bytes / 1024.0, 1)} KB"
+    else -> "${formatDecimal(bytes / (1024.0 * 1024.0), 2)} MB"
 }
