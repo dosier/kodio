@@ -350,6 +350,115 @@ class RealAudioConversionTest {
         println("Data size: ${dataF32.size} bytes")
     }
 
+    // --- Kick.wav tests ---
+
+    private val kickWavPath = javaClass.classLoader.getResource("kick.wav")!!
+
+    private fun loadKickWav(): Pair<AudioFormat, ByteArray> {
+        val bytes = kickWavPath.readBytes()
+        val source = Buffer().apply { write(bytes) }
+        val audioSource = readWav(source)
+        val pcmBytes = audioSource.source.readByteArray()
+        return audioSource.format to pcmBytes
+    }
+
+    @Test
+    fun `kick wav - inspect format`() {
+        val (format, pcmBytes) = loadKickWav()
+        println("Kick.wav format: $format")
+        println("PCM data size: ${pcmBytes.size} bytes")
+        println("Bytes per sample: ${format.bytesPerSample}")
+        println("Bytes per frame: ${format.bytesPerFrame}")
+        println("Sample count: ${pcmBytes.size / format.bytesPerSample}")
+
+        assertTrue(pcmBytes.isNotEmpty(), "Kick.wav should have audio data")
+        assertTrue(format.sampleRate > 0, "Sample rate should be positive")
+    }
+
+    @Test
+    fun `kick wav - convert to Float32 for playback`() = runTest {
+        val (srcFormat, pcmBytes) = loadKickWav()
+
+        val fmtF32 = AudioFormat(
+            sampleRate = srcFormat.sampleRate,
+            channels = srcFormat.channels,
+            encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved),
+        )
+
+        val dataF32 = AudioFlow(srcFormat, flowOf(pcmBytes)).convertAudio(fmtF32).toList().first()
+
+        println("Source: ${pcmBytes.size} bytes ($srcFormat)")
+        println("Float32: ${dataF32.size} bytes")
+
+        val sampleCount = dataF32.size / 4
+        var nanCount = 0
+        var maxAbs = 0f
+
+        for (i in 0 until sampleCount) {
+            val bits = readInt32LE(dataF32, i * 4)
+            val f = Float.fromBits(bits)
+            if (f.isNaN()) nanCount++
+            val a = abs(f)
+            if (a > maxAbs) maxAbs = a
+        }
+
+        println("Float32 samples: $sampleCount, NaN: $nanCount, max |sample|: $maxAbs")
+
+        assertEquals(0, nanCount, "No NaN values should be present")
+        assertTrue(maxAbs <= 1.0f, "All samples should be in [-1, 1] range")
+        assertTrue(maxAbs > 0.001f, "Audio should not be silent")
+    }
+
+    @Test
+    fun `kick wav - convert with sample rate change`() = runTest {
+        val (srcFormat, pcmBytes) = loadKickWav()
+        val targetRate = if (srcFormat.sampleRate == 48000) 44100 else 48000
+
+        val targetFormat = AudioFormat(
+            sampleRate = targetRate,
+            channels = srcFormat.channels,
+            encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved),
+        )
+
+        val result = AudioFlow(srcFormat, flowOf(pcmBytes)).convertAudio(targetFormat).toList().first()
+
+        val srcFrames = pcmBytes.size / srcFormat.bytesPerFrame
+        val outFrames = result.size / (4 * targetFormat.channels.count)
+        val expectedRatio = targetRate.toDouble() / srcFormat.sampleRate
+        val actualRatio = outFrames.toDouble() / srcFrames
+
+        println("Source: $srcFrames frames @ ${srcFormat.sampleRate} Hz")
+        println("Output: $outFrames frames @ $targetRate Hz")
+        println("Expected ratio: $expectedRatio, actual: $actualRatio")
+
+        assertTrue(abs(actualRatio - expectedRatio) < 0.01,
+            "Frame count ratio should match sample rate ratio (expected $expectedRatio, got $actualRatio)")
+
+        val sampleCount = result.size / 4
+        for (i in 0 until sampleCount) {
+            val f = Float.fromBits(readInt32LE(result, i * 4))
+            assertFalse(f.isNaN(), "Sample $i should not be NaN")
+            assertTrue(abs(f) <= 1.0f, "Sample $i should be in [-1, 1] range, got $f")
+        }
+    }
+
+    @Test
+    fun `kick wav - WAV round-trip preserves data`() = runTest {
+        val (srcFormat, pcmBytes) = loadKickWav()
+
+        val wavBuffer = Buffer()
+        val audioSource = AudioSource.of(srcFormat, Buffer().apply { write(pcmBytes) })
+        writeWav(audioSource, wavBuffer)
+        val wavBytes = wavBuffer.readByteArray()
+
+        val readSource = readWav(Buffer().apply { write(wavBytes) })
+        val readFormat = readSource.format
+        val readData = readSource.source.readByteArray()
+
+        assertEquals(srcFormat, readFormat, "Round-trip format should match")
+        assertContentEquals(pcmBytes, readData, "Round-trip data should match")
+    }
+
     // --- Helpers ---
 
     private fun read16BitSample(data: ByteArray, index: Int): Int {

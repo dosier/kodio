@@ -26,8 +26,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import space.kodio.compose.rememberPlayerState
 import space.kodio.core.AudioFlow
 import space.kodio.core.AudioFormat
@@ -225,9 +228,23 @@ fun ConversionShowcase() {
         val totalBytes = rec.sizeInBytes.toFloat()
         var processedBytes = 0L
         conversionProgress = 0f
+
+        val frameSize = rec.format.bytesPerFrame.coerceAtLeast(1)
+        val chunkSize = (64 * 1024 / frameSize) * frameSize
+
+        val chunkedFlow = flow {
+            val data = rec.toByteArray()
+            var offset = 0
+            while (offset < data.size) {
+                val end = minOf(offset + chunkSize, data.size)
+                emit(data.copyOfRange(offset, end))
+                offset = end
+            }
+        }
+
         val trackedSource = AudioFlow(
             rec.format,
-            rec.asFlow(defensiveCopy = true).onEach { chunk ->
+            chunkedFlow.onEach { chunk ->
                 processedBytes += chunk.size
                 conversionProgress = if (totalBytes > 0f) {
                     (processedBytes / totalBytes).coerceIn(0f, 1f)
@@ -543,7 +560,9 @@ fun ConversionShowcase() {
                                         }
                                         isConverting = true
                                         try {
-                                            val converted = AudioRecording.fromAudioFlow(buildConvertedFlow())
+                                            val converted = withContext(Dispatchers.Default) {
+                                                AudioRecording.fromAudioFlow(buildConvertedFlow())
+                                            }
                                             playerState.loadAsync(converted)
                                             playerState.playAsync()
                                             previewParamsKey = currentParamsKey
@@ -595,12 +614,14 @@ fun ConversionShowcase() {
                                     if (aiffFloatBlocked) return@launch
                                     isConverting = true
                                     try {
-                                        val flow = buildConvertedFlow()
-                                        saveAudioWithFilePicker(
-                                            audioFlow = flow,
-                                            fileFormat = targetFileFormat,
-                                            suggestedName = "converted",
-                                        )
+                                        withContext(Dispatchers.Default) {
+                                            val flow = buildConvertedFlow()
+                                            saveAudioWithFilePicker(
+                                                audioFlow = flow,
+                                                fileFormat = targetFileFormat,
+                                                suggestedName = "converted",
+                                            )
+                                        }
                                     } catch (e: Exception) {
                                         statusError = "Export failed: ${e.message}"
                                     } finally {
