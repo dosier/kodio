@@ -30,7 +30,12 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
         log.info { "preparePlayback() called with format: $format" }
 
-        val avFormat = format.toAVAudioFormat()
+        val playbackFormat = toNativePlaybackFormat(format)
+        if (playbackFormat != format) {
+            log.info { "Format not natively supported by AVAudioFormat, will convert to: $playbackFormat" }
+        }
+
+        val avFormat = playbackFormat.toAVAudioFormat()
         log.info {
             "Converted to AVAudioFormat: sampleRate=${avFormat.sampleRate}, " +
                 "channels=${avFormat.channelCount}, commonFormat=${avFormat.commonFormat}, " +
@@ -60,7 +65,22 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
             throw AVAudioEngineException.FailedToStart(it.message ?: "Unknown error")
         }
         log.info { "Engine started successfully" }
-        return format
+        return playbackFormat
+    }
+
+    private fun isNativeAVFormat(format: AudioFormat): Boolean = when (val enc = format.encoding) {
+        is SampleEncoding.PcmFloat -> true
+        is SampleEncoding.PcmInt ->
+            enc.bitDepth == IntBitDepth.Sixteen && enc.signed
+    }
+
+    private fun toNativePlaybackFormat(format: AudioFormat): AudioFormat {
+        if (isNativeAVFormat(format)) return format
+        return AudioFormat(
+            sampleRate = format.sampleRate,
+            channels = format.channels,
+            encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
+        )
     }
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {
