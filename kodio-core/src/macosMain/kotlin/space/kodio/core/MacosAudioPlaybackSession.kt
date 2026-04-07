@@ -23,17 +23,13 @@ class MacosAudioPlaybackSession(
 
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
         logger.debug { "preparePlayback called with format: $format" }
-        
-        // Determine output format - most output devices require stereo
-        outputFormat = if (format.channels == Channels.Mono) {
-            format.copy(channels = Channels.Stereo)
-        } else {
-            format
-        }
+
+        val playbackFormat = toDevicePlaybackFormat(format)
+        outputFormat = playbackFormat
         logger.debug { "Output format: $outputFormat" }
         
         audioQueue = MacosAudioQueue.createOutput(
-            format = outputFormat!!,
+            format = playbackFormat,
             bufferCount = bufferCount,
             bufferDurationSec = bufferDurationSec
         )
@@ -43,10 +39,43 @@ class MacosAudioPlaybackSession(
             logger.debug { "Setting device: ${requestedDevice.name} (${requestedDevice.id})" }
             audioQueue.setPropertyValue(CurrentDevice, requestedDevice.id)
         }
-        
-        // Return the INPUT format to skip the slow BigDecimal-based convertAudio()
-        // We'll do our own fast mono-to-stereo conversion in playBlocking
-        return format
+
+        if (isDeviceFriendly(format)) {
+            // For well-supported formats, return the INPUT format to skip
+            // the slow BigDecimal-based convertAudio(); playBlocking handles
+            // fast mono-to-stereo duplication when needed.
+            return format
+        }
+        // For formats CoreAudio AudioQueue may not handle reliably
+        // (24-bit packed int, unsigned, big-endian, etc.), return the
+        // normalized Float32 format so BaseAudioPlaybackSession.play()
+        // runs convertAudio() to produce device-compatible bytes.
+        return playbackFormat
+    }
+
+    /**
+     * Float32 and signed-16-bit-LE are the two formats CoreAudio
+     * AudioQueue handles without issue. Everything else gets
+     * normalized to Float32 stereo.
+     */
+    private fun isDeviceFriendly(format: AudioFormat): Boolean = when (val enc = format.encoding) {
+        is SampleEncoding.PcmFloat -> true
+        is SampleEncoding.PcmInt ->
+            enc.bitDepth == IntBitDepth.Sixteen &&
+            enc.signed &&
+            enc.endianness == Endianness.Little
+    }
+
+    private fun toDevicePlaybackFormat(format: AudioFormat): AudioFormat {
+        val channels = if (format.channels == Channels.Mono) Channels.Stereo else format.channels
+        if (isDeviceFriendly(format)) {
+            return format.copy(channels = channels)
+        }
+        return AudioFormat(
+            sampleRate = format.sampleRate,
+            channels = channels,
+            encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
+        )
     }
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {

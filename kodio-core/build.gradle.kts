@@ -70,6 +70,11 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
+        jvmTest {
+            dependencies {
+                implementation(libs.slf4j.simple)
+            }
+        }
         androidMain {
             dependencies {
                 implementation(libs.androidx.core.ktx)

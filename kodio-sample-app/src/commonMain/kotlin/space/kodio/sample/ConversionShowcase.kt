@@ -78,37 +78,46 @@ private fun containerLabel(format: AudioFileFormat): String = when (format) {
     is AudioFileFormat.Au -> "AU"
 }
 
-private fun encodingChoiceToSampleEncoding(choice: EncodingChoice): SampleEncoding = when (choice) {
-    EncodingChoice.Pcm8 ->
-        SampleEncoding.PcmInt(
-            IntBitDepth.Eight,
-            Endianness.Little,
-            SampleLayout.Interleaved,
-            signed = true,
-        )
-    EncodingChoice.Pcm16 ->
-        SampleEncoding.PcmInt(
-            IntBitDepth.Sixteen,
-            Endianness.Little,
-            SampleLayout.Interleaved,
-            signed = true,
-        )
-    EncodingChoice.Pcm24 ->
-        SampleEncoding.PcmInt(
-            IntBitDepth.TwentyFour,
-            Endianness.Little,
-            SampleLayout.Interleaved,
-            signed = true,
-        )
-    EncodingChoice.Pcm32 ->
-        SampleEncoding.PcmInt(
-            IntBitDepth.ThirtyTwo,
-            Endianness.Little,
-            SampleLayout.Interleaved,
-            signed = true,
-        )
-    EncodingChoice.PcmFloat32 ->
-        SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
+private fun encodingChoiceToSampleEncoding(
+    choice: EncodingChoice,
+    container: AudioFileFormat,
+): SampleEncoding {
+    val endianness = when (container) {
+        is AudioFileFormat.Wav -> Endianness.Little
+        is AudioFileFormat.Aiff, is AudioFileFormat.Au -> Endianness.Big
+    }
+    return when (choice) {
+        EncodingChoice.Pcm8 ->
+            SampleEncoding.PcmInt(
+                IntBitDepth.Eight,
+                endianness,
+                SampleLayout.Interleaved,
+                signed = container !is AudioFileFormat.Wav,
+            )
+        EncodingChoice.Pcm16 ->
+            SampleEncoding.PcmInt(
+                IntBitDepth.Sixteen,
+                endianness,
+                SampleLayout.Interleaved,
+                signed = true,
+            )
+        EncodingChoice.Pcm24 ->
+            SampleEncoding.PcmInt(
+                IntBitDepth.TwentyFour,
+                endianness,
+                SampleLayout.Interleaved,
+                signed = true,
+            )
+        EncodingChoice.Pcm32 ->
+            SampleEncoding.PcmInt(
+                IntBitDepth.ThirtyTwo,
+                endianness,
+                SampleLayout.Interleaved,
+                signed = true,
+            )
+        EncodingChoice.PcmFloat32 ->
+            SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
+    }
 }
 
 private fun formatSampleRate(rate: Int): String = when {
@@ -175,11 +184,12 @@ fun ConversionShowcase() {
         targetSampleRate,
         targetChannels,
         targetEncodingChoice,
+        targetFileFormat,
     ) {
         AudioFormat(
             sampleRate = targetSampleRate,
             channels = targetChannels,
-            encoding = encodingChoiceToSampleEncoding(targetEncodingChoice),
+            encoding = encodingChoiceToSampleEncoding(targetEncodingChoice, targetFileFormat),
         )
     }
 

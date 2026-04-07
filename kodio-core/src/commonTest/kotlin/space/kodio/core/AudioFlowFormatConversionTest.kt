@@ -12,7 +12,7 @@ import space.kodio.core.io.convertAudio
  * TODO: Fix native dependency issues on Linux CI.
  * See: https://github.com/dosier/kodio/issues/15
  */
-@Ignore // Skipped on CI - native dependency loading issues on Linux. See #15
+// @Ignore // Skipped on CI - native dependency loading issues on Linux. See #15
 class AudioFlowFormatConversionTest {
 
     /* -------------------- Helpers -------------------- */
@@ -76,8 +76,71 @@ class AudioFlowFormatConversionTest {
         return result
     }
 
+    private fun fmtInt24(rate: Int, channels: Channels, signed: Boolean = true, end: Endianness = Endianness.Little) =
+        fmtInt(rate, channels, IntBitDepth.TwentyFour, signed, end)
+
+    private fun fmtInt32(rate: Int, channels: Channels, signed: Boolean = true, end: Endianness = Endianness.Little) =
+        fmtInt(rate, channels, IntBitDepth.ThirtyTwo, signed, end)
+
+    private fun fmtFloat32(rate: Int, channels: Channels) = AudioFormat(
+        sampleRate = rate,
+        channels = channels,
+        encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
+    )
+
     private fun create8BitData(samples: List<Byte>): ByteArray =
         samples.toByteArray()
+
+    private fun create24BitData(samples: List<Int>): ByteArray {
+        val result = ByteArray(samples.size * 3)
+        var i = 0
+        for (v in samples) {
+            val u = v and 0xFFFFFF
+            result[i++] = (u and 0xFF).toByte()
+            result[i++] = ((u ushr 8) and 0xFF).toByte()
+            result[i++] = ((u ushr 16) and 0xFF).toByte()
+        }
+        return result
+    }
+
+    private fun create32BitData(samples: List<Int>): ByteArray {
+        val result = ByteArray(samples.size * 4)
+        var i = 0
+        for (v in samples) {
+            result[i++] = (v and 0xFF).toByte()
+            result[i++] = ((v ushr 8) and 0xFF).toByte()
+            result[i++] = ((v ushr 16) and 0xFF).toByte()
+            result[i++] = ((v ushr 24) and 0xFF).toByte()
+        }
+        return result
+    }
+
+    private fun createFloat32Data(samples: List<Float>): ByteArray {
+        val result = ByteArray(samples.size * 4)
+        var i = 0
+        for (f in samples) {
+            val bits = f.toRawBits()
+            result[i++] = (bits and 0xFF).toByte()
+            result[i++] = ((bits ushr 8) and 0xFF).toByte()
+            result[i++] = ((bits ushr 16) and 0xFF).toByte()
+            result[i++] = ((bits ushr 24) and 0xFF).toByte()
+        }
+        return result
+    }
+
+    private fun read24BitSamples(data: ByteArray): List<Int> {
+        val samples = mutableListOf<Int>()
+        var i = 0
+        while (i + 2 < data.size) {
+            val b0 = data[i++].toInt() and 0xFF
+            val b1 = data[i++].toInt() and 0xFF
+            val b2 = data[i++].toInt() and 0xFF
+            var u = (b2 shl 16) or (b1 shl 8) or b0
+            if (u and 0x800000 != 0) u = u or -0x1000000 // sign-extend
+            samples.add(u)
+        }
+        return samples
+    }
 
     /* -------------------- Tests -------------------- */
 
@@ -276,5 +339,146 @@ class AudioFlowFormatConversionTest {
         // Encode 8-bit signed: 0.375 * 128 = 48
         val expectedData = create8BitData(listOf(48.toByte()))
         assertContentEquals(expectedData, result)
+    }
+
+    /* -------------------- 24-bit Tests -------------------- */
+
+    @Test
+    fun `Convert 16bit Mono to 24bit Mono`() = runTest {
+        val inFormat = fmtInt16(44100, Channels.Mono)
+        val outFormat = fmtInt24(44100, Channels.Mono)
+
+        // 16-bit value V should become V * 256 in 24-bit
+        val inData = create16BitData(listOf(1000, -1000, 0))
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+
+        val result = outFlow.toList().first()
+        assertEquals(outFormat, outFlow.format)
+
+        val resultSamples = read24BitSamples(result)
+        assertEquals(3, resultSamples.size, "Expected 3 samples")
+        assertEquals(256000, resultSamples[0], "1000 * 256 = 256000")
+        assertEquals(-256000, resultSamples[1], "-1000 * 256 = -256000")
+        assertEquals(0, resultSamples[2], "0 * 256 = 0")
+    }
+
+    @Test
+    fun `Convert 16bit Mono to 24bit Mono - full scale`() = runTest {
+        val inFormat = fmtInt16(44100, Channels.Mono)
+        val outFormat = fmtInt24(44100, Channels.Mono)
+
+        // 32767 -> 32767*256 = 8388352, -32768 -> -32768*256 = -8388608
+        val inData = create16BitData(listOf(Short.MAX_VALUE, Short.MIN_VALUE))
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+
+        val result = outFlow.toList().first()
+        val resultSamples = read24BitSamples(result)
+        assertEquals(2, resultSamples.size)
+        assertEquals(8388352, resultSamples[0], "Short.MAX_VALUE * 256")
+        assertEquals(-8388608, resultSamples[1], "Short.MIN_VALUE * 256")
+    }
+
+    @Test
+    fun `Convert 24bit Mono to 16bit Mono`() = runTest {
+        val inFormat = fmtInt24(44100, Channels.Mono)
+        val outFormat = fmtInt16(44100, Channels.Mono)
+
+        // 256000 (24-bit) -> normalized 256000/8388608 -> 16-bit: ~1000
+        val inData = create24BitData(listOf(256000, -256000, 0))
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+
+        val result = outFlow.toList().first()
+        assertEquals(outFormat, outFlow.format)
+        assertEquals(6, result.size, "3 samples * 2 bytes")
+
+        val expectedData = create16BitData(listOf(1000, -1000, 0))
+        assertContentEquals(expectedData, result)
+    }
+
+    @Test
+    fun `Convert 16bit Stereo to 24bit Stereo`() = runTest {
+        val inFormat = fmtInt16(44100, Channels.Stereo)
+        val outFormat = fmtInt24(44100, Channels.Stereo)
+
+        val inData = create16BitData(listOf(5000, -5000, 10000, -10000))
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+
+        val result = outFlow.toList().first()
+        val resultSamples = read24BitSamples(result)
+        assertEquals(4, resultSamples.size)
+        assertEquals(1280000, resultSamples[0], "5000 * 256")
+        assertEquals(-1280000, resultSamples[1], "-5000 * 256")
+        assertEquals(2560000, resultSamples[2], "10000 * 256")
+        assertEquals(-2560000, resultSamples[3], "-10000 * 256")
+    }
+
+    @Test
+    fun `Convert Float32 Mono to 24bit Mono`() = runTest {
+        val inFormat = fmtFloat32(44100, Channels.Mono)
+        val outFormat = fmtInt24(44100, Channels.Mono)
+
+        // 0.5f -> 0.5 * 8388608 = 4194304, -0.5f -> -4194304
+        val inData = createFloat32Data(listOf(0.5f, -0.5f, 0.0f))
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+
+        val result = outFlow.toList().first()
+        val resultSamples = read24BitSamples(result)
+        assertEquals(3, resultSamples.size)
+        assertEquals(4194304, resultSamples[0], "0.5 * 2^23")
+        assertEquals(-4194304, resultSamples[1], "-0.5 * 2^23")
+        assertEquals(0, resultSamples[2], "0.0 * 2^23")
+    }
+
+    @Test
+    fun `Convert 16bit Mono to 32bit Mono`() = runTest {
+        val inFormat = fmtInt16(44100, Channels.Mono)
+        val outFormat = fmtInt32(44100, Channels.Mono)
+
+        // 16-bit value V -> normalized V/32768 -> 32-bit: V * 65536
+        val inData = create16BitData(listOf(1000, -1000, 0))
+        val inFlow = AudioFlow(inFormat, flowOf(inData))
+        val outFlow = inFlow.convertAudio(outFormat)
+
+        val result = outFlow.toList().first()
+        assertEquals(outFormat, outFlow.format)
+        assertEquals(12, result.size, "3 samples * 4 bytes")
+
+        val expectedData = create32BitData(listOf(65536000, -65536000, 0))
+        assertContentEquals(expectedData, result)
+    }
+
+    @Test
+    fun `24bit round-trip preserves values`() = runTest {
+        val fmt24 = fmtInt24(44100, Channels.Mono)
+
+        val original = create24BitData(listOf(100000, -100000, 0, 4194304, -4194304))
+        val flow = AudioFlow(fmt24, flowOf(original))
+
+        // 24-bit -> 24-bit should be identity (same format)
+        val outFlow = flow.convertAudio(fmt24)
+        assertSame(flow, outFlow, "Same format should return same flow")
+    }
+
+    @Test
+    fun `16bit to 24bit to 16bit round-trip`() = runTest {
+        val fmt16 = fmtInt16(44100, Channels.Mono)
+        val fmt24 = fmtInt24(44100, Channels.Mono)
+
+        val originalSamples: List<Short> = listOf(0, 1000, -1000, Short.MAX_VALUE, Short.MIN_VALUE, 12345, -12345)
+        val inData = create16BitData(originalSamples)
+        val inFlow = AudioFlow(fmt16, flowOf(inData))
+
+        // Convert 16 -> 24 -> 16
+        val to24 = inFlow.convertAudio(fmt24)
+        val backTo16 = to24.convertAudio(fmt16)
+
+        val result = backTo16.toList().first()
+        val expectedData = create16BitData(originalSamples)
+        assertContentEquals(expectedData, result, "16->24->16 round-trip should be lossless")
     }
 }
