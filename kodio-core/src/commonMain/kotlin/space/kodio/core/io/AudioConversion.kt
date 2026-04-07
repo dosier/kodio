@@ -19,12 +19,21 @@ private val logger = namedLogger("AudioConversion")
 /**
  * Convert an AudioFlow to a different AudioFormat.
  * Pipeline: bytes -> normalized samples -> resample -> channel convert -> bytes
+ *
+ * Uses a fast primitive-math path for same-rate, same-channel PCM Int → Float32
+ * conversions, avoiding the expensive BigDecimal normalization pipeline.
  */
 fun AudioFlow.convertAudio(
     targetFormat: AudioFormat
 ): AudioFlow {
     val sourceFormat = this.format
     if (sourceFormat == targetFormat) return this
+
+    // Fast path: same rate + same channels + PcmInt → PcmFloat(F32)
+    fastPcmIntToFloat32(sourceFormat, targetFormat)?.let { converter ->
+        logger.debug { "Using fast PCM Int → Float32 path" }
+        return AudioFlow(targetFormat, transform { chunk -> emit(converter(chunk)) })
+    }
 
     fun resample(
         samples: Array<BigDecimal>,
@@ -219,6 +228,81 @@ private fun encodePcmFloat(
             FloatPrecision.F64 -> writeF64(out, v.toDouble(), Endianness.Little)
         }
     }
+}
+
+/* ================ FAST PCM INT → FLOAT32 PATH ================ */
+
+/**
+ * Returns a chunk-level converter lambda if the conversion is a simple
+ * same-rate, same-channel PCM Int → Float32 encoding change.
+ * Returns null if the fast path doesn't apply.
+ */
+private fun fastPcmIntToFloat32(
+    source: AudioFormat,
+    target: AudioFormat
+): ((ByteArray) -> ByteArray)? {
+    if (source.sampleRate != target.sampleRate) return null
+    if (source.channels != target.channels) return null
+    val srcEnc = source.encoding as? PcmInt ?: return null
+    val tgtEnc = target.encoding as? PcmFloat ?: return null
+    if (tgtEnc.precision != FloatPrecision.F32) return null
+    if (!srcEnc.signed) return null
+
+    val srcBytesPerSample = srcEnc.bitDepth.bits / 8
+    val divisor = (1 shl (srcEnc.bitDepth.bits - 1)).toFloat()
+    val isLE = srcEnc.endianness == Endianness.Little
+
+    return { chunk: ByteArray ->
+        val numSamples = chunk.size / srcBytesPerSample
+        val out = ByteArray(numSamples * 4)
+        var src = 0
+        var dst = 0
+        for (i in 0 until numSamples) {
+            val raw = readSignedInt(chunk, src, srcBytesPerSample, isLE)
+            src += srcBytesPerSample
+            val normalized = (raw.toFloat() / divisor).coerceIn(-1f, 1f)
+            val bits = normalized.toRawBits()
+            out[dst]     = (bits and 0xFF).toByte()
+            out[dst + 1] = ((bits ushr 8) and 0xFF).toByte()
+            out[dst + 2] = ((bits ushr 16) and 0xFF).toByte()
+            out[dst + 3] = ((bits ushr 24) and 0xFF).toByte()
+            dst += 4
+        }
+        out
+    }
+}
+
+private fun readSignedInt(buf: ByteArray, off: Int, bytes: Int, le: Boolean): Int = when (bytes) {
+    1 -> buf[off].toInt()
+    2 -> if (le) {
+        (buf[off].toInt() and 0xFF) or (buf[off + 1].toInt() shl 8)
+    } else {
+        (buf[off].toInt() shl 8) or (buf[off + 1].toInt() and 0xFF)
+    }
+    3 -> {
+        val unsigned = if (le) {
+            (buf[off].toInt() and 0xFF) or
+                ((buf[off + 1].toInt() and 0xFF) shl 8) or
+                ((buf[off + 2].toInt() and 0xFF) shl 16)
+        } else {
+            ((buf[off].toInt() and 0xFF) shl 16) or
+                ((buf[off + 1].toInt() and 0xFF) shl 8) or
+                (buf[off + 2].toInt() and 0xFF)
+        }
+        if (unsigned and 0x800000 != 0) unsigned or -0x1000000 else unsigned
+    }
+    4 -> if (le) {
+        (buf[off].toInt() and 0xFF) or
+            ((buf[off + 1].toInt() and 0xFF) shl 8) or
+            ((buf[off + 2].toInt() and 0xFF) shl 16) or
+            (buf[off + 3].toInt() shl 24)
+    } else {
+        (buf[off].toInt() shl 24) or
+            ((buf[off + 1].toInt() and 0xFF) shl 16) or
+            ((buf[off + 2].toInt() and 0xFF) shl 8) or
+            (buf[off + 3].toInt() and 0xFF)
+    }
+    else -> error("Unsupported sample size: $bytes bytes")
 }
 
 /* ===================== BUFFER WRITE HELPERS ===================== */

@@ -37,6 +37,30 @@ internal fun ByteArray.toIosAudioBuffer(isoAudioFormat: AVAudioFormat): AVAudioP
     return buffer
 }
 
+/**
+ * Converts an interleaved [AVAudioPCMBuffer] to a non-interleaved one
+ * using the simple (non-streaming) AVAudioConverter API.
+ */
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+internal fun AVAudioConverter.convertSimple(
+    inputBuffer: AVAudioPCMBuffer,
+    outputFormat: AVAudioFormat
+): AVAudioPCMBuffer {
+    val outputBuffer = AVAudioPCMBuffer(
+        pCMFormat = outputFormat,
+        frameCapacity = inputBuffer.frameCapacity
+    )
+    memScoped {
+        val errorPtr = alloc<ObjCObjectVar<NSError?>>()
+        val success = convertToBuffer(outputBuffer, fromBuffer = inputBuffer, error = errorPtr.ptr)
+        if (!success) {
+            val desc = errorPtr.value?.localizedDescription ?: "unknown"
+            error("AVAudioConverter failed: $desc")
+        }
+    }
+    return outputBuffer
+}
+
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal fun AVAudioConverter.convert(buffer: AVAudioPCMBuffer, targetFormat: AVAudioFormat): AVAudioPCMBuffer {
     // Calculate the expected output buffer size based on the sample rate ratio

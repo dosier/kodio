@@ -1,6 +1,8 @@
 package space.kodio.core.io
 
 import com.ionspin.kotlin.bignum.decimal.BigDecimal
+import com.ionspin.kotlin.bignum.decimal.DecimalMode
+import com.ionspin.kotlin.bignum.decimal.RoundingMode
 import com.ionspin.kotlin.bignum.decimal.toBigDecimal
 import com.ionspin.kotlin.bignum.integer.BigInteger
 import com.ionspin.kotlin.bignum.integer.toBigInteger
@@ -57,7 +59,7 @@ private fun decodePcmInt(
             raw.toBigInteger() - halfRange
         }
 
-        out[i] = centered.let(BigDecimal::fromBigInteger) / divisor
+        out[i] = BigDecimal.fromBigInteger(centered).divide(divisor, NORM_MODE)
     }
 }
 
@@ -117,6 +119,8 @@ private fun PcmFloat.layoutEndianness(): Endianness = Endianness.Little
 
 private fun normalizingDivisor(bits: Int): BigInteger =
     BigInteger.ONE shl (bits - 1)
+
+private val NORM_MODE = DecimalMode(15, RoundingMode.ROUND_HALF_AWAY_FROM_ZERO)
 
 /* ---- Buffer integer readers ---- */
 
