@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,8 +26,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import space.kodio.compose.rememberPlayerState
+import space.kodio.core.AudioFlow
 import space.kodio.core.AudioFormat
 import space.kodio.core.AudioRecording
 import space.kodio.core.Channels
@@ -164,6 +167,7 @@ fun ConversionShowcase() {
 
     var statusError by remember { mutableStateOf<String?>(null) }
     var isConverting by remember { mutableStateOf(false) }
+    var conversionProgress by remember { mutableFloatStateOf(0f) }
 
     var previewParamsKey by remember { mutableStateOf<String?>(null) }
     val playerState = rememberPlayerState()
@@ -216,7 +220,22 @@ fun ConversionShowcase() {
         "${sourceRecording?.sizeInBytes}-$targetFileFormat-$targetSampleRate-$targetChannels-$targetEncodingChoice"
     }
 
-    fun buildConvertedFlow() = sourceRecording!!.asAudioFlow().convertAudio(targetAudioFormat)
+    fun buildConvertedFlow(): AudioFlow {
+        val rec = sourceRecording!!
+        val totalBytes = rec.sizeInBytes.toFloat()
+        var processedBytes = 0L
+        conversionProgress = 0f
+        val trackedSource = AudioFlow(
+            rec.format,
+            rec.asFlow(defensiveCopy = true).onEach { chunk ->
+                processedBytes += chunk.size
+                conversionProgress = if (totalBytes > 0f) {
+                    (processedBytes / totalBytes).coerceIn(0f, 1f)
+                } else 0f
+            },
+        )
+        return trackedSource.convertAudio(targetAudioFormat)
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -487,13 +506,13 @@ fun ConversionShowcase() {
                         )
 
                         if (isConverting) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                CircularProgressIndicator(Modifier.size(28.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                LinearProgressIndicator(
+                                    progress = { conversionProgress },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
                                 Text(
-                                    "Converting…",
+                                    "Converting… ${(conversionProgress * 100).toInt()}%",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
