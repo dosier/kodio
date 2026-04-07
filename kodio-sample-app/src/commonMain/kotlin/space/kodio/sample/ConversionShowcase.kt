@@ -73,9 +73,9 @@ private fun audioFileFormatForName(name: String): AudioFileFormat = when {
 }
 
 private fun containerLabel(format: AudioFileFormat): String = when (format) {
-    AudioFileFormat.Wav -> "WAV"
-    AudioFileFormat.Aiff -> "AIFF"
-    AudioFileFormat.Au -> "AU"
+    is AudioFileFormat.Wav -> "WAV"
+    is AudioFileFormat.Aiff -> "AIFF"
+    is AudioFileFormat.Au -> "AU"
 }
 
 private fun encodingChoiceToSampleEncoding(choice: EncodingChoice): SampleEncoding = when (choice) {
@@ -348,14 +348,7 @@ fun ConversionShowcase() {
                                         count = AudioFileFormat.entries.size,
                                     ),
                                 ) {
-                                    Text(
-                                        when (fmt) {
-                                            AudioFileFormat.Wav -> "WAV"
-                                            AudioFileFormat.Aiff -> "AIFF"
-                                            AudioFileFormat.Au -> "AU"
-                                        },
-                                        maxLines = 1,
-                                    )
+                                    Text(containerLabel(fmt), maxLines = 1)
                                 }
                             }
                         }

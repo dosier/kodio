@@ -180,73 +180,59 @@ internal fun writeAiff(from: AudioSource, to: Sink) {
 }
 
 internal fun readAiff(from: Source): AudioSource {
-    val formId = try {
-        from.readString(4)
+    // --- FORM header ---
+    val formId: String
+    val formSize: Long
+    val aiffType: String
+    try {
+        formId = from.readString(4)
+        formSize = from.readIntBe().toLong() and 0xFFFFFFFFL
+        aiffType = from.readString(4)
     } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Cannot read AIFF header: file is too short or unreadable.")
+        throw AudioFileReadError.InvalidFile("Cannot read AIFF FORM header: file is too short or unreadable.", cause = e)
     }
     if (formId != "FORM")
         throw AudioFileReadError.InvalidFile("Not a FORM file (got '$formId').")
-    val formSize = try {
-        from.readIntBe().toLong() and 0xFFFFFFFFL
-    } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Truncated AIFF FORM chunk.")
-    }
-    val aiffType = try {
-        from.readString(4)
-    } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Truncated AIFF FORM type.")
-    }
     if (aiffType != "AIFF")
         throw AudioFileReadError.InvalidFile("Not a classic AIFF file (got '$aiffType').")
+
+    // --- Chunk scanning ---
     var commFound = false
     var numChannels = -1
     var numSampleFrames = -1L
     var bitsPerSample = -1
     lateinit var rateBytes: ByteArray
     var innerRemaining = formSize - 4L
+
     while (innerRemaining >= 8L) {
-        val chunkId = try {
-            from.readString(4)
+        val chunkId: String
+        val chunkSize: Long
+        try {
+            chunkId = from.readString(4)
+            chunkSize = from.readIntBe().toLong() and 0xFFFFFFFFL
         } catch (e: Exception) {
-            throw AudioFileReadError.InvalidFile("Unexpected end of file inside AIFF container.")
-        }
-        val chunkSize = try {
-            from.readIntBe().toLong() and 0xFFFFFFFFL
-        } catch (e: Exception) {
-            throw AudioFileReadError.InvalidFile("Truncated AIFF chunk header.")
+            throw AudioFileReadError.InvalidFile("Unexpected end of file inside AIFF container.", cause = e)
         }
         innerRemaining -= 8L
         if (chunkSize > innerRemaining)
             throw AudioFileReadError.InvalidFile("AIFF chunk '$chunkId' extends past FORM data.")
+
         when (chunkId) {
             "COMM" -> {
                 if (chunkSize != 18L)
                     throw AudioFileReadError.InvalidFile("COMM chunk must be 18 bytes, got $chunkSize.")
-                numChannels = try {
-                    from.readUInt16Be()
+                try {
+                    numChannels = from.readUInt16Be()
+                    numSampleFrames = from.readIntBe().toLong() and 0xFFFFFFFFL
+                    bitsPerSample = from.readUInt16Be()
+                    rateBytes = from.readExactly(10)
                 } catch (e: Exception) {
-                    throw AudioFileReadError.IO(e)
+                    throw AudioFileReadError.InvalidFile("Failed to read COMM chunk.", cause = e)
                 }
                 if (numChannels <= 0 || numChannels > 2)
                     throw AudioFileReadError.UnsupportedFormat("AIFF channel count $numChannels is not supported (only 1 or 2).")
-                numSampleFrames = try {
-                    from.readIntBe().toLong() and 0xFFFFFFFFL
-                } catch (e: Exception) {
-                    throw AudioFileReadError.IO(e)
-                }
                 if (numSampleFrames > Int.MAX_VALUE.toLong())
                     throw AudioFileReadError.UnsupportedFormat("COMM numSampleFrames is too large.")
-                bitsPerSample = try {
-                    from.readUInt16Be()
-                } catch (e: Exception) {
-                    throw AudioFileReadError.IO(e)
-                }
-                rateBytes = try {
-                    from.readExactly(10)
-                } catch (e: Exception) {
-                    throw AudioFileReadError.IO(e)
-                }
                 commFound = true
                 innerRemaining -= chunkSize
                 if (chunkSize and 1L == 1L) {
@@ -259,15 +245,14 @@ internal fun readAiff(from: Source): AudioSource {
                     throw AudioFileReadError.InvalidFile("'SSND' chunk found before 'COMM' chunk.")
                 if (chunkSize < 8L)
                     throw AudioFileReadError.InvalidFile("SSND chunk too small.")
-                val offset = try {
-                    from.readIntBe().toLong() and 0xFFFFFFFFL
+
+                val offset: Long
+                val blockSize: Long
+                try {
+                    offset = from.readIntBe().toLong() and 0xFFFFFFFFL
+                    blockSize = from.readIntBe().toLong() and 0xFFFFFFFFL
                 } catch (e: Exception) {
-                    throw AudioFileReadError.IO(e)
-                }
-                val blockSize = try {
-                    from.readIntBe().toLong() and 0xFFFFFFFFL
-                } catch (e: Exception) {
-                    throw AudioFileReadError.IO(e)
+                    throw AudioFileReadError.InvalidFile("Failed to read SSND chunk header.", cause = e)
                 }
                 if (blockSize != 0L)
                     throw AudioFileReadError.UnsupportedFormat("Non-zero SSND blockSize is not supported.")
@@ -277,38 +262,30 @@ internal fun readAiff(from: Source): AudioSource {
                 val pcmLength = (waveBytes - offset).toInt()
                 if (pcmLength.toLong() != waveBytes - offset)
                     throw AudioFileReadError.UnsupportedFormat("SSND PCM length is too large.")
-                if (offset > 0L) {
-                    try {
-                        from.skip(offset)
-                    } catch (e: Exception) {
-                        throw AudioFileReadError.IO(e)
-                    }
-                }
-                val rawPcm = try {
+
+                val rawPcm: ByteArray
+                try {
+                    if (offset > 0L) from.skip(offset)
                     val buf = Buffer()
                     from.readTo(buf, pcmLength.toLong())
-                    buf.readByteArray()
+                    rawPcm = buf.readByteArray()
+                    if (chunkSize and 1L == 1L) from.skip(1)
                 } catch (e: Exception) {
                     throw AudioFileReadError.IO(e)
                 }
-                if (chunkSize and 1L == 1L) {
-                    try {
-                        from.skip(1)
-                    } catch (e: Exception) {
-                        throw AudioFileReadError.IO(e)
-                    }
-                }
                 innerRemaining -= chunkSize
                 if (chunkSize and 1L == 1L) innerRemaining -= 1L
+
                 val sampleRateDouble = try {
                     extended80ToDouble(rateBytes)
                 } catch (e: AudioFileReadError) {
                     throw e
                 } catch (e: Exception) {
-                    throw AudioFileReadError.InvalidFile("Invalid COMM sample rate: ${e.message}")
+                    throw AudioFileReadError.InvalidFile("Invalid COMM sample rate: ${e.message}", cause = e)
                 }
                 if (!sampleRateDouble.isFinite() || sampleRateDouble <= 0.0)
                     throw AudioFileReadError.InvalidFile("Invalid COMM sample rate.")
+
                 val sampleRate = sampleRateDouble.roundToInt()
                 val bitDepth = when (bitsPerSample) {
                     8 -> IntBitDepth.Eight

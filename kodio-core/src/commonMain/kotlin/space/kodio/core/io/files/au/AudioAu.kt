@@ -104,48 +104,29 @@ internal fun writeAu(from: AudioSource, to: Sink) {
 }
 
 internal fun readAu(from: Source): AudioSource {
-    val magic = try {
-        from.readIntBe()
+    // --- Header (6 big-endian int32 fields) ---
+    val magic: Int
+    val dataOffset: Long
+    val dataSize: Long
+    val encodingCode: Int
+    val sampleRate: Int
+    val channelCount: Int
+    try {
+        magic = from.readIntBe()
+        dataOffset = from.readIntBe().toLong() and 0xFFFFFFFFL
+        dataSize = from.readIntBe().toLong() and 0xFFFFFFFFL
+        encodingCode = from.readIntBe()
+        sampleRate = from.readIntBe()
+        channelCount = from.readIntBe()
     } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Cannot read AU header: file is too short or unreadable.")
+        throw AudioFileReadError.InvalidFile("Cannot read AU header: file is too short or unreadable.", cause = e)
     }
     if (magic != AU_MAGIC)
         throw AudioFileReadError.InvalidFile("Not an AU file (magic 0x${magic.toUInt().toString(16)}).")
-
-    val dataOffset = try {
-        from.readIntBe().toLong() and 0xFFFFFFFFL
-    } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Truncated AU header.")
-    }
     if (dataOffset < 24L)
         throw AudioFileReadError.InvalidFile("Invalid AU data offset: $dataOffset")
-
-    val dataSizeRaw = try {
-        from.readIntBe()
-    } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Truncated AU header.")
-    }
-    val dataSize = dataSizeRaw.toLong() and 0xFFFFFFFFL
-
-    val encodingCode = try {
-        from.readIntBe()
-    } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Truncated AU header.")
-    }
-
-    val sampleRate = try {
-        from.readIntBe()
-    } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Truncated AU header.")
-    }
     if (sampleRate <= 0)
         throw AudioFileReadError.InvalidFile("Invalid AU sample rate: $sampleRate")
-
-    val channelCount = try {
-        from.readIntBe()
-    } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Truncated AU header.")
-    }
     if (channelCount <= 0 || channelCount > 2)
         throw AudioFileReadError.UnsupportedFormat("AU channel count $channelCount is not supported (only 1 or 2).")
 

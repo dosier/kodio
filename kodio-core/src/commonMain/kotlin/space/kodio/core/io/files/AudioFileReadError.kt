@@ -12,13 +12,13 @@ sealed class AudioFileReadError(
      * The data does not represent a valid audio file
      * (e.g. missing RIFF/WAVE header, corrupt structure).
      */
-    class InvalidFile(message: String) : AudioFileReadError(message = message)
+    class InvalidFile(message: String, cause: Throwable? = null) : AudioFileReadError(message = message, cause = cause)
 
     /**
      * The audio file uses a format or encoding that Kodio does not support
      * (e.g. compressed ADPCM, unsupported bit depth).
      */
-    class UnsupportedFormat(message: String) : AudioFileReadError(message = message)
+    class UnsupportedFormat(message: String, cause: Throwable? = null) : AudioFileReadError(message = message, cause = cause)
 
     /**
      * Wraps a lower-level I/O exception that occurred while reading from the file system.
