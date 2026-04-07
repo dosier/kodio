@@ -10,6 +10,7 @@ import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import kotlinx.io.write
 import space.kodio.core.io.collectAsSource
+import space.kodio.core.io.convertAudio
 import space.kodio.core.io.decodeAsAudioPlaybackState
 import space.kodio.core.io.decodeAsAudioRecordingState
 import space.kodio.core.io.decodeAsAudioFormat
@@ -388,13 +389,18 @@ private class NativeMacosAudioPlaybackSession(
         id = IDX.getAndIncrement()
         SESSIONS[id] = this
 
+        // Normalize to a device-friendly format on the JVM side before
+        // sending across FFI, so the native side never has to convert
+        // exotic bit depths (24-bit, 32-bit int, unsigned, big-endian).
+        val nativeFlow = normalizeForPlayback(audioFlow)
+
         // Encode format
-        val formatData = audioFlow.format.encodeToByteArray()
+        val formatData = nativeFlow.format.encodeToByteArray()
         val formatDataSeq = arena.allocate(formatData.size.toLong())
         formatDataSeq.asSlice(0, formatData.size.toLong()).copyFrom(MemorySegment.ofArray(formatData))
 
         // Collect all audio data into a single byte array
-        val audioSource = runBlocking { audioFlow.collectAsSource() }
+        val audioSource = runBlocking { nativeFlow.collectAsSource() }
         val audioData = audioSource.source.readByteArray()
         val audioDataSeq = arena.allocate(audioData.size.toLong())
         audioDataSeq.asSlice(0, audioData.size.toLong()).copyFrom(MemorySegment.ofArray(audioData))
@@ -410,6 +416,26 @@ private class NativeMacosAudioPlaybackSession(
 
         loaded = true
         _state.value = AudioPlaybackSession.State.Ready
+    }
+
+    private fun normalizeForPlayback(audioFlow: AudioFlow): AudioFlow {
+        val fmt = audioFlow.format
+        val enc = fmt.encoding
+        val needsConversion = when (enc) {
+            is SampleEncoding.PcmFloat -> false
+            is SampleEncoding.PcmInt ->
+                enc.bitDepth != IntBitDepth.Sixteen ||
+                !enc.signed ||
+                enc.endianness != Endianness.Little
+        }
+        if (!needsConversion) return audioFlow
+        val targetFormat = AudioFormat(
+            sampleRate = fmt.sampleRate,
+            channels = fmt.channels,
+            encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
+        )
+        logger.debug { "Normalizing playback format: $fmt -> $targetFormat" }
+        return audioFlow.convertAudio(targetFormat)
     }
 
     override suspend fun play() {
