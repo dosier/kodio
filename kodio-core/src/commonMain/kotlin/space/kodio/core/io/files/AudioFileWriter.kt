@@ -5,6 +5,8 @@ import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import space.kodio.core.io.AudioSource
+import space.kodio.core.io.files.aiff.writeAiff
+import space.kodio.core.io.files.au.writeAu
 import space.kodio.core.io.files.wav.writeWav
 
 class AudioFileWriter(
@@ -24,6 +26,8 @@ class AudioFileWriter(
         val audioFileBuffer = Buffer()
         when (fileFormat) {
             is AudioFileFormat.Wav -> writeWav(audioDataSource, audioFileBuffer)
+            is AudioFileFormat.Aiff -> writeAiff(audioDataSource, audioFileBuffer)
+            is AudioFileFormat.Au -> writeAu(audioDataSource, audioFileBuffer)
         }
         // --- Write the completed buffer to the actual file on disk ---
         try {

@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import space.kodio.sample.icons.SampleIcons
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.launch
@@ -51,13 +52,18 @@ fun PlaybackShowcase() {
 
     val scope = rememberCoroutineScope()
 
-    val loadWavBytes: (String, ByteArray) -> Unit = { name, bytes ->
+    val loadAudioBytes: (String, ByteArray) -> Unit = { name, bytes ->
         isLoading = true
         error = null
         fileName = name
         scope.launch {
             try {
-                val rec = AudioRecording.fromBytes(bytes, AudioFileFormat.Wav)
+                val fileFormat = when {
+                    name.endsWith(".aiff", true) || name.endsWith(".aif", true) -> AudioFileFormat.Aiff
+                    name.endsWith(".au", true) || name.endsWith(".snd", true) -> AudioFileFormat.Au
+                    else -> AudioFileFormat.Wav
+                }
+                val rec = AudioRecording.fromBytes(bytes, fileFormat)
                 recording = rec
             } catch (e: AudioFileReadError.InvalidFile) {
                 error = "Invalid audio file: ${e.message}"
@@ -96,10 +102,10 @@ fun PlaybackShowcase() {
                     isPicking = true
                     scope.launch {
                         try {
-                            val file = pickFile(listOf("wav", "wave"))
+                            val file = pickFile(listOf("wav", "wave", "aiff", "aif", "au", "snd"))
                             if (file != null) {
                                 val bytes = file.readBytes()
-                                loadWavBytes(file.name, bytes)
+                                loadAudioBytes(file.name, bytes)
                             }
                         } catch (e: Exception) {
                             error = "Failed to read file: ${e.message}"
@@ -111,7 +117,7 @@ fun PlaybackShowcase() {
                 }
             },
             onDragStateChange = { isDragOver = it },
-            onFileDrop = { name, bytes -> loadWavBytes(name, bytes) }
+            onFileDrop = { name, bytes -> loadAudioBytes(name, bytes) }
         )
 
         error?.let { msg ->
@@ -178,7 +184,7 @@ private fun FileSelectionCard(
                     )
 
                     Text(
-                        "WAV files supported \u2022 drag and drop on desktop",
+                        "WAV, AIFF, AU files supported \u2022 drag and drop on desktop",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -321,7 +327,7 @@ private fun PlaybackCard(recording: AudioRecording, device: AudioDevice.Output? 
                     onClick = { playerState.stop() },
                     enabled = playerState.isPlaying || playerState.isPaused
                 ) {
-                    Text("⏹")
+                    Icon(SampleIcons.Stop, contentDescription = "Stop")
                 }
 
                 Spacer(Modifier.width(16.dp))
@@ -331,12 +337,9 @@ private fun PlaybackCard(recording: AudioRecording, device: AudioDevice.Output? 
                     enabled = !playerState.isLoading,
                     modifier = Modifier.size(56.dp)
                 ) {
-                    Text(
-                        text = when {
-                            playerState.isPlaying -> "⏸"
-                            else -> "▶️"
-                        },
-                        style = MaterialTheme.typography.titleLarge
+                    Icon(
+                        imageVector = if (playerState.isPlaying) SampleIcons.Pause else SampleIcons.PlayArrow,
+                        contentDescription = if (playerState.isPlaying) "Pause" else "Play"
                     )
                 }
 

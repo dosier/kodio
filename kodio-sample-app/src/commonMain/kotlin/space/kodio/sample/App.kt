@@ -24,6 +24,7 @@ import space.kodio.core.AudioRecording
 import space.kodio.core.Channels
 import space.kodio.core.Kodio
 import space.kodio.core.SampleEncoding
+import space.kodio.sample.icons.SampleIcons
 
 /**
  * Sample app demonstrating Kodio features.
@@ -46,9 +47,11 @@ fun App() {
         var showApiKeyDialog by remember { mutableStateOf(false) }
         
         Scaffold(
+            containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
-                Column {
-                    TabRow(selectedTabIndex = selectedTab) {
+                Column(modifier = Modifier.statusBarsPadding()) {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    PrimaryScrollableTabRow(selectedTabIndex = selectedTab) {
                         Tab(
                             selected = selectedTab == 0,
                             onClick = { selectedTab = 0 },
@@ -62,6 +65,11 @@ fun App() {
                         Tab(
                             selected = selectedTab == 2,
                             onClick = { selectedTab = 2 },
+                            text = { Text("Conversion") }
+                        )
+                        Tab(
+                            selected = selectedTab == 3,
+                            onClick = { selectedTab = 3 },
                             text = { Text("Transcription") }
                         )
                     }
@@ -76,7 +84,8 @@ fun App() {
                 when (selectedTab) {
                     0 -> RecordingDemo()
                     1 -> PlaybackShowcase()
-                    2 -> {
+                    2 -> ConversionShowcase()
+                    3 -> {
                         if (apiKey.isBlank()) {
                             // Show API key input
                             ApiKeyInputScreen(
@@ -400,7 +409,10 @@ private fun RecordingItem(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 IconButton(onClick = { playerState.toggle() }) {
-                    Text(if (playerState.isPlaying) "⏸" else "▶️")
+                    Icon(
+                        imageVector = if (playerState.isPlaying) SampleIcons.Pause else SampleIcons.PlayArrow,
+                        contentDescription = if (playerState.isPlaying) "Pause" else "Play"
+                    )
                 }
                 
                 Column(modifier = Modifier.weight(1f)) {
@@ -421,7 +433,7 @@ private fun RecordingItem(
                 }
                 
                 TextButton(onClick = onSave) { Text("Save") }
-                IconButton(onClick = onDelete) { Text("🗑️") }
+                IconButton(onClick = onDelete) { Icon(SampleIcons.Delete, contentDescription = "Delete") }
             }
         }
     }

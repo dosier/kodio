@@ -7,6 +7,8 @@ import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readByteArray
 import space.kodio.core.AudioRecording
+import space.kodio.core.io.files.aiff.readAiff
+import space.kodio.core.io.files.au.readAu
 import space.kodio.core.io.files.wav.readWav
 
 /**
@@ -46,6 +48,8 @@ fun AudioRecording.Companion.fromSource(
 ): AudioRecording {
     val audioSource = when (fileFormat) {
         is AudioFileFormat.Wav -> readWav(source)
+        is AudioFileFormat.Aiff -> readAiff(source)
+        is AudioFileFormat.Au -> readAu(source)
     }
     val pcmBytes = audioSource.source.readByteArray()
     return AudioRecording.fromOwnedChunks(

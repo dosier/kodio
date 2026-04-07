@@ -15,3 +15,16 @@ actual suspend fun saveWavFile(audioDataFlow: AudioFlow) {
         fileName = "kodio-sample.wav"
     )
 }
+
+@Suppress("MISSING_DEPENDENCY_SUPERCLASS_IN_TYPE_ARGUMENT")
+actual suspend fun saveAudioWithFilePicker(
+    audioFlow: AudioFlow,
+    fileFormat: AudioFileFormat,
+    suggestedName: String,
+) {
+    val bytes = audioFlow.collectAsBuffer(fileFormat)
+    FileKit.download(
+        bytes = bytes.readByteArray(),
+        fileName = "$suggestedName.${fileFormat.extension}",
+    )
+}

@@ -20,3 +20,19 @@ actual suspend fun saveWavFile(audioDataFlow: AudioFlow) {
         audioDataFlow.writeToSink(AudioFileFormat.Wav, it)
     }
 }
+
+actual suspend fun saveAudioWithFilePicker(
+    audioFlow: AudioFlow,
+    fileFormat: AudioFileFormat,
+    suggestedName: String,
+) {
+    val file = FileKit.openFileSaver(
+        suggestedName = suggestedName,
+        extension = fileFormat.extension,
+    )
+    if (file == null) return
+    val sink = file.sink(append = false).buffered()
+    sink.use {
+        audioFlow.writeToSink(fileFormat, it)
+    }
+}
