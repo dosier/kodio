@@ -8,6 +8,9 @@ import platform.AVFAudio.AVAudioEngine
 import platform.AVFAudio.AVAudioMixerNode
 import platform.AVFAudio.AVAudioPlayerNode
 import space.kodio.core.io.toIosAudioBuffer
+import space.kodio.core.util.namedLogger
+
+private val log = namedLogger("AVAudioPlayback")
 
 abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
     
@@ -18,55 +21,92 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
     init {
         engine.attachNode(mixer)
         engine.attachNode(player)
+        log.info { "Attached mixer and player nodes to engine" }
     }
 
     abstract fun configureAudioSession()
 
     @OptIn(ExperimentalForeignApi::class)
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
+        log.info { "preparePlayback() called with format: $format" }
 
-        engine.connect(player, mixer, format.toAVAudioFormat())
+        val avFormat = format.toAVAudioFormat()
+        log.info {
+            "Converted to AVAudioFormat: sampleRate=${avFormat.sampleRate}, " +
+                "channels=${avFormat.channelCount}, commonFormat=${avFormat.commonFormat}, " +
+                "interleaved=${avFormat.isInterleaved()}"
+        }
+
+        val mainMixerOutputFormat = engine.mainMixerNode.outputFormatForBus(0u)
+        log.info {
+            "mainMixerNode outputFormatForBus(0): sampleRate=${mainMixerOutputFormat.sampleRate}, " +
+                "channels=${mainMixerOutputFormat.channelCount}, commonFormat=${mainMixerOutputFormat.commonFormat}"
+        }
+
+        log.info { "Connecting player -> mixer with avFormat" }
+        engine.connect(player, mixer, avFormat)
+
+        log.info { "Connecting player -> mainMixerNode with null format" }
         engine.connect(player, engine.mainMixerNode, null)
 
+        log.info { "Configuring audio session" }
         configureAudioSession()
 
+        log.info { "Starting engine" }
         runErrorCatching { errorVar ->
-            engine.startAndReturnError(errorVar) // TODO: catch error
+            engine.startAndReturnError(errorVar)
         }.onFailure {
+            log.error(it) { "Engine failed to start: ${it.message}" }
             throw AVAudioEngineException.FailedToStart(it.message ?: "Unknown error")
         }
+        log.info { "Engine started successfully" }
         return format
     }
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {
+        log.info { "playBlocking() called with format: ${audioFlow.format}" }
         player.play()
         val iosAudioFormat = audioFlow.format.toAVAudioFormat()
+        log.info {
+            "Scheduling buffers with AVAudioFormat: sampleRate=${iosAudioFormat.sampleRate}, " +
+                "channels=${iosAudioFormat.channelCount}, commonFormat=${iosAudioFormat.commonFormat}"
+        }
+        var bufferCount = 0
         val lastCompletable = audioFlow.map { bytes ->
+            bufferCount++
             val iosAudioBuffer = bytes.toIosAudioBuffer(iosAudioFormat)
+            if (bufferCount <= 3 || bufferCount % 50 == 0) {
+                log.info { "Scheduling buffer #$bufferCount: ${bytes.size} bytes, ${iosAudioBuffer.frameLength} frames" }
+            }
             val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
             player.scheduleBuffer(iosAudioBuffer) {
-                // somehow indicate that the buffer has finished playing
                 iosAudioBufferFinishedIndicator.complete(Unit)
             }
             iosAudioBufferFinishedIndicator
         }.lastOrNull()
+        log.info { "Awaiting last buffer (total scheduled: $bufferCount)" }
         lastCompletable?.await()
+        log.info { "playBlocking() finished" }
     }
 
     override fun onPause() {
+        log.info { "onPause()" }
         if (player.isPlaying())
             player.pause()
     }
 
     override fun onResume() {
+        log.info { "onResume()" }
         player.play()
     }
 
     override fun onStop() {
+        log.info { "onStop()" }
         if (player.isPlaying())
             player.stop()
         engine.stop()
         engine.disconnectNodeOutput(player)
         engine.disconnectNodeOutput(mixer)
+        log.info { "Engine stopped and nodes disconnected" }
     }
 }

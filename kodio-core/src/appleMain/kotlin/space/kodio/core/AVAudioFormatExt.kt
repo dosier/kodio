@@ -1,6 +1,9 @@
 package space.kodio.core
 
 import platform.AVFAudio.*
+import space.kodio.core.util.namedLogger
+
+private val log = namedLogger("AVAudioFormatExt")
 
 val DefaultAppleRecordingAudioFormat = AudioFormat(
     sampleRate = 48000,
@@ -15,10 +18,10 @@ val DefaultAppleRecordingAudioFormat = AudioFormat(
  */
 @Throws(AVAudioFormatException::class)
 fun AudioFormat.toAVAudioFormat(): AVAudioFormat {
+    log.info { "toAVAudioFormat(): input=$this" }
     val (commonFormat, interleaved) = when (val e = encoding) {
         is SampleEncoding.PcmInt -> when (e.bitDepth) {
             IntBitDepth.Sixteen -> AVAudioPCMFormatInt16 to (e.layout == SampleLayout.Interleaved)
-            // If you really want 24-bit int via AVAudioFormat, you’ll need a custom asbd; AVAudioCommonFormat doesn’t have 24-bit.
             IntBitDepth.Eight, IntBitDepth.TwentyFour, IntBitDepth.ThirtyTwo ->
                 throw IllegalArgumentException("Use explicit ASBD for ${e.bitDepth.bits}-bit PCM Int on CoreAudio.")
         }
@@ -28,12 +31,18 @@ fun AudioFormat.toAVAudioFormat(): AVAudioFormat {
         }
     }
 
-    return AVAudioFormat(
+    val result = AVAudioFormat(
         commonFormat = commonFormat,
         sampleRate = sampleRate.toDouble(),
         channels = channels.count.toUInt(),
         interleaved = interleaved
     )
+    log.info {
+        "toAVAudioFormat(): result commonFormat=$commonFormat, " +
+            "sampleRate=${result.sampleRate}, channels=${result.channelCount}, " +
+            "interleaved=$interleaved, isStandard=${result.isStandard()}"
+    }
+    return result
 }
 
 /**
@@ -43,6 +52,10 @@ fun AudioFormat.toAVAudioFormat(): AVAudioFormat {
  */
 @Throws(AVAudioFormatException::class)
 fun AVAudioFormat.toCommonAudioFormat(): AudioFormat {
+    log.info {
+        "toCommonAudioFormat(): sampleRate=$sampleRate, channels=$channelCount, " +
+            "commonFormat=$commonFormat"
+    }
     return AudioFormat(
         sampleRate = sampleRate.toInt(),
         channels = Channels.fromInt(channelCount.toInt()),
