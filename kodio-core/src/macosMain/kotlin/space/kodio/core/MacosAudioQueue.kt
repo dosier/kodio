@@ -183,9 +183,9 @@ sealed class MacosAudioQueue<S : Any>(
      *                    are processed (that is, asynchronously).
      */
     fun dispose(inImmediate: Boolean = true) {
+        runAndCheckOsStatus { AudioQueueDispose(aqRef, inImmediate) }
         stateRef.dispose()
         nativeHeap.free(asbd)
-        runAndCheckOsStatus { AudioQueueDispose(aqRef, inImmediate) }
     }
 
     internal inline fun <reified V : CVariable, reified T> getPropertyValue(property: MacosAudioQueueProperty<V, T>): T =

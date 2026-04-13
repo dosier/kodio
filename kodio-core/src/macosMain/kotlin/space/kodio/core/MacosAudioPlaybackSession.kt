@@ -24,6 +24,10 @@ class MacosAudioPlaybackSession(
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
         logger.debug { "preparePlayback called with format: $format" }
 
+        if (::audioQueue.isInitialized) {
+            audioQueue.dispose(inImmediate = true)
+        }
+
         val playbackFormat = toDevicePlaybackFormat(format)
         outputFormat = playbackFormat
         logger.debug { "Output format: $outputFormat" }
