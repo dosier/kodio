@@ -167,6 +167,8 @@ fun macos_recording_session_release(ptr: COpaquePointer) =
 
 // --- Playback -----------------------------------------------------------------
 
+private val playbackJobs = mutableMapOf<COpaquePointer, Job>()
+
 @CName("macos_create_playback_session_with_device")
 fun macos_create_playback_session_with_device(
     deviceDataSize: Int,
@@ -237,8 +239,7 @@ fun macos_playback_session_play(
 ) {
     val session = sessionPtr.asStableRef<AudioPlaybackSession>().get()
     
-    GlobalScope.launch(Dispatchers.Default) {
-        // State stream
+    val job = GlobalScope.launch(Dispatchers.Default) {
         val stateJob = launch {
             session.state.collect { st ->
                 val b = st.encodeToByteArray()
@@ -250,12 +251,10 @@ fun macos_playback_session_play(
             }
         }
         
-        // Start playback
         session.play()
-        
-        // Wait for state job (it will complete when session finishes)
         stateJob.join()
     }
+    playbackJobs[sessionPtr] = job
 }
 
 @CName("macos_playback_session_pause")
@@ -272,6 +271,8 @@ fun macos_playback_session_resume(ptr: COpaquePointer) {
 
 @CName("macos_playback_session_stop")
 fun macos_playback_session_stop(ptr: COpaquePointer) {
+    val job = playbackJobs.remove(ptr)
+    runBlocking { job?.cancelAndJoin() }
     val session = ptr.asStableRef<AudioPlaybackSession>().get()
     session.stop()
 }
