@@ -328,7 +328,6 @@ chore: update dependencies
 ## Questions?
 
 - Open an [issue](https://github.com/dosier/kodio/issues) for bugs or feature requests
-- Start a [discussion](https://github.com/dosier/kodio/discussions) for questions
 
 Thank you for contributing! 🎉
 
