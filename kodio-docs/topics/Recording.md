@@ -80,6 +80,57 @@ recorder.liveAudioFlow?.collect { chunk ->
 >
 {style="tip"}
 
+## Pause / resume {id="pause-resume"}
+
+Use `recorder.pause()` to halt capture and `recorder.resume()` to continue
+appending to the same recording — the data captured before the pause is
+preserved as part of one continuous `AudioRecording`:
+
+```kotlin
+val recorder = Kodio.recorder(quality = AudioQuality.Standard)
+
+recorder.use { r ->
+    r.start()
+    waitForUserPause()
+    r.pause()              // capture stops; previously captured chunks remain
+    waitForUserResume()
+    r.resume()             // continues appending to the same buffer
+    waitForUserStop()
+    r.stop()
+    r.getRecording()!!
+}
+```
+
+Each platform exposes a native pause primitive when available (Android
+`AudioRecord.stop()` / `startRecording()`, JVM `TargetDataLine.stop()` /
+`start()`, iOS `AVAudioEngine.pause()`, macOS `AudioQueuePause`, Web
+`AudioWorklet.disconnect()`), so resume is fast and doesn't re-acquire the
+microphone.
+
+> Calling `recorder.start()` after `stop()` is a different operation —
+> Kodio treats it as starting a brand-new recording and refuses to silently
+> discard the previous one. You must either call `recorder.reset()` first to
+> explicitly throw the prior recording away, or stitch multiple recordings
+> together with `AudioRecording.concat(...)` (see below).
+>
+{style="note"}
+
+### Stitching independent recordings {id="concat"}
+
+If you produced separate `AudioRecording` values (e.g. from disjoint
+`Recorder.use { … }` blocks), combine them with `AudioRecording.concat`:
+
+```kotlin
+val full = AudioRecording.concat(firstRecording, secondRecording)
+full.saveAs(Path("voice_note.wav"))
+```
+
+`concat` accepts segments with different formats — they are converted to a
+common target format (the first segment's format by default) using
+[`AudioFlow.convertAudio`](Custom-Formats.md). See
+[GitHub issue #24](https://github.com/dosier/kodio/issues/24) for the original
+discussion.
+
 ## Recorder API reference {id="api-reference"}
 
 ### Properties {id="properties" collapsible="true"}
@@ -109,7 +160,13 @@ Observable state changes for reactive UIs.
 
 <deflist type="medium">
 <def title="start()">
-Begin recording audio.
+Begin recording audio. Throws <code>IllegalStateException</code> if the recorder is already in the <code>Stopped</code> state — call <code>reset()</code> first or stitch segments via <code>AudioRecording.concat()</code>.
+</def>
+<def title="pause()">
+Pause capture without losing audio captured so far. Use <code>resume()</code> to continue.
+</def>
+<def title="resume()">
+Resume a previously paused recording, appending to the same audio buffer.
 </def>
 <def title="stop()">
 Stop recording. The recording becomes available via <code>getRecording()</code>.
@@ -118,7 +175,7 @@ Stop recording. The recording becomes available via <code>getRecording()</code>.
 Start if stopped, stop if recording. Convenient for single-button UIs.
 </def>
 <def title="reset()">
-Discard the current recording and prepare for a new one.
+Discard the current recording and prepare for a new one. Required before calling <code>start()</code> a second time on the same recorder.
 </def>
 <def title="release()">
 Release all resources. Called automatically when using <code>use {}</code>.

@@ -29,6 +29,8 @@
         <toc-element topic="Low-Level-API.md"/>
         <toc-element topic="Device-Selection.md"/>
         <toc-element topic="Custom-Formats.md"/>
+        <toc-element topic="Transcription-Web.md"/>
+        <toc-element topic="Ktor-Extension.md"/>
     </toc-element>
     
     <toc-element topic="Migration.md"/>
