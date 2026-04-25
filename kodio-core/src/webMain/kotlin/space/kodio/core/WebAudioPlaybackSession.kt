@@ -24,7 +24,26 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         )
         val context = AudioContext(contextOptions)
         audioContext = context
-        return format
+        return toWebPlaybackFormat(format)
+    }
+
+    /**
+     * Web Audio's [AudioBuffer] always stores samples as Float32 per channel, so we
+     * normalize whatever the source produces to interleaved Float32 here. The
+     * actual normalization is performed by [BaseAudioPlaybackSession.play] via
+     * [convertAudio], which means [playBlocking] only ever sees Float32 LE bytes.
+     */
+    private fun toWebPlaybackFormat(format: AudioFormat): AudioFormat {
+        val enc = format.encoding
+        if (enc is SampleEncoding.PcmFloat &&
+            enc.precision == FloatPrecision.F32 &&
+            enc.layout == SampleLayout.Interleaved
+        ) return format
+        return AudioFormat(
+            sampleRate = format.sampleRate,
+            channels = format.channels,
+            encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
+        )
     }
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {

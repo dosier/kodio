@@ -5,9 +5,9 @@ package space.kodio.core
 import kotlin.js.ExperimentalWasmJsInterop
 import kotlin.js.JsAny
 import kotlin.js.JsArray
+import js.buffer.ArrayBuffer
 import js.buffer.ArrayBufferLike
 import js.typedarrays.Float32Array
-import web.audio.AudioBuffer
 import web.audio.AudioContext
 import web.audio.AudioContextLatencyCategory
 import web.audio.AudioContextOptions
@@ -19,7 +19,15 @@ import web.permissions.PermissionDescriptor
 
 expect val microphonePermissionDescriptor: PermissionDescriptor
 
-expect fun AudioContext.createBufferFrom(format: AudioFormat, data: ByteArray): AudioBuffer
+/**
+ * Wraps a Kotlin [FloatArray] in a JS [Float32Array] view backed by an
+ * [ArrayBuffer] - i.e. allocated in the JS heap, not in wasm linear memory.
+ *
+ * This is the only target-specific piece of the playback path; everything
+ * else (PCM decoding, deinterleave, AudioBuffer construction) is shared in
+ * `webMain`. See [createBufferFrom] for usage.
+ */
+internal expect fun FloatArray.toJsFloat32Array(): Float32Array<ArrayBuffer>
 
 expect fun <T : JsAny?> JsArray<T>.toList(): List<T>
 
