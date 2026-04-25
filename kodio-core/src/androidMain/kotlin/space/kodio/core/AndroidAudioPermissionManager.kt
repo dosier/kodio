@@ -3,17 +3,13 @@ package space.kodio.core
 import android.Manifest.permission.RECORD_AUDIO
 import android.app.Activity
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.PackageManager.PERMISSION_DENIED
 import android.content.pm.PackageManager.PERMISSION_GRANTED
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import space.kodio.core.security.AudioPermissionDeniedException
+import kotlinx.coroutines.CompletableDeferred
 import space.kodio.core.security.AudioPermissionManager
 import java.lang.ref.WeakReference
 
@@ -21,24 +17,49 @@ object AndroidAudioPermissionManager : AudioPermissionManager() {
 
     private lateinit var activity: WeakReference<Activity>
 
-    fun setMicrophonePermissionRequestActivity(activity: Activity) {
-        this.activity = WeakReference(activity)
-    }
+    // Coalesces concurrent requestPermission() callers into a single
+    // ActivityCompat.requestPermissions invocation. All access is guarded by
+    // the singleton's intrinsic monitor (synchronized(this)).
+    private var inflight: CompletableDeferred<Unit>? = null
 
-    fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray) {
-        when (requestCode) {
-            REQUEST_PERMISSION_RECORD_AUDIO -> {
-                setState(grantResults.getOrNull(0)?.toState()?:State.Unknown)
+    fun setMicrophonePermissionRequestActivity(activity: Activity) {
+        val previous = if (this::activity.isInitialized) this.activity.get() else null
+        this.activity = WeakReference(activity)
+        if (previous != null && previous !== activity) {
+            // Old activity is gone; any pending request can no longer be answered through it.
+            // Cancel waiters so they don't hang; new callers will start a fresh request.
+            val toCancel = synchronized(this) {
+                val current = inflight
+                inflight = null
+                current
             }
+            toCancel?.cancel()
         }
     }
 
+    fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray) {
+        if (requestCode != REQUEST_PERMISSION_RECORD_AUDIO) return
+        setState(grantResults.getOrNull(0)?.toState() ?: State.Unknown)
+        val toComplete = synchronized(this) {
+            val current = inflight
+            inflight = null
+            current
+        }
+        toComplete?.complete(Unit)
+    }
+
     override suspend fun requestPermission() {
-        ActivityCompat.requestPermissions(
-            /* activity = */ requireActivity(),
-            /* permissions = */ arrayOf(RECORD_AUDIO),
-            /* requestCode = */ REQUEST_PERMISSION_RECORD_AUDIO
-        )
+        val deferred = synchronized(this) {
+            inflight?.takeIf { !it.isCompleted } ?: CompletableDeferred<Unit>().also { fresh ->
+                inflight = fresh
+                ActivityCompat.requestPermissions(
+                    /* activity = */ requireActivity(),
+                    /* permissions = */ arrayOf(RECORD_AUDIO),
+                    /* requestCode = */ REQUEST_PERMISSION_RECORD_AUDIO,
+                )
+            }
+        }
+        deferred.await()
     }
 
     override fun requestRedirectToSettings() {
