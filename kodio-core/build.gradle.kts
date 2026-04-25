@@ -80,6 +80,13 @@ kotlin {
                 implementation(libs.androidx.core.ktx)
             }
         }
+        // Android unit tests run on the host JVM and trigger kotlin-logging,
+        // which needs an SLF4J binding on its classpath. See GitHub issue #15.
+        val androidUnitTest by getting {
+            dependencies {
+                implementation(libs.slf4j.simple)
+            }
+        }
         @Suppress("unused")
         val webMain by getting {
             dependencies {
