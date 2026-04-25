@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.io.Buffer
 import kotlinx.io.files.Path
 import kotlinx.io.readByteArray
+import space.kodio.core.io.convertAudio
 import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.writeToFile
 import kotlin.time.Duration
@@ -208,6 +209,80 @@ class AudioRecording private constructor(
         fun empty(format: AudioFormat = AudioQuality.Default.format): AudioRecording {
             return AudioRecording(format = format, duration = null, chunks = emptyList())
         }
+
+        /**
+         * Stitches multiple recordings into a single contiguous [AudioRecording].
+         *
+         * This is the recommended workaround for "pause/resume" use cases until
+         * native pause/resume support lands (tracked by GitHub issue #24).
+         * Record successive segments with separate `start()`/`stop()` cycles
+         * (calling `reset()` in between), then concatenate the results:
+         *
+         * ```kotlin
+         * val first = recorder.use { it.start(); waitForUserPause(); it.stop(); it.getRecording()!! }
+         * val second = recorder.use { it.start(); waitForUserStop(); it.stop(); it.getRecording()!! }
+         * val full = AudioRecording.concat(first, second)
+         * ```
+         *
+         * If the segments share a format, the bytes are concatenated as-is (cheap).
+         * If they differ, every segment is converted to [targetFormat] (defaults to
+         * the first segment's format) using [convertAudio] before being joined.
+         *
+         * @param recordings Two or more segments to stitch (order is preserved).
+         * @param targetFormat The desired output format. Defaults to the first
+         *   recording's format.
+         * @throws IllegalArgumentException if [recordings] is empty.
+         */
+        suspend fun concat(
+            recordings: List<AudioRecording>,
+            targetFormat: AudioFormat? = null,
+        ): AudioRecording {
+            require(recordings.isNotEmpty()) { "concat() requires at least one recording" }
+            if (recordings.size == 1 && (targetFormat == null || recordings[0].format == targetFormat)) {
+                return recordings[0]
+            }
+
+            val outputFormat = targetFormat ?: recordings.first().format
+            val allSameFormat = recordings.all { it.format == outputFormat }
+
+            val combinedChunks: MutableList<ByteArray> = mutableListOf()
+            var totalDurationMillis = 0L
+            var allDurationsKnown = true
+
+            for (recording in recordings) {
+                val source = if (recording.format == outputFormat) {
+                    recording.asAudioFlow()
+                } else {
+                    recording.asAudioFlow().convertAudio(outputFormat)
+                }
+                source.collect { chunk -> combinedChunks.add(chunk) }
+
+                val d = recording.duration
+                if (d == null) {
+                    allDurationsKnown = false
+                } else {
+                    totalDurationMillis += d.inWholeMilliseconds
+                }
+            }
+
+            val combinedDuration = if (allSameFormat && allDurationsKnown) {
+                totalDurationMillis.milliseconds
+            } else {
+                null
+            }
+
+            return AudioRecording(
+                format = outputFormat,
+                duration = combinedDuration,
+                chunks = combinedChunks,
+            )
+        }
+
+        /** Vararg overload of [concat] for ergonomic call sites. */
+        suspend fun concat(
+            vararg recordings: AudioRecording,
+            targetFormat: AudioFormat? = null,
+        ): AudioRecording = concat(recordings.toList(), targetFormat)
 
         /**
          * Internal factory that takes ownership of chunks (no copy).

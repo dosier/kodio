@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
@@ -298,6 +299,49 @@ class AudioRecordingTest {
 
         assertEquals(format, recording.format)
         assertEquals(6L, recording.sizeInBytes)
+    }
+
+    // ==================== concat Tests ====================
+
+    @Test
+    fun `concat with empty list throws`() = runTest {
+        assertFailsWith<IllegalArgumentException> {
+            AudioRecording.concat(emptyList())
+        }
+    }
+
+    @Test
+    fun `concat with single recording returns the same data`() = runTest {
+        val first = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val result = AudioRecording.concat(first)
+
+        assertEquals(testFormat, result.format)
+        assertEquals(4L, result.sizeInBytes)
+        assertTrue(result.toByteArray().contentEquals(byteArrayOf(1, 2, 3, 4)))
+    }
+
+    @Test
+    fun `concat appends bytes when formats match`() = runTest {
+        val first = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val second = AudioRecording.fromBytes(testFormat, byteArrayOf(5, 6))
+        val third = AudioRecording.fromBytes(testFormat, byteArrayOf(7, 8, 9))
+
+        val result = AudioRecording.concat(first, second, third)
+
+        assertEquals(testFormat, result.format)
+        assertEquals(9L, result.sizeInBytes)
+        assertTrue(result.toByteArray().contentEquals(byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8, 9)))
+    }
+
+    @Test
+    fun `concat sums durations when all segments have known durations`() = runTest {
+        val format = testFormat
+        val first = AudioRecording.fromChunks(format, listOf(byteArrayOf(1, 2)), duration = 100.milliseconds)
+        val second = AudioRecording.fromChunks(format, listOf(byteArrayOf(3, 4)), duration = 250.milliseconds)
+
+        val result = AudioRecording.concat(first, second)
+
+        assertEquals(350.milliseconds, result.duration)
     }
 }
 
