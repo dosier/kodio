@@ -46,6 +46,11 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 bignum = { module = "com.ionspin.kotlin:bignum", version = "0.3.10" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor3" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor3" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor3" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor3" }
+ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor3" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor3" }
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor3" }
 material-icons = { module = "org.jetbrains.compose.material:material-icons-core", version.ref="material-icons" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version = "2.0.16" }
 
