@@ -105,40 +105,54 @@ val nativeLibsDir = "space/kodio/core/natives"
 val nativePermissionsProject = project(":kodio-native:audio-permissions")
 val nativeProcessingProject = project(":kodio-native:audio-processing")
 
+// macOS native targets can only be cross-compiled on macOS hosts. On Linux/Windows
+// CI we still want jvmTest / publishing to work without dragging in (and failing)
+// the macOS dylib build. Skip those dependencies & copy steps when off-host.
+// See: https://github.com/dosier/kodio/issues/15
+val isMacOsHost = org.gradle.internal.os.OperatingSystem.current().isMacOsX
+val isWindowsHost = org.gradle.internal.os.OperatingSystem.current().isWindows
+
 tasks.named<Copy>("jvmProcessResources") {
-    // Make sure the native libraries are built before this task runs
-    dependsOn(
-        // Permissions
-        nativePermissionsProject.tasks.named("macosX64Binaries"),
-        nativePermissionsProject.tasks.named("macosArm64Binaries"),
-        nativePermissionsProject.tasks.named("mingwX64Binaries"),
-        // Processing
-        nativeProcessingProject.tasks.named("macosX64Binaries"),
-        nativeProcessingProject.tasks.named("macosArm64Binaries"),
-    )
+    if (isMacOsHost) {
+        dependsOn(
+            nativePermissionsProject.tasks.named("macosX64Binaries"),
+            nativePermissionsProject.tasks.named("macosArm64Binaries"),
+            nativeProcessingProject.tasks.named("macosX64Binaries"),
+            nativeProcessingProject.tasks.named("macosArm64Binaries"),
+        )
+    }
+    if (isWindowsHost) {
+        dependsOn(nativePermissionsProject.tasks.named("mingwX64Binaries"))
+    }
+
     fun permissions(target: String) =
         nativePermissionsProject.layout.buildDirectory.dir("bin/$target/audiopermissionsReleaseShared")
-    from(permissions("macosArm64")) {
-        include("libaudiopermissions.dylib")
-        into("$nativeLibsDir/macos-aarch64")
-    }
-    from(permissions("macosX64")) {
-        include("libaudiopermissions.dylib")
-        into("$nativeLibsDir/macos-x86-64")
-    }
-    from(permissions("mingwX64")) {
-        include("audiopermissions.dll")
-        into("$nativeLibsDir/windows-x86-64")
-    }
     fun processing(target: String) =
         nativeProcessingProject.layout.buildDirectory.dir("bin/$target/audioprocessingReleaseShared")
-    from(processing("macosArm64")) {
-        include("libaudioprocessing.dylib")
-        into("$nativeLibsDir/macos-aarch64")
+
+    if (isMacOsHost) {
+        from(permissions("macosArm64")) {
+            include("libaudiopermissions.dylib")
+            into("$nativeLibsDir/macos-aarch64")
+        }
+        from(permissions("macosX64")) {
+            include("libaudiopermissions.dylib")
+            into("$nativeLibsDir/macos-x86-64")
+        }
+        from(processing("macosArm64")) {
+            include("libaudioprocessing.dylib")
+            into("$nativeLibsDir/macos-aarch64")
+        }
+        from(processing("macosX64")) {
+            include("libaudioprocessing.dylib")
+            into("$nativeLibsDir/macos-x86-64")
+        }
     }
-    from(processing("macosX64")) {
-        include("libaudioprocessing.dylib")
-        into("$nativeLibsDir/macos-x86-64")
+    if (isWindowsHost) {
+        from(permissions("mingwX64")) {
+            include("audiopermissions.dll")
+            into("$nativeLibsDir/windows-x86-64")
+        }
     }
 }
 

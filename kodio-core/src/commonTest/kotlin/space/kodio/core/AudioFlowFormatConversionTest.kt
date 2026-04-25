@@ -8,11 +8,11 @@ import space.kodio.core.io.convertAudio
 
 /**
  * Tests for AudioFlow format conversion.
- * 
- * TODO: Fix native dependency issues on Linux CI.
- * See: https://github.com/dosier/kodio/issues/15
+ *
+ * Runs on every JVM target — the macOS-only native dependency build that used
+ * to break this on Linux is now host-gated in `kodio-core/build.gradle.kts`
+ * (GitHub issue #15).
  */
-// @Ignore // Skipped on CI - native dependency loading issues on Linux. See #15
 class AudioFlowFormatConversionTest {
 
     /* -------------------- Helpers -------------------- */

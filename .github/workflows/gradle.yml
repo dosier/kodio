@@ -1,6 +1,14 @@
-# This workflow will build and test the project with Gradle
-# It runs on pushes to master, PRs, and can be called by other workflows (e.g., publish)
+# This workflow builds and tests the project across the platforms Kodio
+# supports. It runs on pushes to master, PRs, and is callable from publish.yml.
 # Tests are skipped for documentation-only changes.
+#
+# The matrix expands the previous single Linux JVM job to cover the targets
+# called for in GitHub issues #11–#15:
+#   - linux-jvm     (#15) JVM tests on Linux (host-gated macOS native deps)
+#   - android-unit  (#12) Android unit tests
+#   - web           (#14) JS + WasmJS browser tests
+#   - macos-native  (#13) macOS Kotlin/Native tests
+#   - ios-sim       (#11) iOS simulator tests
 
 name: CI
 
@@ -35,7 +43,28 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: ${{ matrix.id }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-jvm
+            os: ubuntu-latest
+            tasks: "jvmTest"
+          - id: android-unit
+            os: ubuntu-latest
+            tasks: "testDebugUnitTest testReleaseUnitTest"
+          - id: web
+            os: ubuntu-latest
+            tasks: "jsBrowserTest wasmJsBrowserTest"
+            install_chrome: true
+          - id: macos-native
+            os: macos-latest
+            tasks: "macosArm64Test macosX64Test"
+          - id: ios-sim
+            os: macos-latest
+            tasks: "iosSimulatorArm64Test"
 
     steps:
       - name: Check out code
@@ -50,10 +79,23 @@ jobs:
           java-version: '21'
           distribution: 'zulu'
 
+      - name: Set up Chrome (for browser tests)
+        if: ${{ matrix.install_chrome == true }}
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Cache Kotlin/Native
+        if: ${{ runner.os == 'macOS' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: ${{ runner.os }}-konan-${{ hashFiles('**/*.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-konan-
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/master' }}
 
-      - name: Run JVM Tests
-        run: ./gradlew jvmTest --no-configuration-cache
+      - name: Run ${{ matrix.id }} tests
+        run: ./gradlew ${{ matrix.tasks }} --no-configuration-cache --stacktrace

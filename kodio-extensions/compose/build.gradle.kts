@@ -77,6 +77,9 @@ kotlin {
             dependencies {
                 // Skiko runtime needed for Compose UI tests on JVM
                 implementation(compose.desktop.currentOs)
+                // SLF4J binding for tests (otherwise kotlin-logging produces an
+                // ExceptionInInitializerError on Linux CI). See GitHub issue #15.
+                implementation(libs.slf4j.simple)
             }
         }
         androidMain {

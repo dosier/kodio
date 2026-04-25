@@ -1,7 +1,8 @@
 package space.kodio.core
 
 import kotlinx.coroutines.runBlocking
-import kotlin.test.Ignore
+import org.junit.Assume.assumeTrue
+import org.junit.Before
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -9,20 +10,26 @@ import kotlin.test.assertTrue
 
 /**
  * Tests for the JVM audio system with native macOS fallback.
- * 
+ *
  * These tests verify:
  * 1. The SystemAudioSystem correctly selects native or JVM implementation
  * 2. The fallback mechanism works when native is unavailable
  * 3. The FFI bridge handles audio data correctly
- * 
- * NOTE: Some tests require a macOS system with microphone permission.
- * They will be skipped on other platforms or when permission is denied.
- * 
- * TODO: Make tests platform-aware or run only on macOS CI job.
- * See: https://github.com/dosier/kodio/issues/15
+ *
+ * The whole class is gated on macOS via [Assume.assumeTrue] in [skipUnlessMacOs];
+ * on Linux/Windows the tests show up as "skipped" rather than "ignored", which
+ * makes it obvious they aren't actually running yet still keeps the suite green
+ * (see GitHub issue #15).
  */
-@Ignore("Skipped on CI - requires macOS native libraries. See #15")
 class NativeMacosAudioSystemTest {
+
+    @Before
+    fun skipUnlessMacOs() {
+        assumeTrue(
+            "NativeMacosAudioSystemTest requires macOS host (see GitHub issue #15)",
+            System.getProperty("os.name").lowercase().contains("mac"),
+        )
+    }
 
     // ==================== Platform Selection Tests ====================
 
