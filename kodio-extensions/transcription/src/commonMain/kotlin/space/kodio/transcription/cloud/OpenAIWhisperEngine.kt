@@ -22,43 +22,78 @@ private const val WHISPER_COST_PER_MINUTE = 0.006
 
 /**
  * OpenAI Whisper API transcription engine.
- * 
+ *
  * Note: This is NOT true real-time streaming. OpenAI's Whisper API processes
  * complete audio files, so this engine buffers audio and sends it in chunks.
  * For true real-time streaming, use [DeepgramEngine] or [AssemblyAIEngine].
- * 
+ *
  * This engine is best suited for:
  * - Post-recording transcription
  * - High accuracy requirements
  * - Short audio clips
- * 
+ *
  * ## Example
  * ```kotlin
  * val engine = OpenAIWhisperEngine(apiKey = "your-openai-api-key")
- * 
+ *
  * // Best used with complete recordings
  * val recording = recorder.getRecording()
  * recording?.asAudioFlow()?.transcribe(engine)?.collect { result ->
  *     println("Transcription: ${result}")
  * }
  * ```
- * 
- * @param apiKey Your OpenAI API key
- * @param model The Whisper model to use (default: "whisper-1")
- * @param httpClient Optional custom HTTP client
- * @param chunkDurationSeconds Duration in seconds for each chunk (for streaming mode)
+ *
+ * ## Browsers (JS / WasmJS)
+ *
+ * OpenAI's API does not send `Access-Control-Allow-Origin`, so direct calls
+ * from a browser are blocked by CORS. Stand up a thin backend that forwards
+ * the multipart upload to OpenAI and point [endpointUrl] at it. Your backend
+ * keeps the API key; pass any auth headers it requires via
+ * [additionalHeaders] (and leave [apiKey] blank if your backend doesn't
+ * proxy the bearer token).
+ *
+ * ```kotlin
+ * val engine = OpenAIWhisperEngine(
+ *     apiKey = "",
+ *     endpointUrl = "https://my-app.example.com/api/transcribe",
+ *     additionalHeaders = headersOf("X-App-Token", "client-secret"),
+ * )
+ * ```
+ *
+ * @param apiKey Your OpenAI API key. Leave empty when proxying through your
+ *   own backend (see [endpointUrl]).
+ * @param model The Whisper model to use (default: `"whisper-1"`).
+ * @param httpClient Optional custom HTTP client.
+ * @param chunkDurationSeconds Duration in seconds for each chunk (for
+ *   streaming mode).
+ * @param endpointUrl The URL to POST audio chunks to. Defaults to OpenAI's
+ *   public endpoint; override to point at your own proxy when running in a
+ *   browser (avoids CORS issues, see [GitHub issue #16](https://github.com/dosier/kodio/issues/16)).
+ * @param additionalHeaders Extra headers appended to every request (useful
+ *   for proxy authentication tokens, tracing, etc.).
  */
 class OpenAIWhisperEngine(
     private val apiKey: String,
     private val model: String = "whisper-1",
     private val httpClient: HttpClient = HttpClient(),
-    private val chunkDurationSeconds: Int = 10
+    private val chunkDurationSeconds: Int = 10,
+    private val endpointUrl: String = OPENAI_TRANSCRIPTIONS_URL,
+    private val additionalHeaders: Headers = Headers.Empty,
 ) : TranscriptionEngine {
+
+    companion object {
+        const val OPENAI_TRANSCRIPTIONS_URL: String = "https://api.openai.com/v1/audio/transcriptions"
+    }
     
     override val provider = TranscriptionProvider.OPENAI_WHISPER
-    
+
+    /**
+     * The engine is available when either an [apiKey] is configured or the
+     * caller has pointed [endpointUrl] at a custom proxy that supplies its own
+     * authentication.
+     */
     override val isAvailable: Boolean
-        get() = apiKey.isNotBlank()
+        get() = apiKey.isNotBlank() || endpointUrl != OPENAI_TRANSCRIPTIONS_URL
     
     private val json = Json { 
         ignoreUnknownKeys = true 
@@ -74,9 +109,9 @@ class OpenAIWhisperEngine(
         logger.info { "Model: $model, Chunk duration: ${chunkDurationSeconds}s" }
         
         if (!isAvailable) {
-            logger.error { "API key not configured!" }
+            logger.error { "OpenAI Whisper engine is not available: no API key and no custom endpointUrl set" }
             emit(TranscriptionResult.Error(
-                message = "OpenAI API key not configured",
+                message = "OpenAI Whisper engine not configured: provide an apiKey, or a custom endpointUrl pointing at a backend proxy",
                 code = "NO_API_KEY",
                 isRecoverable = false
             ))
@@ -243,9 +278,14 @@ class OpenAIWhisperEngine(
             
             val timeMark = TimeSource.Monotonic.markNow()
             
-            val response = httpClient.post("https://api.openai.com/v1/audio/transcriptions") {
+            val response = httpClient.post(endpointUrl) {
                 headers {
-                    append(HttpHeaders.Authorization, "Bearer $apiKey")
+                    if (apiKey.isNotBlank()) {
+                        append(HttpHeaders.Authorization, "Bearer $apiKey")
+                    }
+                    additionalHeaders.forEach { name, values ->
+                        values.forEach { value -> append(name, value) }
+                    }
                 }
                 setBody(MultiPartFormDataContent(
                     formData {

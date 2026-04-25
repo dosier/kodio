@@ -33,6 +33,7 @@ import space.kodio.core.AudioFlow
 import space.kodio.core.Kodio
 import space.kodio.core.Recorder
 import space.kodio.core.security.AudioPermissionManager
+import space.kodio.sample.icons.SampleIcons
 import space.kodio.transcription.*
 import space.kodio.transcription.cloud.OpenAIWhisperEngine
 
@@ -52,18 +53,21 @@ fun TranscriptionShowcase(
     modifier: Modifier = Modifier
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("🎤 Live Recording", "📁 File Upload")
-    
+
     Column(modifier = modifier.fillMaxSize()) {
-        // Tab selector
         TabRow(selectedTabIndex = selectedTab) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = { Text(title) }
-                )
-            }
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("Live Recording") },
+                icon = { Icon(SampleIcons.Mic, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("File Upload") },
+                icon = { Icon(SampleIcons.Folder, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
         }
         
         // Content based on selected tab
@@ -545,7 +549,13 @@ private fun FileUploadTab(apiKey: String) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text("📁 Select Audio File", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(SampleIcons.Folder, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Text("Select Audio File", style = MaterialTheme.typography.titleMedium)
+                }
                 Text(
                     "MP3, WAV, M4A, MP4, WEBM, OGG, FLAC",
                     style = MaterialTheme.typography.bodySmall,
@@ -628,22 +638,34 @@ private fun FileUploadTab(apiKey: String) {
                                 color = MaterialTheme.colorScheme.secondaryContainer,
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text(
-                                    text = "⏱️ ${formatDecimal(result.durationSeconds, 1)}s",
+                                Row(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    style = MaterialTheme.typography.labelMedium
-                                )
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(SampleIcons.Schedule, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Text(
+                                        text = "${formatDecimal(result.durationSeconds, 1)}s",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
                             }
                             // Cost badge
                             Surface(
                                 color = MaterialTheme.colorScheme.tertiaryContainer,
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text(
-                                    text = "💰 $${formatDecimal(result.cost, 4)}",
+                                Row(
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    style = MaterialTheme.typography.labelMedium
-                                )
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(SampleIcons.Payments, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Text(
+                                        text = "$${formatDecimal(result.cost, 4)}",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
                             }
                         }
                     }

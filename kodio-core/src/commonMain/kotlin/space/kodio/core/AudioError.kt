@@ -78,6 +78,22 @@ sealed class AudioError(
     }
 
     /**
+     * The current platform does not support pinning a specific input/output device.
+     *
+     * Web browsers, for example, expose enumerable device IDs via `enumerateDevices()`
+     * but cannot reliably honour a `requestedDevice` argument when starting capture or
+     * playback. Callers can either omit the device or catch this error and fall back
+     * to the platform default.
+     *
+     * @property kind Whether the unsupported selection was for an input or output device.
+     */
+    data class DeviceSelectionUnsupported(
+        val kind: Kind
+    ) : AudioError("Device selection is not supported on this platform for ${kind.name.lowercase()} devices") {
+        enum class Kind { Input, Output }
+    }
+
+    /**
      * An unknown or unexpected error occurred.
      */
     data class Unknown(

@@ -25,11 +25,19 @@ open class WebAudioSystem : SystemAudioSystemImpl() {
     override suspend fun createRecordingSession(
         requestedDevice: AudioDevice.Input?,
         requestedFormat: AudioFormat?,
-    ): AudioRecordingSession =
-        WebAudioRecordingSession(requestedDevice, requestedFormat ?: DefaultWebRecordingAudioFormat)
+    ): AudioRecordingSession {
+        if (requestedDevice != null) {
+            throw AudioError.DeviceSelectionUnsupported(AudioError.DeviceSelectionUnsupported.Kind.Input)
+        }
+        return WebAudioRecordingSession(requestedDevice, requestedFormat ?: DefaultWebRecordingAudioFormat)
+    }
 
-    override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession =
-        WebAudioPlaybackSession()
+    override suspend fun createPlaybackSession(requestedDevice: AudioDevice.Output?): AudioPlaybackSession {
+        if (requestedDevice != null) {
+            throw AudioError.DeviceSelectionUnsupported(AudioError.DeviceSelectionUnsupported.Kind.Output)
+        }
+        return WebAudioPlaybackSession()
+    }
 
     private suspend fun listDevices(type: MediaDeviceKind): List<MediaDeviceInfo> {
         return try {

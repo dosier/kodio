@@ -83,6 +83,25 @@ class AudioErrorTest {
     }
 
     @Test
+    fun `DeviceSelectionUnsupported message reflects kind`() {
+        val input = AudioError.DeviceSelectionUnsupported(
+            AudioError.DeviceSelectionUnsupported.Kind.Input
+        )
+        assertEquals(
+            "Device selection is not supported on this platform for input devices",
+            input.message
+        )
+
+        val output = AudioError.DeviceSelectionUnsupported(
+            AudioError.DeviceSelectionUnsupported.Kind.Output
+        )
+        assertEquals(
+            "Device selection is not supported on this platform for output devices",
+            output.message
+        )
+    }
+
+    @Test
     fun `Unknown wraps cause with message`() {
         val cause = IllegalStateException("Something went wrong")
         val error = AudioError.Unknown(cause)

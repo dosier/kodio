@@ -1,11 +1,6 @@
-[//]: # (title: Device Selection)
 
-<show-structure for="chapter" depth="2"/>
-<primary-label ref="advanced"/>
 
-<tldr>
-<p><b>Choose devices</b>: Select specific microphones or speakers for recording and playback.</p>
-</tldr>
+**Choose devices**: Select specific microphones or speakers for recording and playback.
 
 Kodio allows you to enumerate audio devices and direct recording or playback to specific hardware.
 
@@ -28,6 +23,7 @@ outputs.forEach { device ->
 ```
 
 Each device has:
+
 - `id`: Unique identifier
 - `name`: Human-readable name (e.g., "Built-in Microphone", "AirPods Pro")
 
@@ -89,16 +85,18 @@ fun DeviceSelector() {
 
 Device selection support varies by platform:
 
-| Platform | Support | Notes |
-|----------|---------|-------|
-| ☕ JVM | ✅ Full | Complete device enumeration |
-| 🍏 macOS | ✅ Full | Complete device enumeration |
-| 🍎 iOS | ✅ Full | AVAudioSession routes |
-| 🤖 Android | ⚠️ Limited | System manages routing; selection available via AudioManager |
-| 🌐 Web | ⚠️ Limited | Browser-dependent; requires `getUserMedia` with constraints |
 
-> Pass `null` for the device parameter to use the system default, which is the recommended approach for most apps.
->
+| Platform   | Input selection | Output selection | Notes                                                                                                          |
+| ---------- | --------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- |
+| ☕ JVM      | ✅ Full          | ✅ Full           | Complete device enumeration via `javax.sound.sampled`                                                          |
+| 🍏 macOS   | ✅ Full          | ✅ Full           | Resolves to a real CoreAudio device UID                                                                        |
+| 🍎 iOS     | ✅ Full          | ✅ Full           | Routed via `AVAudioSession` ports                                                                              |
+| 🤖 Android | ⚠️ Limited      | ⚠️ Limited       | Honoured via `AudioRecord.preferredDevice` / `AudioTrack.preferredDevice`; final routing decided by the system |
+| 🌐 Web     | ❌ Not supported | ❌ Not supported  | Throws `AudioError.DeviceSelectionUnsupported` when a non-null device is passed                                |
+
+
+> Pass `null` for the device parameter to use the system default — this is the safest default and works on every platform.
+
 {style="tip"}
 
 ## Error handling {id="errors"}
@@ -115,12 +113,12 @@ try {
     // Device was disconnected or unavailable
     showError("Microphone not found. Using default.")
     val recording = Kodio.record(duration = 5.seconds)
+} catch (e: AudioError.DeviceSelectionUnsupported) {
+    // Running on a platform that cannot pin a specific device (e.g. browser).
+    // Retry without specifying a device.
+    showError("Device selection isn't supported here. Using default.")
+    val recording = Kodio.record(duration = 5.seconds)
 }
 ```
 
-<seealso style="cards">
-    <category ref="core-api">
-        <a href="Recording.md" summary="Recording API">Recording</a>
-        <a href="Playback.md" summary="Playback API">Playback</a>
-    </category>
-</seealso>
+[Recording](Recording.md) [Playback](Playback.md)
