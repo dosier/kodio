@@ -177,9 +177,19 @@ val openaiApiKey: String = if (localPropsFile.exists()) {
 compose.desktop {
     application {
         mainClass = "space.kodio.sample.MainKt"
-        
+
         // Pass API key as system property
         jvmArgs("-Dopenai.api.key=$openaiApiKey")
+
+        // Forward selected system properties from the Gradle invocation to the
+        // application JVM (the `:run` task spawns a separate JVM which does not
+        // inherit Gradle's -D flags). Lets you do e.g.:
+        //   ./gradlew :kodio-sample-app:run -Dkodio.useJavaSound=true
+        listOf(
+            "kodio.useJavaSound",
+        ).forEach { key ->
+            System.getProperty(key)?.let { jvmArgs("-D$key=$it") }
+        }
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)

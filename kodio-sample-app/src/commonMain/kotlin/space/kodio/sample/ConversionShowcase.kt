@@ -28,6 +28,7 @@ import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -227,7 +228,6 @@ fun ConversionShowcase() {
         val rec = sourceRecording!!
         val totalBytes = rec.sizeInBytes.toFloat()
         var processedBytes = 0L
-        conversionProgress = 0f
 
         val frameSize = rec.format.bytesPerFrame.coerceAtLeast(1)
         val chunkSize = (64 * 1024 / frameSize) * frameSize
@@ -558,6 +558,7 @@ fun ConversionShowcase() {
                                             playerState.toggle()
                                             return@launch
                                         }
+                                        conversionProgress = 0f
                                         isConverting = true
                                         try {
                                             val converted = withContext(Dispatchers.Default) {
@@ -612,16 +613,18 @@ fun ConversionShowcase() {
                                 scope.launch {
                                     statusError = null
                                     if (aiffFloatBlocked) return@launch
+                                    conversionProgress = 0f
                                     isConverting = true
                                     try {
-                                        withContext(Dispatchers.Default) {
-                                            val flow = buildConvertedFlow()
-                                            saveAudioWithFilePicker(
-                                                audioFlow = flow,
-                                                fileFormat = targetFileFormat,
-                                                suggestedName = "converted",
-                                            )
-                                        }
+                                        val flow = buildConvertedFlow()
+                                        saveAudioWithFilePicker(
+                                            audioFlow = AudioFlow(
+                                                flow.format,
+                                                flow.flowOn(Dispatchers.Default),
+                                            ),
+                                            fileFormat = targetFileFormat,
+                                            suggestedName = "converted",
+                                        )
                                     } catch (e: Exception) {
                                         statusError = "Export failed: ${e.message}"
                                     } finally {

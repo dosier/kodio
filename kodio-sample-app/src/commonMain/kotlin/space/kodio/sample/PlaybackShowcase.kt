@@ -93,6 +93,7 @@ fun PlaybackShowcase() {
         )
 
         FileSelectionCard(
+            recording = recording,
             fileName = fileName,
             isLoading = isLoading,
             isPicking = isPicking,
@@ -116,6 +117,11 @@ fun PlaybackShowcase() {
                     }
                 }
             },
+            onClear = {
+                recording = null
+                fileName = null
+                error = null
+            },
             onDragStateChange = { isDragOver = it },
             onFileDrop = { name, bytes -> loadAudioBytes(name, bytes) }
         )
@@ -136,7 +142,6 @@ fun PlaybackShowcase() {
         }
 
         recording?.let { rec ->
-            FileInfoCard(rec, fileName)
             PlaybackCard(rec, selectedOutputDevice)
         }
     }
@@ -144,11 +149,13 @@ fun PlaybackShowcase() {
 
 @Composable
 private fun FileSelectionCard(
+    recording: AudioRecording?,
     fileName: String?,
     isLoading: Boolean,
     isPicking: Boolean,
     isDragOver: Boolean,
     onPickFile: () -> Unit,
+    onClear: () -> Unit,
     onDragStateChange: (Boolean) -> Unit,
     onFileDrop: (name: String, bytes: ByteArray) -> Unit
 ) {
@@ -164,33 +171,48 @@ private fun FileSelectionCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(32.dp),
+                    .heightIn(min = 180.dp)
+                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator()
-                    Text(
-                        "Loading audio file...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    Text(
-                        if (fileName != null) fileName else "Select an audio file",
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                when {
+                    isLoading -> {
+                        CircularProgressIndicator()
+                        Text(
+                            "Loading audio file...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
-                    Text(
-                        "WAV, AIFF, AU files supported \u2022 drag and drop on desktop",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    recording != null -> {
+                        LoadedFileContent(
+                            recording = recording,
+                            fileName = fileName,
+                            isPicking = isPicking,
+                            onPickFile = onPickFile,
+                            onClear = onClear,
+                        )
+                    }
 
-                    Button(onClick = onPickFile, enabled = !isPicking) {
-                        Text(if (isPicking) "Picking..." else "Open File")
+                    else -> {
+                        Text(
+                            "Select an audio file",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Text(
+                            "WAV, AIFF, AU files supported \u2022 drag and drop on desktop",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Button(onClick = onPickFile, enabled = !isPicking) {
+                            Text(if (isPicking) "Picking..." else "Open File")
+                        }
                     }
                 }
             }
@@ -202,6 +224,70 @@ private fun FileSelectionCard(
             exit = fadeOut()
         ) {
             DropOverlay()
+        }
+    }
+}
+
+@Composable
+private fun LoadedFileContent(
+    recording: AudioRecording,
+    fileName: String?,
+    isPicking: Boolean,
+    onPickFile: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Text(
+        text = fileName ?: "Loaded recording",
+        style = MaterialTheme.typography.titleMedium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+
+    val format = recording.format
+    val encodingDesc = when (val enc = format.encoding) {
+        is SampleEncoding.PcmInt -> "${enc.bitDepth.bits}-bit PCM"
+        is SampleEncoding.PcmFloat -> "${if (enc.precision == space.kodio.core.FloatPrecision.F32) "32" else "64"}-bit Float"
+    }
+    val channelDesc = when (format.channels) {
+        Channels.Mono -> "Mono"
+        Channels.Stereo -> "Stereo"
+    }
+
+    Text(
+        text = "$encodingDesc, ${formatSampleRate(format.sampleRate)}, $channelDesc",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(
+            text = "Duration: ${formatDuration(recording.calculatedDuration)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "Size: ${formatFileSize(recording.sizeInBytes)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    Spacer(Modifier.height(4.dp))
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedButton(onClick = onPickFile, enabled = !isPicking) {
+            Text(if (isPicking) "Picking..." else "Replace")
+        }
+        TextButton(
+            onClick = onClear,
+            colors = ButtonDefaults.textButtonColors(
+                contentColor = MaterialTheme.colorScheme.error
+            )
+        ) {
+            Text("Clear")
         }
     }
 }
@@ -240,61 +326,6 @@ private fun DropOverlay() {
             style = MaterialTheme.typography.titleMedium,
             color = primaryColor
         )
-    }
-}
-
-@Composable
-private fun FileInfoCard(recording: AudioRecording, fileName: String?) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            fileName?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.titleSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            val format = recording.format
-            val encodingDesc = when (val enc = format.encoding) {
-                is SampleEncoding.PcmInt -> "${enc.bitDepth.bits}-bit PCM"
-                is SampleEncoding.PcmFloat -> "${if (enc.precision == space.kodio.core.FloatPrecision.F32) "32" else "64"}-bit Float"
-            }
-            val channelDesc = when (format.channels) {
-                Channels.Mono -> "Mono"
-                Channels.Stereo -> "Stereo"
-            }
-
-            Text(
-                text = "$encodingDesc, ${formatSampleRate(format.sampleRate)}, $channelDesc",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(
-                    text = "Duration: ${formatDuration(recording.calculatedDuration)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "Size: ${formatFileSize(recording.sizeInBytes)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
 }
 

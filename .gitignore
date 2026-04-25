@@ -11,3 +11,7 @@ xcuserdata
 .kotlin
 #So we don't accidentally commit our private keys
 *.gpg
+# Local dev scratch (recordings, ad-hoc scripts, JVM crash dumps)
+hs_err_pid*.log
+kodio-core/test.wav
+kodio-core/scripts/
