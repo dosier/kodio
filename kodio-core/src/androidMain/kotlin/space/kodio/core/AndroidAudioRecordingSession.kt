@@ -10,6 +10,22 @@ import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
 
+/**
+ * Android implementation of [BaseAudioRecordingSession].
+ *
+ * **Emulator note**: Recordings made through the Android emulator's QEMU
+ * audio bridge can sound noisy or grainy because the bridge resamples the
+ * host microphone signal (see GitHub issue #1). For best emulator quality:
+ *
+ * - request a format that matches the host (`AudioQuality.High` =
+ *   48 kHz / Int16 / mono / interleaved is the safest default), and
+ * - launch the AVD with `--audio-backend coreaudio` (macOS) or
+ *   `--audio-backend pulse` (Linux) so the bridge bypasses extra
+ *   resampling.
+ *
+ * Real production audio quality should always be validated on a physical
+ * device.
+ */
 @SuppressLint("MissingPermission")
 class AndroidAudioRecordingSession(
     private val context: Context,
@@ -64,11 +80,17 @@ class AndroidAudioRecordingSession(
     override suspend fun startRecording(channel: SendChannel<ByteArray>) {
         val record = audioRecord ?: return
 
+        // Gate on STATE_INITIALIZED (stays true through pause/resume; only
+        // false after release()) so that pauseRecording() — which calls
+        // record.stop() and flips recordingState to RECORDSTATE_STOPPED —
+        // does NOT exit the loop and tear down the producer. awaitNotPaused()
+        // suspends the loop without polling while the session is paused.
         when (preparedFormat.encoding) {
             is SampleEncoding.PcmInt -> {
                 // Read raw bytes directly
                 val readBuf = ByteArray(record.bufferSizeInFrames.coerceAtLeast(1024) * preparedFormat.bytesPerFrame)
-                while (coroutineContext.isActive && record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                while (coroutineContext.isActive && record.state == AudioRecord.STATE_INITIALIZED) {
+                    awaitNotPaused()
                     val n = record.read(readBuf, 0, readBuf.size)
                     if (n > 0) channel.send(readBuf.copyOf(n))
                 }
@@ -80,7 +102,8 @@ class AndroidAudioRecordingSession(
                 val framesPerChunk = (record.bufferSizeInFrames.coerceAtLeast(1024) / 2).coerceAtLeast(256)
                 val floatBuf = FloatArray(framesPerChunk * chanCount)
 
-                while (coroutineContext.isActive && record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                while (coroutineContext.isActive && record.state == AudioRecord.STATE_INITIALIZED) {
+                    awaitNotPaused()
                     val framesRead = record.read(floatBuf, 0, floatBuf.size, AudioRecord.READ_BLOCKING)
                     if (framesRead > 0) {
                         val byteChunk = floatArrayToLeBytes(floatBuf, framesRead)
@@ -101,6 +124,22 @@ class AndroidAudioRecordingSession(
             ar.release()
         }
         audioRecord = null
+    }
+
+    override suspend fun pauseRecording() {
+        // Native pause: AudioRecord.stop() halts capture but keeps the
+        // AudioRecord allocated + initialized, so we can call startRecording()
+        // again on resume without re-acquiring the mic.
+        audioRecord?.takeIf { it.state == AudioRecord.STATE_INITIALIZED }?.runCatching { stop() }
+    }
+
+    override suspend fun resumeRecording() {
+        val ar = audioRecord
+        if (ar != null && ar.state == AudioRecord.STATE_INITIALIZED) {
+            ar.startRecording()
+        } else {
+            super.resumeRecording()
+        }
     }
 }
 

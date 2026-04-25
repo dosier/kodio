@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -120,6 +121,96 @@ class RecorderPlayerTest {
 
         assertFalse(recorder.isRecording)
         assertEquals(AudioSessionState.Idle, recorder.sessionState)
+    }
+
+    @Test
+    fun `Recorder start after stop without reset throws to prevent silent data loss`() = runTest {
+        // Reproduces GitHub issue #24 — calling start() on a stopped recorder must
+        // not silently drop the previous recording. Users must call reset() first
+        // (or use AudioRecording.concat() to stitch multiple segments).
+        val session = FakeRecordingSession()
+        val recorder = Recorder(session, AudioQuality.Standard)
+
+        recorder.start()
+        recorder.stop()
+
+        val ex = assertFailsWith<IllegalStateException> { recorder.start() }
+        assertTrue(ex.message!!.contains("reset()"))
+        assertTrue(ex.message!!.contains("AudioRecording.concat"))
+    }
+
+    @Test
+    fun `Recorder start works again after explicit reset`() = runTest {
+        val session = FakeRecordingSession()
+        val recorder = Recorder(session, AudioQuality.Standard)
+
+        recorder.start()
+        recorder.stop()
+        recorder.reset()
+        recorder.start()
+
+        assertTrue(recorder.isRecording)
+    }
+
+    @Test
+    fun `Recorder pause transitions to Paused state and resume returns to Recording`() = runTest {
+        val session = FakeRecordingSession()
+        val recorder = Recorder(session, AudioQuality.Standard)
+
+        recorder.start()
+        assertTrue(recorder.isRecording)
+        assertFalse(recorder.isPaused)
+
+        recorder.pause()
+        assertTrue(session.pauseCalled)
+        assertFalse(recorder.isRecording)
+        assertTrue(recorder.isPaused)
+
+        recorder.resume()
+        assertTrue(session.resumeCalled)
+        assertTrue(recorder.isRecording)
+        assertFalse(recorder.isPaused)
+    }
+
+    @Test
+    fun `Recorder pause is a no-op when not recording`() = runTest {
+        val session = FakeRecordingSession()
+        val recorder = Recorder(session, AudioQuality.Standard)
+
+        recorder.pause()
+        assertFalse(session.pauseCalled)
+        assertFalse(recorder.isPaused)
+    }
+
+    @Test
+    fun `Recorder resume is a no-op when not paused`() = runTest {
+        val session = FakeRecordingSession()
+        val recorder = Recorder(session, AudioQuality.Standard)
+
+        recorder.start()
+        recorder.resume() // already recording, should do nothing
+        assertFalse(session.resumeCalled)
+        assertTrue(recorder.isRecording)
+    }
+
+    @Test
+    fun `Recorder stop after pause finalises the recording`() = runTest {
+        // Regression test: stop() while paused used to be a silent no-op,
+        // forcing the user to resume() before stop() worked. See the chat
+        // around 2026-04-25 — fixed in BaseAudioRecordingSession.stop().
+        val session = FakeRecordingSession()
+        val recorder = Recorder(session, AudioQuality.Standard)
+
+        recorder.start()
+        recorder.pause()
+        assertTrue(recorder.isPaused)
+        assertFalse(recorder.isRecording)
+
+        recorder.stop()
+
+        assertFalse(recorder.isRecording)
+        assertFalse(recorder.isPaused)
+        assertEquals(AudioSessionState.Complete, recorder.sessionState)
     }
 
     @Test
@@ -335,16 +426,28 @@ class RecorderPlayerTest {
     ) : AudioRecordingSession {
         private val _state = MutableStateFlow<AudioRecordingSession.State>(AudioRecordingSession.State.Idle)
         override val state: StateFlow<AudioRecordingSession.State> = _state
-        
+
         private val _audioFlow = MutableStateFlow<AudioFlow?>(null)
         override val audioFlow: StateFlow<AudioFlow?> = _audioFlow
 
         var resetCalled = false
+        var pauseCalled = false
+        var resumeCalled = false
         private val format = AudioQuality.Standard.format
 
         override suspend fun start() {
             _state.value = AudioRecordingSession.State.Recording
             _audioFlow.value = AudioFlow(format, flowOf(testData))
+        }
+
+        override suspend fun pause() {
+            pauseCalled = true
+            _state.value = AudioRecordingSession.State.Paused
+        }
+
+        override suspend fun resume() {
+            resumeCalled = true
+            _state.value = AudioRecordingSession.State.Recording
         }
 
         override fun stop() {

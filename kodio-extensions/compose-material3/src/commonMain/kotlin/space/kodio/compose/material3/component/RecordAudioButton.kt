@@ -115,6 +115,11 @@ private fun ActionButton(
                 Icon(icons.discardIcon, contentDescription = "Discord")
             }
         }
+        is AudioRecordingSession.State.Paused -> {
+            IconButton(onClick = { scope.launch { onStart() } }) {
+                Icon(icons.micIcon, contentDescription = "Resume")
+            }
+        }
         is AudioRecordingSession.State.Stopped -> Unit
     }
 }

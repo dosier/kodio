@@ -69,6 +69,7 @@ class RecorderState internal constructor(
     private var _recorder: Recorder? = null
     private var _recording = mutableStateOf<AudioRecording?>(null)
     private var _isRecording = mutableStateOf(false)
+    private var _isPaused = mutableStateOf(false)
     private var _isProcessing = mutableStateOf(false)
     private var _error = mutableStateOf<AudioError?>(null)
     private var _liveAmplitudes = mutableStateOf<List<Float>>(emptyList())
@@ -77,6 +78,9 @@ class RecorderState internal constructor(
     
     // Job for amplitude collection - tracked for proper cancellation
     private var amplitudeCollectionJob: Job? = null
+
+    // Job for permission state collection - tracked for proper cancellation
+    private var permissionCollectionJob: Job? = null
     
     // Mutex for thread-safe state transitions
     private val stateMutex = Mutex()
@@ -92,10 +96,18 @@ class RecorderState internal constructor(
     val isProcessing: Boolean by _isProcessing
 
     /**
-     * Whether the recorder is busy (recording or processing).
+     * Whether the recorder is paused (recording can be resumed via [resume]).
+     *
+     * Backed by a Compose-observable [mutableStateOf] so the UI recomposes when
+     * pause / resume flips it.
+     */
+    val isPaused: Boolean by _isPaused
+
+    /**
+     * Whether the recorder is busy (recording, paused, or processing).
      */
     val isBusy: Boolean
-        get() = _isRecording.value || _isProcessing.value
+        get() = _isRecording.value || _isProcessing.value || _isPaused.value
 
     /**
      * The completed recording, if available.
@@ -213,22 +225,23 @@ class RecorderState internal constructor(
      * @return The recorded audio, or null if no recording was made
      */
     suspend fun stopAsync(): AudioRecording? {
-        logger.debug { "stopAsync() called, isRecording=${_isRecording.value}" }
+        logger.debug { "stopAsync() called, isRecording=${_isRecording.value}, isPaused=${_isPaused.value}" }
         stateMutex.withLock {
-            if (!_isRecording.value) {
-                logger.debug { "Not recording, returning existing recording" }
+            if (!_isRecording.value && !_isPaused.value) {
+                logger.debug { "Not recording or paused, returning existing recording" }
                 return _recording.value
             }
-            
+
             // Cancel amplitude collection first
             amplitudeCollectionJob?.cancel()
             amplitudeCollectionJob = null
-            
+
             val recorder = _recorder ?: return null
-            
+
             logger.debug { "Calling recorder.stop()" }
             recorder.stop()
             _isRecording.value = false
+            _isPaused.value = false
             _isProcessing.value = true
             logger.debug { "Recording stopped, processing..." }
         }
@@ -289,6 +302,43 @@ class RecorderState internal constructor(
     }
 
     /**
+     * Pauses recording. The captured audio so far is preserved; call [resume]
+     * to continue appending to the same recording, or [stop] to finalize it.
+     */
+    fun pause() {
+        scope.launch { pauseAsync() }
+    }
+
+    /** Suspend variant of [pause]. */
+    suspend fun pauseAsync() {
+        stateMutex.withLock {
+            val recorder = _recorder ?: return
+            if (!_isRecording.value) return
+            recorder.pause()
+            _isRecording.value = false
+            _isPaused.value = true
+        }
+    }
+
+    /**
+     * Resumes a [paused][pause] recording.
+     */
+    fun resume() {
+        scope.launch { resumeAsync() }
+    }
+
+    /** Suspend variant of [resume]. */
+    suspend fun resumeAsync() {
+        stateMutex.withLock {
+            val recorder = _recorder ?: return
+            if (!_isPaused.value) return
+            recorder.resume()
+            _isRecording.value = true
+            _isPaused.value = false
+        }
+    }
+
+    /**
      * Resets the state, discarding any recording.
      */
     fun reset() {
@@ -307,6 +357,7 @@ class RecorderState internal constructor(
             _recorder?.reset()
             _recording.value = null
             _isRecording.value = false
+            _isPaused.value = false
             _isProcessing.value = false
             _liveAmplitudes.value = emptyList()
             _error.value = null
@@ -328,7 +379,6 @@ class RecorderState internal constructor(
     suspend fun requestPermissionAsync() {
         try {
             Kodio.microphonePermission.request()
-            _permissionState.value = Kodio.microphonePermission.refresh()
         } catch (e: Exception) {
             _error.value = AudioError.from(e)
         }
@@ -345,6 +395,8 @@ class RecorderState internal constructor(
      * Cleans up resources. Called automatically when the composable leaves composition.
      */
     internal fun release() {
+        permissionCollectionJob?.cancel()
+        permissionCollectionJob = null
         amplitudeCollectionJob?.cancel()
         amplitudeCollectionJob = null
         _recorder?.release()
@@ -357,6 +409,14 @@ class RecorderState internal constructor(
             _isInitialized.value = true
         } catch (e: Exception) {
             _error.value = AudioError.from(e)
+        }
+        // Always observe future state changes, even if the initial refresh failed
+        // (e.g. on Android before Kodio.initialize(activity) has been called).
+        permissionCollectionJob?.cancel()
+        permissionCollectionJob = scope.launch {
+            Kodio.microphonePermission.state.collect { newState ->
+                _permissionState.value = newState
+            }
         }
     }
 

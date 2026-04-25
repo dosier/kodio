@@ -12,7 +12,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import space.kodio.core.*
 import kotlin.test.*
-import kotlin.test.Ignore
 
 /**
  * Test tags for RecorderState UI tests.
@@ -27,11 +26,10 @@ object RecorderStateTestTags {
 /**
  * UI tests for [RecorderState] to verify toggle behavior and state transitions.
  * These tests use Compose Multiplatform's runComposeUiTest.
- * 
- * TODO: Fix SLF4J initialization issues on CI.
- * See: https://github.com/dosier/kodio/issues/15
+ *
+ * The previous SLF4J `ExceptionInInitializerError` (GitHub issue #15) is now
+ * fixed by adding the `slf4j-simple` test runtime in `build.gradle.kts`.
  */
-@Ignore // Skipped on CI - SLF4J initialization issues. See #15
 @OptIn(ExperimentalTestApi::class)
 class RecorderStateTest {
 

@@ -58,6 +58,7 @@ val AudioSessionState.canStart: Boolean
 fun AudioRecordingSession.State.toSessionState(): AudioSessionState = when (this) {
     is AudioRecordingSession.State.Idle -> AudioSessionState.Idle
     is AudioRecordingSession.State.Recording -> AudioSessionState.Active
+    is AudioRecordingSession.State.Paused -> AudioSessionState.Paused
     is AudioRecordingSession.State.Stopped -> AudioSessionState.Complete
     is AudioRecordingSession.State.Error -> AudioSessionState.Failed(AudioError.from(error))
 }

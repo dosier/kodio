@@ -61,10 +61,14 @@ class Recorder internal constructor(
 
     /**
      * Whether the recorder is paused.
-     * Note: The underlying session may not support pausing.
+     *
+     * `true` when the underlying session is in the
+     * [AudioRecordingSession.State.Paused] state (i.e. capture is paused but the
+     * previously-captured chunks are still buffered and a [resume] will append
+     * to them).
      */
     val isPaused: Boolean
-        get() = false // Recording sessions don't have a paused state currently
+        get() = session.state.value is AudioRecordingSession.State.Paused
 
     /**
      * The audio format of this recorder.
@@ -126,15 +130,51 @@ class Recorder internal constructor(
 
     /**
      * Starts recording audio.
-     * 
+     *
+     * If you want to temporarily stop recording but keep the captured audio,
+     * use [pause]/[resume] instead — calling [start] again after [stop] would
+     * discard the previous recording, so Kodio refuses to do this silently.
+     * Either:
+     *
+     * - call [reset] first to explicitly throw away the previous recording, or
+     * - stitch multiple completed recordings together with
+     *   [AudioRecording.concat].
+     *
      * @throws AudioError.PermissionDenied if microphone access is denied
+     * @throws IllegalStateException if invoked while the recorder is in the
+     *   [AudioRecordingSession.State.Stopped] state without an intervening [reset].
      */
     suspend fun start() {
         if (isRecording) return
-        // Clear cache when starting new recording
+        check(session.state.value !is AudioRecordingSession.State.Stopped) {
+            "Recorder has already produced a recording. Call reset() to discard it " +
+                "before recording again, use pause()/resume() to temporarily halt " +
+                "capture without losing data, or stitch segments via AudioRecording.concat(...)."
+        }
         cachedRecording = null
         cachedForState = null
         session.start()
+    }
+
+    /**
+     * Pauses recording without losing the audio captured so far.
+     *
+     * No-op when the recorder is not currently recording. After [pause], call
+     * [resume] to continue appending to the same recording, or [stop] to
+     * finalize whatever has been captured up to now.
+     */
+    suspend fun pause() {
+        if (session.state.value !is AudioRecordingSession.State.Recording) return
+        session.pause()
+    }
+
+    /**
+     * Resumes a [paused][pause] recording. No-op when the recorder is not
+     * currently in the paused state.
+     */
+    suspend fun resume() {
+        if (session.state.value !is AudioRecordingSession.State.Paused) return
+        session.resume()
     }
 
     /**

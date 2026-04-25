@@ -8,6 +8,7 @@ private const val IDLE_FLAG = 1.toByte()
 private const val RECORDING_FLAG = 2.toByte()
 private const val STOPPED_FLAG = 3.toByte()
 private const val ERROR_FLAG = 4.toByte()
+private const val PAUSED_FLAG = 5.toByte()
 
 fun AudioRecordingSession.State.encodeToByteArray(): ByteArray {
     val buffer = Buffer()
@@ -29,6 +30,9 @@ fun Buffer.writeAudioRecordingState(state: AudioRecordingSession.State) {
         is AudioRecordingSession.State.Recording -> {
             writeByte(RECORDING_FLAG)
         }
+        is AudioRecordingSession.State.Paused -> {
+            writeByte(PAUSED_FLAG)
+        }
         AudioRecordingSession.State.Stopped -> {
             writeByte(STOPPED_FLAG)
         }
@@ -43,6 +47,7 @@ fun Buffer.readAudioRecordingState(): AudioRecordingSession.State {
     return when (val flag = readByte()) {
         IDLE_FLAG -> AudioRecordingSession.State.Idle
         RECORDING_FLAG -> AudioRecordingSession.State.Recording
+        PAUSED_FLAG -> AudioRecordingSession.State.Paused
         STOPPED_FLAG -> AudioRecordingSession.State.Stopped
         ERROR_FLAG -> {
             val errorMessage = readUtf8()

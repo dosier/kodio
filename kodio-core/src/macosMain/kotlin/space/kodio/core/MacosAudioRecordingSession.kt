@@ -85,4 +85,22 @@ class MacosAudioRecordingSession(
     override fun cleanup() {
         audioQueue.dispose(inImmediate = true)
     }
+
+    override suspend fun pauseRecording() {
+        // Native pause: AudioQueuePause halts capture but keeps the queue + buffers
+        // allocated, so resume only needs an AudioQueueStart call.
+        runCatching { audioQueue.pause() }.onFailure {
+            logger.warn(it) { "AudioQueuePause failed; falling back to dispose+reprepare" }
+            super.pauseRecording()
+        }
+    }
+
+    override suspend fun resumeRecording() {
+        // Just AudioQueueStart on the same queue. If the queue was disposed
+        // (e.g. fallback path above), re-prepare from scratch.
+        runCatching { audioQueue.start() }.onFailure {
+            logger.warn(it) { "AudioQueueStart on resume failed; re-preparing queue" }
+            super.resumeRecording()
+        }
+    }
 }

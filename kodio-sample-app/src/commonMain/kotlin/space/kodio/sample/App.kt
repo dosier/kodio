@@ -161,9 +161,11 @@ private fun ApiKeyInputScreen(
 @Composable
 private fun RecordingDemo() {
     var recordings by remember { mutableStateOf(listOf<AudioRecording>()) }
+    var selectedRecordings by remember { mutableStateOf<Set<AudioRecording>>(emptySet()) }
     var selectedQuality by remember { mutableStateOf(AudioQuality.Default) }
     var inputDevices by remember { mutableStateOf<List<AudioDevice.Input>>(emptyList()) }
     var selectedInputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
+    var stitchError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         inputDevices = Kodio.listInputDevices()
@@ -184,13 +186,15 @@ private fun RecordingDemo() {
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        val recorderActive = recorderState.isRecording || recorderState.isPaused
+
         item {
             DeviceSelector(
                 label = "Input Device",
                 devices = inputDevices,
                 selected = selectedInputDevice,
                 onSelect = { selectedInputDevice = it },
-                enabled = !recorderState.isRecording,
+                enabled = !recorderActive,
             )
         }
 
@@ -198,7 +202,7 @@ private fun RecordingDemo() {
             QualitySelector(
                 selected = selectedQuality,
                 onSelect = { selectedQuality = it },
-                enabled = !recorderState.isRecording,
+                enabled = !recorderActive,
             )
         }
 
@@ -206,22 +210,68 @@ private fun RecordingDemo() {
             RecordingSection(recorderState, scope)
         }
         
-        item { 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) 
-        }
-        
         item {
-            Text(
-                "Recordings (${recordings.size})",
-                style = MaterialTheme.typography.titleMedium
-            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
         }
-        
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Recordings (${recordings.size})",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                TextButton(
+                    enabled = selectedRecordings.size >= 2,
+                    onClick = {
+                        val source = recordings.filter { it in selectedRecordings }
+                        if (source.size < 2) return@TextButton
+                        scope.launch {
+                            stitchError = null
+                            try {
+                                val stitched = AudioRecording.concat(source)
+                                recordings = recordings + stitched
+                                selectedRecordings = emptySet()
+                            } catch (e: Exception) {
+                                stitchError = e.message ?: e::class.simpleName
+                            }
+                        }
+                    },
+                ) {
+                    Text("Stitch selected (${selectedRecordings.size})")
+                }
+            }
+        }
+
+        stitchError?.let { msg ->
+            item {
+                Text(
+                    "Stitch failed: $msg",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+
         items(recordings) { recording ->
             RecordingItem(
                 recording = recording,
+                isSelected = recording in selectedRecordings,
+                onSelectedChange = { isSelected ->
+                    selectedRecordings = if (isSelected) {
+                        selectedRecordings + recording
+                    } else {
+                        selectedRecordings - recording
+                    }
+                },
                 onSave = { scope.launch { saveWavFile(recording.asAudioFlow()) } },
-                onDelete = { recordings = recordings - recording }
+                onDelete = {
+                    recordings = recordings - recording
+                    selectedRecordings = selectedRecordings - recording
+                }
             )
         }
     }
@@ -230,7 +280,7 @@ private fun RecordingDemo() {
 @Composable
 private fun RecordingSection(
     recorderState: RecorderState,
-    scope: kotlinx.coroutines.CoroutineScope
+    @Suppress("UNUSED_PARAMETER") scope: kotlinx.coroutines.CoroutineScope
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -245,26 +295,24 @@ private fun RecordingSection(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Status text
             Text(
                 text = when {
                     recorderState.needsPermission -> "Microphone permission required"
+                    recorderState.isPaused -> "Paused — tap Resume to continue"
                     recorderState.isRecording -> "Recording..."
                     recorderState.error != null -> "Error: ${recorderState.error?.message}"
                     else -> "Ready to record"
                 },
                 style = MaterialTheme.typography.bodyLarge
             )
-            
-            // Permission button if needed
+
             if (recorderState.needsPermission) {
                 Button(onClick = { recorderState.requestPermission() }) {
                     Text("Grant Permission")
                 }
             }
-            
-            // Waveform visualization (using new mirrored style for recording)
-            if (recorderState.isRecording) {
+
+            if (recorderState.isRecording || recorderState.isPaused) {
                 AudioWaveform(
                     amplitudes = recorderState.liveAmplitudes,
                     style = WaveformStyle.Mirrored(),
@@ -274,19 +322,50 @@ private fun RecordingSection(
                         .height(80.dp)
                 )
             }
-            
-            // Record button
-            Button(
-                onClick = { recorderState.toggle() },
-                enabled = !recorderState.needsPermission,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (recorderState.isRecording) 
-                        MaterialTheme.colorScheme.error 
-                    else 
-                        MaterialTheme.colorScheme.primary
-                )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(if (recorderState.isRecording) "Stop Recording" else "Start Recording")
+                when {
+                    recorderState.isPaused -> Button(
+                        onClick = { recorderState.resume() },
+                        enabled = !recorderState.needsPermission,
+                    ) {
+                        Icon(SampleIcons.Mic, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Resume")
+                    }
+                    recorderState.isRecording -> Button(
+                        onClick = { recorderState.pause() },
+                        enabled = !recorderState.needsPermission,
+                    ) {
+                        Icon(SampleIcons.Pause, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Pause")
+                    }
+                    else -> Button(
+                        onClick = { recorderState.start() },
+                        enabled = !recorderState.needsPermission,
+                    ) {
+                        Icon(SampleIcons.Mic, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Record")
+                    }
+                }
+
+                if (recorderState.isRecording || recorderState.isPaused) {
+                    OutlinedButton(
+                        onClick = { recorderState.stop() },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                    ) {
+                        Icon(SampleIcons.Stop, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Stop")
+                    }
+                }
             }
         }
     }
@@ -397,24 +476,31 @@ private fun QualitySelector(
 @Composable
 private fun RecordingItem(
     recording: AudioRecording,
+    isSelected: Boolean,
+    onSelectedChange: (Boolean) -> Unit,
     onSave: () -> Unit,
     onDelete: () -> Unit
 ) {
     val playerState = rememberPlayerState(recording)
-    
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = onSelectedChange,
+                )
+
                 IconButton(onClick = { playerState.toggle() }) {
                     Icon(
                         imageVector = if (playerState.isPlaying) SampleIcons.Pause else SampleIcons.PlayArrow,
                         contentDescription = if (playerState.isPlaying) "Pause" else "Play"
                     )
                 }
-                
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "Duration: ${recording.calculatedDuration}",
@@ -431,7 +517,7 @@ private fun RecordingItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                
+
                 TextButton(onClick = onSave) { Text("Save") }
                 IconButton(onClick = onDelete) { Icon(SampleIcons.Delete, contentDescription = "Delete") }
             }

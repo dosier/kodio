@@ -77,7 +77,7 @@ class WebAudioRecordingSession(
                     var min = Float.MAX_VALUE
                     var max = Float.MIN_VALUE
                     for (i in 0 until pcmData.length) {
-                        val v = pcmData[i].toDouble().toFloat()
+                        val v = pcmData[i].toString().toFloat()
                         if (v < min) min = v
                         if (v > max) max = v
                     }
@@ -105,5 +105,23 @@ class WebAudioRecordingSession(
         mediaStream = null
         mediaStreamSource = null
         audioWorkletNode = null
+    }
+
+    override suspend fun pauseRecording() {
+        // Native pause: disconnect the source from the worklet so PCM frames
+        // stop arriving, but keep the AudioContext, MediaStream and worklet
+        // alive so resume can simply reconnect.
+        mediaStreamSource?.disconnect()
+    }
+
+    override suspend fun resumeRecording() {
+        val context = audioContext
+        val source = mediaStreamSource
+        val node = audioWorkletNode
+        if (context != null && source != null && node != null) {
+            source.connect(node)
+        } else {
+            super.resumeRecording()
+        }
     }
 }

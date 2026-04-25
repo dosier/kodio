@@ -3,6 +3,7 @@
 
 import kotlinx.cinterop.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import space.kodio.core.AudioDevice
@@ -154,6 +155,24 @@ fun macos_recording_session_stop(ptr: COpaquePointer) {
     session.stop()
 }
 
+/**
+ * Pause an active recording. Capture halts but the AudioQueue + buffers stay
+ * allocated so [macos_recording_session_resume] is cheap and the previously
+ * captured chunks remain in the session's hot flow.
+ */
+@CName("macos_recording_session_pause")
+fun macos_recording_session_pause(ptr: COpaquePointer) {
+    val session = ptr.asStableRef<AudioRecordingSession>().get()
+    runBlocking { session.pause() }
+}
+
+/** Resume a previously paused recording. */
+@CName("macos_recording_session_resume")
+fun macos_recording_session_resume(ptr: COpaquePointer) {
+    val session = ptr.asStableRef<AudioRecordingSession>().get()
+    runBlocking { session.resume() }
+}
+
 @CName("macos_recording_session_reset")
 fun macos_recording_session_reset(ptr: COpaquePointer) {
     val session = ptr.asStableRef<AudioRecordingSession>().get()
@@ -166,8 +185,6 @@ fun macos_recording_session_release(ptr: COpaquePointer) =
     ptr.asStableRef<AudioRecordingSession>().dispose()
 
 // --- Playback -----------------------------------------------------------------
-
-private val playbackJobs = mutableMapOf<COpaquePointer, Job>()
 
 @CName("macos_create_playback_session_with_device")
 fun macos_create_playback_session_with_device(
@@ -227,34 +244,38 @@ fun macos_playback_session_load(
 }
 
 /**
- * Start playback with state callbacks.
- *
- * on_state(ctx, bytes, len) – called whenever the session State changes.
+ * Start playback. State transitions are managed by the JVM caller;
+ * use [macos_playback_session_await_completion] to block until a terminal state.
  */
 @CName("macos_playback_session_play")
-fun macos_playback_session_play(
-    sessionPtr: COpaquePointer,
-    ctx: COpaquePointer?,
-    on_state: CPointer<CFunction<(COpaquePointer?, CPointer<ByteVar>?, Int) -> Unit>>?
-) {
+fun macos_playback_session_play(sessionPtr: COpaquePointer) {
     val session = sessionPtr.asStableRef<AudioPlaybackSession>().get()
-    
-    val job = GlobalScope.launch(Dispatchers.Default) {
-        val stateJob = launch {
-            session.state.collect { st ->
-                val b = st.encodeToByteArray()
-                memScoped {
-                    val p = allocArray<ByteVar>(b.size)
-                    b.usePinned { src -> platform.posix.memcpy(p, src.addressOf(0), b.size.convert()) }
-                    on_state?.invoke(ctx, p, b.size)
-                }
-            }
+    runBlocking { session.play() }
+}
+
+private const val COMPLETION_FINISHED = 0
+private const val COMPLETION_ERROR = 1
+private const val COMPLETION_IDLE = 2
+
+/**
+ * Blocks until the session reaches a terminal state (Finished, Error, or Idle).
+ * Returns 0 for Finished, 1 for Error, 2 for Idle (stopped externally).
+ */
+@CName("macos_playback_session_await_completion")
+fun macos_playback_session_await_completion(sessionPtr: COpaquePointer): Int {
+    val session = sessionPtr.asStableRef<AudioPlaybackSession>().get()
+    val terminal = runBlocking {
+        session.state.first {
+            it is AudioPlaybackSession.State.Finished ||
+                it is AudioPlaybackSession.State.Error ||
+                it is AudioPlaybackSession.State.Idle
         }
-        
-        session.play()
-        stateJob.join()
     }
-    playbackJobs[sessionPtr] = job
+    return when (terminal) {
+        is AudioPlaybackSession.State.Finished -> COMPLETION_FINISHED
+        is AudioPlaybackSession.State.Error -> COMPLETION_ERROR
+        else -> COMPLETION_IDLE
+    }
 }
 
 @CName("macos_playback_session_pause")
@@ -271,8 +292,6 @@ fun macos_playback_session_resume(ptr: COpaquePointer) {
 
 @CName("macos_playback_session_stop")
 fun macos_playback_session_stop(ptr: COpaquePointer) {
-    val job = playbackJobs.remove(ptr)
-    runBlocking { job?.cancelAndJoin() }
     val session = ptr.asStableRef<AudioPlaybackSession>().get()
     session.stop()
 }

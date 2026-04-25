@@ -98,4 +98,23 @@ abstract class AVAudioRecordingSession(
         audioEngine.reset()
         log.info { "cleanup() complete" }
     }
+
+    override suspend fun pauseRecording() {
+        // Native pause: AVAudioEngine.pause() halts capture but keeps the
+        // engine prepared and the tap installed, so resume is cheap.
+        if (audioEngine.isRunning()) {
+            log.info { "pauseRecording(): pausing AVAudioEngine" }
+            audioEngine.pause()
+        }
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    override suspend fun resumeRecording() {
+        log.info { "resumeRecording(): restarting AVAudioEngine" }
+        runErrorCatching { audioEngine.startAndReturnError(it) }
+            .onFailure {
+                log.error(it) { "Engine failed to restart after pause: ${it.message}" }
+                throw AVAudioEngineException.FailedToStart(it.message ?: "Unknown error")
+            }
+    }
 }

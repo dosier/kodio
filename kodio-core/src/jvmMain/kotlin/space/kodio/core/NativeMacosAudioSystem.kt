@@ -2,16 +2,13 @@
 
 package space.kodio.core
 
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import kotlinx.io.write
 import space.kodio.core.io.collectAsSource
 import space.kodio.core.io.convertAudio
-import space.kodio.core.io.decodeAsAudioPlaybackState
 import space.kodio.core.io.decodeAsAudioRecordingState
 import space.kodio.core.io.decodeAsAudioFormat
 import space.kodio.core.io.encodeToByteArray
@@ -314,6 +311,32 @@ private class NativeMacosAudioRecordingSession(
         logger.debug { "stop() completed, state=${_state.value}" }
     }
 
+    override suspend fun pause() {
+        logger.debug { "pause() called, started=$started, state=${_state.value}" }
+        if (!started || _state.value !is AudioRecordingSession.State.Recording) {
+            logger.debug { "Not in Recording state, ignoring pause()" }
+            return
+        }
+        // Native side: BaseAudioRecordingSession.pause() halts the AudioQueue
+        // via AudioQueuePause and flips its own state to Paused; the K/N->JVM
+        // state callback also propagates that transition, but we update locally
+        // up-front to avoid a UI race window.
+        NativeMacosLib.macos_recording_session_pause.invokeExact(nativeMemSeq)
+        _state.value = AudioRecordingSession.State.Paused
+        logger.debug { "pause() completed, state=${_state.value}" }
+    }
+
+    override suspend fun resume() {
+        logger.debug { "resume() called, started=$started, state=${_state.value}" }
+        if (!started || _state.value !is AudioRecordingSession.State.Paused) {
+            logger.debug { "Not in Paused state, ignoring resume()" }
+            return
+        }
+        NativeMacosLib.macos_recording_session_resume.invokeExact(nativeMemSeq)
+        _state.value = AudioRecordingSession.State.Recording
+        logger.debug { "resume() completed, state=${_state.value}" }
+    }
+
     override fun reset() {
         logger.debug { "reset() called, started=$started, state=${_state.value}" }
         if (started) {
@@ -343,6 +366,10 @@ private class NativeMacosAudioRecordingSession(
 
 /**
  * Native macOS playback session implementation using Panama FFI.
+ *
+ * State transitions are managed on the JVM side. A background coroutine on [Dispatchers.IO]
+ * awaits the native terminal state via a blocking downcall, avoiding Panama upcalls from
+ * Kotlin/Native GCD threads (which cause SIGSEGV due to JVM stack-walking failures).
  */
 private class NativeMacosAudioPlaybackSession(
     private val nativeMemSeq: MemorySegment,
@@ -354,58 +381,28 @@ private class NativeMacosAudioPlaybackSession(
     private val _audioFlowHolder = MutableStateFlow<AudioFlow?>(null)
     override val audioFlow: StateFlow<AudioFlow?> = _audioFlowHolder.asStateFlow()
 
-    companion object {
-        private val IDX = AtomicLong(1L)
-        private val SESSIONS = ConcurrentHashMap<Long, NativeMacosAudioPlaybackSession>()
-
-        @JvmStatic
-        fun onState(ctx: MemorySegment?, data: MemorySegment?, len: Int) {
-            if (ctx == null || ctx.address() == 0L) return
-            val ctx8 = ctx.reinterpret(java.lang.Long.BYTES.toLong())
-            val id = ctx8.get(ValueLayout.JAVA_LONG, 0)
-
-            val sess = SESSIONS[id] ?: return
-            if (data == null || len <= 0) return
-
-            val dseg = data.reinterpret(len.toLong())
-            val bytes = ByteArray(len)
-            dseg.asByteBuffer().get(bytes)
-
-            sess._state.value = bytes.decodeAsAudioPlaybackState()
-        }
-    }
-
     private var runtimeArena: Arena? = null
-    private var ctxSeg: MemorySegment? = null
-    private var stateCbStub: MemorySegment? = null
-    private var id: Long = 0L
     private var loaded = false
+    private var completionJob: Job? = null
+    private val completionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override suspend fun load(audioFlow: AudioFlow) {
         _audioFlowHolder.value = audioFlow
 
         closePreviousArena()
         val arena = Arena.ofShared().also { runtimeArena = it }
-        id = IDX.getAndIncrement()
-        SESSIONS[id] = this
 
-        // Normalize to a device-friendly format on the JVM side before
-        // sending across FFI, so the native side never has to convert
-        // exotic bit depths (24-bit, 32-bit int, unsigned, big-endian).
         val nativeFlow = normalizeForPlayback(audioFlow)
 
-        // Encode format
         val formatData = nativeFlow.format.encodeToByteArray()
         val formatDataSeq = arena.allocate(formatData.size.toLong())
         formatDataSeq.asSlice(0, formatData.size.toLong()).copyFrom(MemorySegment.ofArray(formatData))
 
-        // Collect all audio data into a single byte array
         val audioSource = runBlocking { nativeFlow.collectAsSource() }
         val audioData = audioSource.source.readByteArray()
         val audioDataSeq = arena.allocate(audioData.size.toLong())
         audioDataSeq.asSlice(0, audioData.size.toLong()).copyFrom(MemorySegment.ofArray(audioData))
 
-        // Call native load
         NativeMacosLib.macos_playback_session_load.invokeExact(
             nativeMemSeq,
             formatData.size,
@@ -441,51 +438,42 @@ private class NativeMacosAudioPlaybackSession(
     override suspend fun play() {
         if (!loaded) return
 
-        ctxSeg = runtimeArena!!.allocate(ValueLayout.JAVA_LONG).also { it.set(ValueLayout.JAVA_LONG, 0, id) }
+        _state.value = AudioPlaybackSession.State.Playing
 
-        val stateMh = MethodHandles.lookup().findStatic(
-            javaClass, "onState",
-            MethodType.methodType(
-                Void.TYPE,
-                MemorySegment::class.java,
-                MemorySegment::class.java,
-                Int::class.javaPrimitiveType
-            )
-        )
+        NativeMacosLib.macos_playback_session_play.invokeExact(nativeMemSeq)
 
-        stateCbStub = NativeMacosLib.linker.upcallStub(stateMh, NativeMacosLib.CB_DESC, runtimeArena!!)
-
-        // Kick off native play; state callbacks will update the state
-        NativeMacosLib.macos_playback_session_play.invokeExact(
-            nativeMemSeq, ctxSeg!!, stateCbStub!!
-        )
+        completionJob = completionScope.launch {
+            val result = NativeMacosLib.macos_playback_session_await_completion
+                .invokeExact(nativeMemSeq) as Int
+            ensureActive()
+            _state.value = when (result) {
+                0 -> AudioPlaybackSession.State.Finished
+                1 -> AudioPlaybackSession.State.Error(RuntimeException("Native playback error"))
+                else -> AudioPlaybackSession.State.Idle
+            }
+        }
     }
 
     override fun pause() {
         NativeMacosLib.macos_playback_session_pause.invokeExact(nativeMemSeq)
+        _state.value = AudioPlaybackSession.State.Paused
     }
 
     override fun resume() {
         NativeMacosLib.macos_playback_session_resume.invokeExact(nativeMemSeq)
+        _state.value = AudioPlaybackSession.State.Playing
     }
 
     override fun stop() {
-        // Remove from SESSIONS first so any late native callbacks become no-ops.
-        // The arena must NOT be closed here — the native stateJob (running in GlobalScope)
-        // may still invoke the upcall stub after stop() returns. Closing the arena would
-        // free that stub and cause a SIGSEGV.
-        val old = id
-        id = 0L
-        if (old != 0L) SESSIONS.remove(old)
+        completionJob?.cancel()
         NativeMacosLib.macos_playback_session_stop.invokeExact(nativeMemSeq)
+        _state.value = AudioPlaybackSession.State.Idle
         loaded = false
     }
 
     private fun closePreviousArena() {
         runtimeArena?.close()
         runtimeArena = null
-        ctxSeg = null
-        stateCbStub = null
     }
 }
 
@@ -514,6 +502,8 @@ private object NativeMacosLib {
     val macos_create_recording_session_with_device_and_format: MethodHandle
     val macos_recording_session_start: MethodHandle
     val macos_recording_session_stop: MethodHandle
+    val macos_recording_session_pause: MethodHandle
+    val macos_recording_session_resume: MethodHandle
     val macos_recording_session_reset: MethodHandle
     val macos_recording_session_release: MethodHandle
 
@@ -522,6 +512,7 @@ private object NativeMacosLib {
     val macos_create_playback_session_with_default_device: MethodHandle
     val macos_playback_session_load: MethodHandle
     val macos_playback_session_play: MethodHandle
+    val macos_playback_session_await_completion: MethodHandle
     val macos_playback_session_pause: MethodHandle
     val macos_playback_session_resume: MethodHandle
     val macos_playback_session_stop: MethodHandle
@@ -577,6 +568,14 @@ private object NativeMacosLib {
             name = "macos_recording_session_stop",
             ValueLayout.ADDRESS
         )
+        macos_recording_session_pause = lookupMethodVoid(
+            name = "macos_recording_session_pause",
+            ValueLayout.ADDRESS
+        )
+        macos_recording_session_resume = lookupMethodVoid(
+            name = "macos_recording_session_resume",
+            ValueLayout.ADDRESS
+        )
         macos_recording_session_reset = lookupMethodVoid(
             name = "macos_recording_session_reset",
             ValueLayout.ADDRESS
@@ -608,9 +607,13 @@ private object NativeMacosLib {
 
         macos_playback_session_play = lookupMethodVoid(
             name = "macos_playback_session_play",
-            ValueLayout.ADDRESS, // session
-            ValueLayout.ADDRESS, // ctx
-            ValueLayout.ADDRESS  // on_state
+            ValueLayout.ADDRESS // session
+        )
+
+        macos_playback_session_await_completion = lookupMethod(
+            name = "macos_playback_session_await_completion",
+            res = ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS // session
         )
 
         macos_playback_session_pause = lookupMethodVoid(
