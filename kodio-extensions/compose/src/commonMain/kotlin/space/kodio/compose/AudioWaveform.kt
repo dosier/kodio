@@ -104,7 +104,7 @@ fun AudioWaveform(
     LaunchedEffect(amplitudes.size) {
         // Resize the list to match input
         while (animatedAmplitudes.size > amplitudes.size) {
-            animatedAmplitudes.removeLast()
+            animatedAmplitudes.removeAt(animatedAmplitudes.lastIndex)
         }
         while (animatedAmplitudes.size < amplitudes.size) {
             animatedAmplitudes.add(Animatable(0f))
