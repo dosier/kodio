@@ -3,12 +3,12 @@
 <buildprofiles xsi:noNamespaceSchemaLocation="https://resources.jetbrains.com/writerside/1.0/build-profiles.xsd"
                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
     <variables>
-        <var name="kodio-version" value="0.0.6"/>
+        <var name="kodio-version" value="0.1.5"/>
     </variables>
     
     <build-profile instance="k">
         <variables>
-            <var name="version" value="0.0.6"/>
+            <var name="version" value="0.1.5"/>
         </variables>
         <footer>
             <copyright>© 2026 Kodio Contributors</copyright>

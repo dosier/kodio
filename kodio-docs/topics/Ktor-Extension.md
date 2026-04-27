@@ -88,7 +88,7 @@ for status.
 
 ```kotlin
 dependencies {
-    implementation("space.kodio.extensions:ktor:0.1.4")
+    implementation("space.kodio.extensions:ktor:%kodio-version%")
 }
 ```
 
