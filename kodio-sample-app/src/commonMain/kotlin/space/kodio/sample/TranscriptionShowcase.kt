@@ -40,9 +40,6 @@ import space.kodio.transcription.cloud.OpenAIWhisperEngine
 // Simple logging for debugging
 private fun log(message: String) = println("[TranscriptionShowcase] $message")
 
-// OpenAI Whisper pricing: $0.006 per minute
-private const val WHISPER_COST_PER_MINUTE = 0.006
-
 /**
  * Demonstrates transcription using Kodio's transcription extension.
  * Supports both live recording and file upload.
@@ -488,6 +485,7 @@ private fun LiveRecordingTab(apiKey: String) {
 @Composable
 private fun FileUploadTab(apiKey: String) {
     var isTranscribing by remember { mutableStateOf(false) }
+    var uploadProgress by remember { mutableStateOf<Float?>(null) }
     var transcriptionResult by remember { mutableStateOf<FileTranscriptionResult?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedFileName by remember { mutableStateOf<String?>(null) }
@@ -526,15 +524,38 @@ private fun FileUploadTab(apiKey: String) {
                                 isTranscribing = true
                                 error = null
                                 transcriptionResult = null
+                                uploadProgress = null
 
-                                val result = transcribeFile(file, apiKey)
+                                val result = transcribeFile(
+                                    file = file,
+                                    apiKey = apiKey,
+                                    onUploadProgress = { sent, total ->
+                                        uploadProgress =
+                                            if (total > 0) (sent.toFloat() / total).coerceIn(0f, 1f) else null
+                                    },
+                                )
+                                uploadProgress = null
                                 transcriptionResult = result
                                 log("Transcription complete: ${result.text.take(100)}...")
                             }
                         } catch (e: Exception) {
-                            log("Transcription error: ${e.message}")
-                            error = e.message ?: "Unknown error"
+                            val cls = e::class.simpleName ?: "Exception"
+                            val cause = e.cause?.let { " (caused by ${it::class.simpleName}: ${it.message})" } ?: ""
+                            log("Transcription error [$cls]: ${e.message}$cause")
+                            e.printStackTrace()
+                            error = when (e) {
+                                is WhisperFileUploadException.FileTooLarge ->
+                                    "File too large: this file is ${e.fileSize / (1024 * 1024)} MB, " +
+                                        "but OpenAI Whisper's per-request limit is 25 MB."
+                                is WhisperFileUploadException.UnsupportedExtension ->
+                                    "Unsupported file format: '${e.extension}'. " +
+                                        "Whisper accepts mp3, mp4, m4a, wav, webm, flac, ogg."
+                                is WhisperFileUploadException.Api ->
+                                    "OpenAI API error ${e.statusCode}: ${e.responseBody.take(200)}"
+                                else -> "[$cls] ${e.message ?: "Unknown error"}"
+                            }
                         } finally {
+                            uploadProgress = null
                             isPicking = false
                             isTranscribing = false
                         }
@@ -577,17 +598,37 @@ private fun FileUploadTab(apiKey: String) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    Column {
-                        Text(
-                            "Transcribing: ${selectedFileName ?: "file"}",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            "This may take a moment...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    val progress = uploadProgress
+                    if (progress != null && progress < 1f) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "Uploading: ${(progress * 100).toInt()}%",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                selectedFileName ?: "file",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Column {
+                            Text(
+                                "Transcribing: ${selectedFileName ?: "file"}",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                "This may take a moment...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -719,7 +760,8 @@ data class FileTranscriptionResult(
  */
 expect suspend fun transcribeFile(
     file: PlatformFile,
-    apiKey: String
+    apiKey: String,
+    onUploadProgress: ((bytesSent: Long, totalBytes: Long) -> Unit)? = null,
 ): FileTranscriptionResult
 
 /**

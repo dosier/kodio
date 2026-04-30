@@ -107,11 +107,13 @@ kotlin {
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
+            implementation(libs.ktor.client.cio)
         }
         commonMain.dependencies {
             api(projects.kodio.kodioCore)
             api(projects.kodio.kodioExtensions.composeMaterial3)
             api(projects.kodio.kodioExtensions.transcription)
+            implementation(libs.ktor.client.core)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
@@ -131,6 +133,14 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
             implementation(libs.slf4j.simple)
+            implementation(libs.ktor.client.cio)
+        }
+        val iosMain by getting
+        iosMain.dependencies {
+            implementation("io.ktor:ktor-client-darwin:${libs.versions.ktor3.get()}")
+        }
+        webMain.dependencies {
+            implementation("io.ktor:ktor-client-js:${libs.versions.ktor3.get()}")
         }
     }
 }

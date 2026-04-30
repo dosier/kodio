@@ -2,9 +2,6 @@ package space.kodio.sample
 
 import io.github.vinceglb.filekit.PlatformFile
 
-// OpenAI Whisper pricing: $0.006 per minute
-private const val WHISPER_COST_PER_MINUTE = 0.006
-
 /**
  * Transcribes a file using OpenAI Whisper API on WebAssembly.
  *
@@ -16,7 +13,8 @@ private const val WHISPER_COST_PER_MINUTE = 0.006
  */
 actual suspend fun transcribeFile(
     file: PlatformFile,
-    apiKey: String
+    apiKey: String,
+    onUploadProgress: ((bytesSent: Long, totalBytes: Long) -> Unit)?,
 ): FileTranscriptionResult {
     throw UnsupportedOperationException(
         "Browser file transcription requires a backend proxy because OpenAI's API does not " +
