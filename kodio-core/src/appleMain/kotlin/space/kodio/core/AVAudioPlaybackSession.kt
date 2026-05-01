@@ -36,6 +36,15 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
         log.info { "preparePlayback() called with format: $format" }
 
         val playbackFormat = toNativePlaybackFormat(format)
+        if (engine.isRunning() && ::standardAVFormat.isInitialized &&
+            standardAVFormat.sampleRate == playbackFormat.sampleRate.toDouble() &&
+            standardAVFormat.channelCount == playbackFormat.channels.count.toUInt()
+        ) {
+            log.info {
+                "preparePlayback(): engine already running with matching format, skipping setup"
+            }
+            return playbackFormat
+        }
         if (playbackFormat != format) {
             log.info { "Format not natively supported, will convert to: $playbackFormat" }
         }

@@ -3,7 +3,7 @@ package space.kodio.core
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AVFAudio.AVAudioSession
-import platform.AVFAudio.AVAudioSessionCategoryOptions
+import platform.AVFAudio.AVAudioSessionCategoryOptionMixWithOthers
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVAudioSessionCategoryRecord
 import platform.AVFAudio.AVAudioSessionPortDescription
@@ -18,11 +18,11 @@ private val log = namedLogger("AVAudioSessionExt")
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal fun AVAudioSession.configureCategoryRecord() {
-    log.info { "configureCategoryRecord(): options=MAX_VALUE" }
+    log.info { "configureCategoryRecord(): options=mixWithOthers" }
     runErrorCatching { errorPtr ->
         setCategory(
             category = AVAudioSessionCategoryRecord,
-            withOptions = AVAudioSessionCategoryOptions.MAX_VALUE,
+            withOptions = AVAudioSessionCategoryOptionMixWithOthers,
             error = errorPtr
         )
     }.onFailure {
@@ -34,11 +34,11 @@ internal fun AVAudioSession.configureCategoryRecord() {
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal fun AVAudioSession.configureCategoryPlayback() {
-    log.info { "configureCategoryPlayback(): options=MAX_VALUE" }
+    log.info { "configureCategoryPlayback(): options=mixWithOthers" }
     runErrorCatching { errorPtr ->
         setCategory(
             category = AVAudioSessionCategoryPlayback,
-            withOptions = AVAudioSessionCategoryOptions.MAX_VALUE,
+            withOptions = AVAudioSessionCategoryOptionMixWithOthers,
             error = errorPtr
         )
     }.onFailure {
