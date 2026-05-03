@@ -41,6 +41,7 @@ import space.kodio.core.security.AudioPermissionManager
 import space.kodio.sample.icons.SampleIcons
 import space.kodio.transcription.*
 import space.kodio.transcription.cloud.OpenAIWhisperEngine
+import kotlin.time.Duration
 
 // Simple logging for debugging
 private fun log(message: String) = println("[TranscriptionShowcase] $message")
@@ -108,7 +109,8 @@ private fun LiveRecordingTab(apiKey: String) {
     var finalSegments by remember { mutableStateOf(listOf<TranscriptionSegment>()) }
     var error by remember { mutableStateOf<String?>(null) }
     var permissionState by remember { mutableStateOf(AudioPermissionManager.State.Unknown) }
-    
+    var transcriptCache by remember { mutableStateOf<TranscriptCache?>(null) }
+
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     
@@ -252,14 +254,30 @@ private fun LiveRecordingTab(apiKey: String) {
                         "Transcript",
                         style = MaterialTheme.typography.titleMedium
                     )
-                    if (finalSegments.isNotEmpty()) {
-                        TextButton(
-                            onClick = { 
-                                finalSegments = emptyList()
-                                partialText = ""
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (transcriptCache != null && finalSegments.isNotEmpty()) {
+                            TextButton(onClick = { transcriptCache?.revealInFileExplorer() }) {
+                                Icon(
+                                    SampleIcons.Folder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text("Open folder")
                             }
-                        ) {
-                            Text("Clear")
+                        }
+                        if (finalSegments.isNotEmpty()) {
+                            TextButton(
+                                onClick = {
+                                    finalSegments = emptyList()
+                                    partialText = ""
+                                }
+                            ) {
+                                Text("Clear")
+                            }
                         }
                     }
                 }
@@ -341,8 +359,9 @@ private fun LiveRecordingTab(apiKey: String) {
                 } else {
                     // Start transcription
                     error = null
+                    transcriptCache = createTranscriptCache(sessionLabel = null)
                     isTranscribing = true
-                    
+
                     transcriptionJob = scope.launch {
                         try {
                             log("=== Starting Transcription ===")
@@ -430,6 +449,11 @@ private fun LiveRecordingTab(apiKey: String) {
                                             is TranscriptionResult.Final -> {
                                                 log("Final: ${result.text}")
                                                 if (result.text.isNotBlank()) {
+                                                    transcriptCache?.appendFinal(
+                                                        start = result.startTime ?: Duration.ZERO,
+                                                        end = result.endTime ?: Duration.ZERO,
+                                                        text = result.text,
+                                                    )
                                                     finalSegments = finalSegments + TranscriptionSegment(
                                                         text = result.text,
                                                         confidence = result.confidence
@@ -516,6 +540,7 @@ private fun FileUploadTab(apiKey: String) {
     var totalCost by remember { mutableDoubleStateOf(0.0) }
 
     var isPicking by remember { mutableStateOf(false) }
+    var transcriptCache by remember { mutableStateOf<TranscriptCache?>(null) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
@@ -569,6 +594,7 @@ private fun FileUploadTab(apiKey: String) {
                                 finalSegments = emptyList()
                                 totalDurationSeconds = 0.0
                                 totalCost = 0.0
+                                transcriptCache = createTranscriptCache(sessionLabel = file.name)
                                 isTranscribing = true
 
                                 try {
@@ -581,6 +607,11 @@ private fun FileUploadTab(apiKey: String) {
 
                                             is TranscriptionResult.Final -> {
                                                 if (result.text.isNotBlank()) {
+                                                    transcriptCache?.appendFinal(
+                                                        start = result.startTime ?: Duration.ZERO,
+                                                        end = result.endTime ?: Duration.ZERO,
+                                                        text = result.text,
+                                                    )
                                                     finalSegments =
                                                         finalSegments + TranscriptionSegment(
                                                             text = result.text,
@@ -761,6 +792,17 @@ private fun FileUploadTab(apiKey: String) {
                                         style = MaterialTheme.typography.labelMedium
                                     )
                                 }
+                            }
+                        }
+                        if (transcriptCache != null && finalSegments.isNotEmpty()) {
+                            TextButton(onClick = { transcriptCache?.revealInFileExplorer() }) {
+                                Icon(
+                                    SampleIcons.Folder,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text("Open folder")
                             }
                         }
                         if (finalSegments.isNotEmpty()) {

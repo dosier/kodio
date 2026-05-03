@@ -86,8 +86,8 @@ class OpenAIWhisperEngine(
         const val OPENAI_TRANSCRIPTIONS_URL: String = "https://api.openai.com/v1/audio/transcriptions"
     }
 
-    private val MAX_TRANSCRIBE_ATTEMPTS = 3
-    private val RETRY_BACKOFF_MS = listOf(500L, 1_000L, 2_000L)
+    private val MAX_TRANSCRIBE_ATTEMPTS = 5
+    private val RETRY_BACKOFF_MS = listOf(500L, 1_000L, 2_000L, 4_000L, 8_000L)
     
     override val provider = TranscriptionProvider.OPENAI_WHISPER
 
@@ -316,7 +316,10 @@ class OpenAIWhisperEngine(
                 return Pair(err, usage)
             }
 
-            val delayMs = RETRY_BACKOFF_MS.getOrElse(attempt) { RETRY_BACKOFF_MS.last() }
+            val baseDelay = RETRY_BACKOFF_MS.getOrElse(attempt) { RETRY_BACKOFF_MS.last() }
+            val jitterRange = baseDelay / 4
+            val jitter = kotlin.random.Random.nextLong(-jitterRange, jitterRange + 1)
+            val delayMs = (baseDelay + jitter).coerceAtLeast(1L)
             logger.warn {
                 "Chunk $chunkIndex attempt ${attempt + 1}/$MAX_TRANSCRIBE_ATTEMPTS failed " +
                     "(recoverable: ${err.message.take(120)}). Retrying in ${delayMs}ms..."

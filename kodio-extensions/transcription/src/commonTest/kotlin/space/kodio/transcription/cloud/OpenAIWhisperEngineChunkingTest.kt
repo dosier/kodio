@@ -250,7 +250,7 @@ class OpenAIWhisperEngineChunkingTest {
             .toList()
         engine.release()
 
-        assertEquals(3, calls, "Should attempt the configured maximum (3) before giving up")
+        assertEquals(5, calls, "Should attempt the configured maximum (5) before giving up")
         val errors = results.filterIsInstance<TranscriptionResult.Error>()
         assertEquals(1, errors.size, "Only the final exhausted Error should be emitted")
         assertTrue(errors[0].isRecoverable, "5xx remains classified as recoverable even after retry exhaustion")
@@ -284,5 +284,48 @@ class OpenAIWhisperEngineChunkingTest {
         engine.release()
 
         assertEquals(1, calls, "4xx must not be retried; saw $calls POSTs")
+    }
+
+    @Test
+    fun `recoverable 5xx is retried then surfaces as success on fourth attempt`() = runTest {
+        val chunkSeconds = 2
+        val bytesPerSecond = pcm16Format.sampleRate * pcm16Format.bytesPerFrame
+        val data = ByteArray(bytesPerSecond * chunkSeconds) { 0 }
+
+        var calls = 0
+        val client = HttpClient(MockEngine { _ ->
+            calls++
+            if (calls < 4) {
+                respond(
+                    content = ByteReadChannel("""{"error":"upstream"}"""),
+                    status = HttpStatusCode.BadGateway,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                respond(
+                    content = ByteReadChannel(
+                        """{"text":"recovered on 4th","duration":2.0,"language":"en"}"""
+                    ),
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            }
+        })
+        val engine = OpenAIWhisperEngine(
+            apiKey = "test-key",
+            chunkDurationSeconds = chunkSeconds,
+            httpClient = client
+        )
+
+        val results = AudioFlow(pcm16Format, flow { emit(data) })
+            .transcribe(engine)
+            .toList()
+        engine.release()
+
+        assertEquals(4, calls, "Should succeed on the 4th POST (after 3 failed 5xx responses)")
+        val finals = results.filterIsInstance<TranscriptionResult.Final>()
+        assertEquals(1, finals.size, "Retry should surface as a single Final; got $results")
+        assertEquals("recovered on 4th", finals[0].text)
+        assertTrue(results.filterIsInstance<TranscriptionResult.Error>().isEmpty())
     }
 }
