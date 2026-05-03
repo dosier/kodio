@@ -6,6 +6,7 @@ import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.io.*
 import kotlinx.serialization.Serializable
@@ -75,7 +76,7 @@ private const val WHISPER_COST_PER_MINUTE = 0.006
 class OpenAIWhisperEngine(
     private val apiKey: String,
     private val model: String = "whisper-1",
-    private val httpClient: HttpClient = HttpClient(),
+    private val httpClient: HttpClient = createDefaultWhisperHttpClient(),
     private val chunkDurationSeconds: Int = 10,
     private val endpointUrl: String = OPENAI_TRANSCRIPTIONS_URL,
     private val additionalHeaders: Headers = Headers.Empty,
@@ -84,6 +85,9 @@ class OpenAIWhisperEngine(
     companion object {
         const val OPENAI_TRANSCRIPTIONS_URL: String = "https://api.openai.com/v1/audio/transcriptions"
     }
+
+    private val MAX_TRANSCRIBE_ATTEMPTS = 3
+    private val RETRY_BACKOFF_MS = listOf(500L, 1_000L, 2_000L)
     
     override val provider = TranscriptionProvider.OPENAI_WHISPER
 
@@ -291,12 +295,57 @@ class OpenAIWhisperEngine(
         config: TranscriptionConfig,
         chunkIndex: Int
     ): Pair<TranscriptionResult?, ChunkUsage?> {
+        var lastResult: Pair<TranscriptionResult?, ChunkUsage?> = Pair(null, null)
+        repeat(MAX_TRANSCRIBE_ATTEMPTS) { attempt ->
+            val (result, usage) = transcribeChunkOnce(wavData, config, chunkIndex, attempt)
+
+            if (result == null && usage == null) {
+                return Pair(null, null)
+            }
+            if (result == null) {
+                return Pair(null, usage)
+            }
+
+            if (result is TranscriptionResult.Final) {
+                return Pair(result, usage)
+            }
+
+            val err = result as TranscriptionResult.Error
+            val isLastAttempt = attempt == MAX_TRANSCRIBE_ATTEMPTS - 1
+            if (!err.isRecoverable || isLastAttempt) {
+                return Pair(err, usage)
+            }
+
+            val delayMs = RETRY_BACKOFF_MS.getOrElse(attempt) { RETRY_BACKOFF_MS.last() }
+            logger.warn {
+                "Chunk $chunkIndex attempt ${attempt + 1}/$MAX_TRANSCRIBE_ATTEMPTS failed " +
+                    "(recoverable: ${err.message.take(120)}). Retrying in ${delayMs}ms..."
+            }
+            delay(delayMs)
+            lastResult = Pair(err, usage)
+        }
+        return lastResult
+    }
+
+    private suspend fun transcribeChunkOnce(
+        wavData: ByteArray,
+        config: TranscriptionConfig,
+        chunkIndex: Int,
+        attempt: Int
+    ): Pair<TranscriptionResult?, ChunkUsage?> {
         return try {
-            logger.info { ">>> Sending chunk $chunkIndex (${wavData.size} bytes) to OpenAI Whisper API..." }
+            logger.info {
+                if (attempt > 0) {
+                    ">>> Sending chunk $chunkIndex (${wavData.size} bytes) to OpenAI Whisper API... " +
+                        "(attempt ${attempt + 1}/$MAX_TRANSCRIBE_ATTEMPTS)"
+                } else {
+                    ">>> Sending chunk $chunkIndex (${wavData.size} bytes) to OpenAI Whisper API..."
+                }
+            }
             logger.debug { "Config: language=${config.language}, model=$model" }
-            
+
             val timeMark = TimeSource.Monotonic.markNow()
-            
+
             val response = httpClient.post(endpointUrl) {
                 headers {
                     if (apiKey.isNotBlank()) {
@@ -314,7 +363,7 @@ class OpenAIWhisperEngine(
                         })
                         append("model", model)
                         append("response_format", "verbose_json")
-                        
+
                         // Language (convert en-US to en)
                         val lang = config.language.split("-").first().lowercase()
                         if (lang != "auto") {
@@ -323,10 +372,10 @@ class OpenAIWhisperEngine(
                     }
                 ))
             }
-            
+
             val elapsed = timeMark.elapsedNow()
             logger.info { "<<< API response received in ${elapsed.inWholeMilliseconds}ms, status: ${response.status}" }
-            
+
             if (response.status.isSuccess()) {
                 val responseText = response.bodyAsText()
                 logger.info { "Response body (first 500 chars): ${responseText.take(500)}" }

@@ -179,4 +179,110 @@ class OpenAIWhisperEngineChunkingTest {
         assertEquals("401", errors[0].code, "Error.code should carry the HTTP status")
         assertTrue(results.filterIsInstance<TranscriptionResult.Final>().isEmpty(), "No Final results expected on auth failure")
     }
+
+    @Test
+    fun `recoverable 5xx is retried then surfaces as success on second attempt`() = runTest {
+        val chunkSeconds = 2
+        val bytesPerSecond = pcm16Format.sampleRate * pcm16Format.bytesPerFrame
+        val data = ByteArray(bytesPerSecond * chunkSeconds) { 0 }
+
+        var calls = 0
+        val client = HttpClient(MockEngine { _ ->
+            calls++
+            if (calls == 1) {
+                respond(
+                    content = ByteReadChannel("""{"error":"upstream"}"""),
+                    status = HttpStatusCode.BadGateway,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            } else {
+                respond(
+                    content = ByteReadChannel(
+                        """{"text":"recovered","duration":2.0,"language":"en"}"""
+                    ),
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json")
+                )
+            }
+        })
+        val engine = OpenAIWhisperEngine(
+            apiKey = "test-key",
+            chunkDurationSeconds = chunkSeconds,
+            httpClient = client
+        )
+
+        val results = AudioFlow(pcm16Format, flow { emit(data) })
+            .transcribe(engine)
+            .toList()
+        engine.release()
+
+        assertEquals(2, calls, "Should retry exactly once (1 initial + 1 retry)")
+        val finals = results.filterIsInstance<TranscriptionResult.Final>()
+        assertEquals(1, finals.size, "Retry should surface as a single Final, not Error+Final")
+        assertEquals("recovered", finals[0].text)
+        val errors = results.filterIsInstance<TranscriptionResult.Error>()
+        assertTrue(errors.isEmpty(), "No Error should be emitted when retry succeeds; got $errors")
+    }
+
+    @Test
+    fun `recoverable 5xx eventually surfaces as Error after exhausting retries`() = runTest {
+        val chunkSeconds = 2
+        val bytesPerSecond = pcm16Format.sampleRate * pcm16Format.bytesPerFrame
+        val data = ByteArray(bytesPerSecond * chunkSeconds) { 0 }
+
+        var calls = 0
+        val client = HttpClient(MockEngine { _ ->
+            calls++
+            respond(
+                content = ByteReadChannel("""{"error":"upstream still bad"}"""),
+                status = HttpStatusCode.BadGateway,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        })
+        val engine = OpenAIWhisperEngine(
+            apiKey = "test-key",
+            chunkDurationSeconds = chunkSeconds,
+            httpClient = client
+        )
+
+        val results = AudioFlow(pcm16Format, flow { emit(data) })
+            .transcribe(engine)
+            .toList()
+        engine.release()
+
+        assertEquals(3, calls, "Should attempt the configured maximum (3) before giving up")
+        val errors = results.filterIsInstance<TranscriptionResult.Error>()
+        assertEquals(1, errors.size, "Only the final exhausted Error should be emitted")
+        assertTrue(errors[0].isRecoverable, "5xx remains classified as recoverable even after retry exhaustion")
+        assertEquals("502", errors[0].code)
+    }
+
+    @Test
+    fun `unrecoverable 4xx is not retried`() = runTest {
+        val chunkSeconds = 2
+        val bytesPerSecond = pcm16Format.sampleRate * pcm16Format.bytesPerFrame
+        val data = ByteArray(bytesPerSecond * chunkSeconds) { 0 }
+
+        var calls = 0
+        val client = HttpClient(MockEngine { _ ->
+            calls++
+            respond(
+                content = ByteReadChannel("""{"error":"bad request"}"""),
+                status = HttpStatusCode.BadRequest,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        })
+        val engine = OpenAIWhisperEngine(
+            apiKey = "test-key",
+            chunkDurationSeconds = chunkSeconds,
+            httpClient = client
+        )
+
+        AudioFlow(pcm16Format, flow { emit(data) })
+            .transcribe(engine)
+            .toList()
+        engine.release()
+
+        assertEquals(1, calls, "4xx must not be retried; saw $calls POSTs")
+    }
 }
