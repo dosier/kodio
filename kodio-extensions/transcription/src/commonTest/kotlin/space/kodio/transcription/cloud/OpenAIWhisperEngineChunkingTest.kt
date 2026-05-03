@@ -140,4 +140,43 @@ class OpenAIWhisperEngineChunkingTest {
         assertFalse(engine.isAvailable)
         engine.release()
     }
+
+    @Test
+    fun `unrecoverable error stops the stream and prevents further uploads`() = runTest {
+        val chunkSeconds = 2
+        val bytesPerSecond = pcm16Format.sampleRate * pcm16Format.bytesPerFrame
+        val chunkBytes = bytesPerSecond * chunkSeconds
+        val total = chunkBytes * 4
+
+        val data = ByteArray(total) { (it and 0xFF).toByte() }
+        val flow = flow { emit(data) }
+        val audioFlow = AudioFlow(pcm16Format, flow)
+
+        var calls = 0
+        val client = HttpClient(MockEngine { _ ->
+            calls++
+            respond(
+                content = ByteReadChannel(
+                    """{"error":{"message":"Incorrect API key","type":"invalid_request_error","code":"invalid_api_key"},"status":401}"""
+                ),
+                status = HttpStatusCode.Unauthorized,
+                headers = headersOf(HttpHeaders.ContentType, "application/json")
+            )
+        })
+        val engine = OpenAIWhisperEngine(
+            apiKey = "test-key",
+            chunkDurationSeconds = chunkSeconds,
+            httpClient = client
+        )
+
+        val results = audioFlow.transcribe(engine).toList()
+        engine.release()
+
+        assertEquals(1, calls, "Engine must stop after the first unrecoverable error; got $calls POSTs")
+        val errors = results.filterIsInstance<TranscriptionResult.Error>()
+        assertEquals(1, errors.size, "Expected exactly one Error result; got: $results")
+        assertFalse(errors[0].isRecoverable, "Error must be flagged unrecoverable")
+        assertEquals("401", errors[0].code, "Error.code should carry the HTTP status")
+        assertTrue(results.filterIsInstance<TranscriptionResult.Final>().isEmpty(), "No Final results expected on auth failure")
+    }
 }

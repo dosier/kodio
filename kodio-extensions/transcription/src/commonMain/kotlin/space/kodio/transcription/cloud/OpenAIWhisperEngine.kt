@@ -131,10 +131,12 @@ class OpenAIWhisperEngine(
         var audioChunkCount = 0
         var totalSecondsTranscribed = 0.0
         var totalCost = 0.0
+        var abortUnrecoverable = false
         
         logger.info { "Starting to collect audio flow..." }
         
         audioFlow.collect { audioChunk ->
+            if (abortUnrecoverable) return@collect
             audioChunkCount++
             totalBytesReceived += audioChunk.size
             buffer.write(audioChunk)
@@ -147,7 +149,7 @@ class OpenAIWhisperEngine(
             // arbitrarily large ByteArrays (e.g. AudioRecording.asAudioFlow() emits the
             // entire decoded PCM as one chunk for file inputs); a single emission must
             // be fully chunked here, not just the first chunkSize bytes.
-            while (buffer.size >= chunkSize) {
+            while (buffer.size >= chunkSize && !abortUnrecoverable) {
                 logger.info { ">>> Buffer full! Preparing chunk $chunkIndex for transcription..." }
                 val chunkData = buffer.readByteArray(chunkSize.toInt())
                 
@@ -164,9 +166,21 @@ class OpenAIWhisperEngine(
                 logger.info { "Chunk $chunkIndex result: $result" }
                 if (result != null) {
                     emit(result)
+                    if (result is TranscriptionResult.Error && !result.isRecoverable) {
+                        logger.warn {
+                            "Chunk $chunkIndex returned an unrecoverable error (code=${result.code}); " +
+                                "aborting transcription stream."
+                        }
+                        abortUnrecoverable = true
+                        break
+                    }
                 }
                 chunkIndex++
             }
+        }
+        
+        if (abortUnrecoverable) {
+            return@flow
         }
         
         logger.info { "Audio flow collection ended. Total chunks received: $audioChunkCount, Total bytes: $totalBytesReceived" }
@@ -187,6 +201,13 @@ class OpenAIWhisperEngine(
             logger.info { "Final chunk result: $result" }
             if (result != null) {
                 emit(result)
+                if (result is TranscriptionResult.Error && !result.isRecoverable) {
+                    logger.warn {
+                        "Final chunk returned an unrecoverable error (code=${result.code}); " +
+                            "aborting transcription stream."
+                    }
+                    return@flow
+                }
             }
         } else {
             logger.warn { "No remaining audio data to process" }
