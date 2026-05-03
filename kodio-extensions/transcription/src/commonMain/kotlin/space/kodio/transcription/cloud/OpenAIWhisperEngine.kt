@@ -64,8 +64,7 @@ private const val WHISPER_COST_PER_MINUTE = 0.006
  * @param apiKey Your OpenAI API key. Leave empty when proxying through your
  *   own backend (see [endpointUrl]).
  * @param model The Whisper model to use (default: `"whisper-1"`).
- * @param httpClient Optional custom HTTP client. If null, a platform default
- *   client is created on the first HTTP request (not at construction time).
+ * @param httpClient HTTP client for API calls (default: platform [createDefaultWhisperHttpClient]).
  * @param chunkDurationSeconds Duration in seconds for each chunk (for
  *   streaming mode).
  * @param endpointUrl The URL to POST audio chunks to. Defaults to OpenAI's
@@ -77,18 +76,11 @@ private const val WHISPER_COST_PER_MINUTE = 0.006
 class OpenAIWhisperEngine(
     private val apiKey: String,
     private val model: String = "whisper-1",
-    httpClient: HttpClient? = null,
+    private val httpClient: HttpClient = createDefaultWhisperHttpClient(),
     private val chunkDurationSeconds: Int = 10,
     private val endpointUrl: String = OPENAI_TRANSCRIPTIONS_URL,
     private val additionalHeaders: Headers = Headers.Empty,
 ) : TranscriptionEngine {
-
-    private val explicitHttpClient: HttpClient? = httpClient
-    private var lazyDefaultHttpClient: HttpClient? = null
-
-    private fun effectiveHttpClient(): HttpClient =
-        explicitHttpClient ?: (lazyDefaultHttpClient
-            ?: createDefaultWhisperHttpClient().also { lazyDefaultHttpClient = it })
 
     companion object {
         const val OPENAI_TRANSCRIPTIONS_URL: String = "https://api.openai.com/v1/audio/transcriptions"
@@ -354,7 +346,7 @@ class OpenAIWhisperEngine(
 
             val timeMark = TimeSource.Monotonic.markNow()
 
-            val response = effectiveHttpClient().post(endpointUrl) {
+            val response = httpClient.post(endpointUrl) {
                 headers {
                     if (apiKey.isNotBlank()) {
                         append(HttpHeaders.Authorization, "Bearer $apiKey")
@@ -451,9 +443,7 @@ class OpenAIWhisperEngine(
     }
     
     override fun release() {
-        explicitHttpClient?.close()
-        lazyDefaultHttpClient?.close()
-        lazyDefaultHttpClient = null
+        httpClient.close()
     }
 }
 

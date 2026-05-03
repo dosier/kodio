@@ -82,7 +82,14 @@ kotlin {
         jvmMain {
             dependencies {
                 implementation(libs.ktor.client.okhttp)
-                implementation(libs.conscrypt.openjdk.uber)
+            }
+        }
+        val jvmTest by getting {
+            dependencies {
+                // JUnit 4 runner + Assume for the live OpenAI integration test.
+                implementation(libs.kotlin.testJunit)
+                // SLF4J binding so the engine's KotlinLogging output appears in test logs.
+                implementation(libs.slf4j.simple)
             }
         }
         androidMain {
@@ -103,6 +110,11 @@ kotlin {
             }
         }
     }
+}
+
+tasks.named<Test>("jvmTest") {
+    // Live OpenAI integration tests may load multi-minute WAVs; avoid OOM on default 512m test heap.
+    maxHeapSize = "4g"
 }
 
 android {
