@@ -81,12 +81,12 @@ kotlin {
         }
         jvmMain {
             dependencies {
-                implementation(libs.ktor.client.cio)
+                implementation(libs.ktor.client.okhttp)
             }
         }
         androidMain {
             dependencies {
-                implementation(libs.ktor.client.cio)
+                implementation(libs.ktor.client.okhttp)
                 implementation(libs.androidx.core.ktx)
             }
         }

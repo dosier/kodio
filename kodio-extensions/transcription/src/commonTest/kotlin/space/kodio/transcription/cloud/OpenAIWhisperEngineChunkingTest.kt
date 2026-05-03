@@ -86,6 +86,32 @@ class OpenAIWhisperEngineChunkingTest {
     }
 
     @Test
+    fun `single large emission is chunked into multiple uploads`() = runTest {
+        val chunkSeconds = 2
+        val bytesPerSecond = pcm16Format.sampleRate * pcm16Format.bytesPerFrame
+        val chunkBytes = bytesPerSecond * chunkSeconds
+        val total = chunkBytes * 4
+
+        val data = ByteArray(total) { (it and 0xFF).toByte() }
+        val flow = flow { emit(data) }
+        val audioFlow = AudioFlow(pcm16Format, flow)
+
+        var calls = 0
+        val engine = OpenAIWhisperEngine(
+            apiKey = "test-key",
+            chunkDurationSeconds = chunkSeconds,
+            httpClient = mockClient { calls = it }
+        )
+
+        val results = audioFlow.transcribe(engine).toList()
+        engine.release()
+
+        val finals = results.filterIsInstance<TranscriptionResult.Final>()
+        assertEquals(4, finals.size, "Engine must drain a large single emission into N full chunks; got $finals")
+        assertEquals(4, calls, "Should POST exactly 4 times for 4 full chunks (no tail)")
+    }
+
+    @Test
     fun `tail-only audio shorter than one chunk still gets transcribed`() = runTest {
         val chunkSeconds = 2
         val bytesPerSecond = pcm16Format.sampleRate * pcm16Format.bytesPerFrame

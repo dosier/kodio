@@ -143,15 +143,13 @@ class OpenAIWhisperEngine(
                 logger.debug { "Audio chunk #$audioChunkCount: ${audioChunk.size} bytes, buffer: ${buffer.size}/$chunkSize bytes, total received: $totalBytesReceived" }
             }
             
-            // When we have enough data, send a chunk
-            if (buffer.size >= chunkSize) {
+            // Drain as many full chunks as the buffer holds. The source flow may emit
+            // arbitrarily large ByteArrays (e.g. AudioRecording.asAudioFlow() emits the
+            // entire decoded PCM as one chunk for file inputs); a single emission must
+            // be fully chunked here, not just the first chunkSize bytes.
+            while (buffer.size >= chunkSize) {
                 logger.info { ">>> Buffer full! Preparing chunk $chunkIndex for transcription..." }
                 val chunkData = buffer.readByteArray(chunkSize.toInt())
-                buffer = Buffer().apply { 
-                    // Keep remaining data
-                    val remaining = buffer.readByteArray()
-                    write(remaining)
-                }
                 
                 // Create WAV data for this chunk
                 val wavData = createWavData(format, chunkData)
