@@ -22,7 +22,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
+import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.consumeAsFlow
@@ -30,6 +33,8 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import space.kodio.core.AudioFlow
+import space.kodio.core.io.files.AudioFileReadError
+import space.kodio.core.io.files.AudioFileReader
 import space.kodio.core.Kodio
 import space.kodio.core.Recorder
 import space.kodio.core.security.AudioPermissionManager
@@ -39,6 +44,23 @@ import space.kodio.transcription.cloud.OpenAIWhisperEngine
 
 // Simple logging for debugging
 private fun log(message: String) = println("[TranscriptionShowcase] $message")
+
+// Matches OpenAI Whisper list pricing ($0.006 / minute) used by OpenAIWhisperEngine.
+private const val WHISPER_PRICE_PER_MINUTE_USD = 0.006
+
+/**
+ * Decodes a picked WAV/AIFF/AU file and transcribes it via the same chunked
+ * [OpenAIWhisperEngine] used by the live recording tab. Each chunk is uploaded
+ * separately so results stream in as the file is processed.
+ */
+suspend fun transcribeFile(
+    file: PlatformFile,
+    engine: OpenAIWhisperEngine,
+): Flow<TranscriptionResult> {
+    val bytes = file.readBytes()
+    val recording = AudioFileReader.read(bytes, file.name)
+    return recording.asAudioFlow().transcribe(engine)
+}
 
 /**
  * Demonstrates transcription using Kodio's transcription extension.
@@ -478,21 +500,38 @@ private fun LiveRecordingTab(apiKey: String) {
     }
 }
 
+
 /**
  * File upload transcription tab.
- * Uses FileKit for cross-platform file picking.
+ * Uses FileKit for cross-platform file picking (WAV, AIFF, AU — formats kodio-core decodes).
  */
 @Composable
 private fun FileUploadTab(apiKey: String) {
     var isTranscribing by remember { mutableStateOf(false) }
-    var uploadProgress by remember { mutableStateOf<Float?>(null) }
-    var transcriptionResult by remember { mutableStateOf<FileTranscriptionResult?>(null) }
+    var partialText by remember { mutableStateOf("") }
+    var finalSegments by remember { mutableStateOf(listOf<TranscriptionSegment>()) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedFileName by remember { mutableStateOf<String?>(null) }
-    
+    var totalDurationSeconds by remember { mutableDoubleStateOf(0.0) }
+    var totalCost by remember { mutableDoubleStateOf(0.0) }
+
     var isPicking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    
+    val listState = rememberLazyListState()
+
+    val engine = remember(apiKey) { OpenAIWhisperEngine(apiKey = apiKey, chunkDurationSeconds = 10) }
+    DisposableEffect(engine) {
+        onDispose {
+            engine.release()
+        }
+    }
+
+    LaunchedEffect(finalSegments.size) {
+        if (finalSegments.isNotEmpty()) {
+            listState.animateScrollToItem(finalSegments.size - 1)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -500,13 +539,18 @@ private fun FileUploadTab(apiKey: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Header
         Text(
             "File Transcription",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold
         )
-        
+
+        Text(
+            "Powered by OpenAI Whisper + Kodio",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
         Button(
             onClick = {
                 if (!isPicking) {
@@ -514,50 +558,82 @@ private fun FileUploadTab(apiKey: String) {
                     scope.launch {
                         try {
                             val file = pickFile(
-                                listOf("mp3", "wav", "m4a", "mp4", "webm", "ogg", "oga", "flac", "mpeg", "mpga")
+                                listOf("wav", "wave", "aiff", "aif", "au", "snd")
                             )
                             if (file != null) {
-                                val fileName = getFileName(file)
-                                selectedFileName = fileName
-                                log("File selected: $fileName")
+                                selectedFileName = file.name
+                                log("File selected: ${file.name}")
 
-                                isTranscribing = true
                                 error = null
-                                transcriptionResult = null
-                                uploadProgress = null
+                                partialText = ""
+                                finalSegments = emptyList()
+                                totalDurationSeconds = 0.0
+                                totalCost = 0.0
+                                isTranscribing = true
 
-                                val result = transcribeFile(
-                                    file = file,
-                                    apiKey = apiKey,
-                                    onUploadProgress = { sent, total ->
-                                        uploadProgress =
-                                            if (total > 0) (sent.toFloat() / total).coerceIn(0f, 1f) else null
-                                    },
-                                )
-                                uploadProgress = null
-                                transcriptionResult = result
-                                log("Transcription complete: ${result.text.take(100)}...")
+                                try {
+                                    transcribeFile(file, engine).collect { result ->
+                                        log("File transcription result: $result")
+                                        when (result) {
+                                            is TranscriptionResult.Partial -> {
+                                                partialText = result.text
+                                            }
+
+                                            is TranscriptionResult.Final -> {
+                                                if (result.text.isNotBlank()) {
+                                                    finalSegments =
+                                                        finalSegments + TranscriptionSegment(
+                                                            text = result.text,
+                                                            confidence = result.confidence
+                                                        )
+                                                }
+                                                partialText = ""
+                                                val startT = result.startTime
+                                                val endT = result.endTime
+                                                if (startT != null && endT != null) {
+                                                    val delta = (
+                                                        (endT - startT).inWholeMilliseconds / 1000.0
+                                                        ).coerceAtLeast(0.0)
+                                                    totalDurationSeconds += delta
+                                                    totalCost +=
+                                                        (delta / 60.0) * WHISPER_PRICE_PER_MINUTE_USD
+                                                }
+                                            }
+
+                                            is TranscriptionResult.Error -> {
+                                                error = result.message
+                                            }
+                                        }
+                                    }
+                                    log("File transcription flow completed")
+                                } catch (e: kotlinx.coroutines.CancellationException) {
+                                    log("File transcription cancelled")
+                                    throw e
+                                } catch (e: Exception) {
+                                    log("File transcription error: ${e.message}")
+                                    e.printStackTrace()
+                                    error = "Transcription error: ${e.message ?: "Unknown"}"
+                                } finally {
+                                    isTranscribing = false
+                                }
                             }
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
+                        } catch (e: AudioFileReadError.UnsupportedFormat) {
+                            log("Unsupported format: ${e.message}")
+                            error =
+                                "Unsupported file format. WAV, AIFF and AU are supported. Compressed formats " +
+                                    "(MP3, M4A) are tracked in the Kodio repository's GitHub issues — " +
+                                    "see GitHub issues for follow-up."
+                            isTranscribing = false
                         } catch (e: Exception) {
                             val cls = e::class.simpleName ?: "Exception"
-                            val cause = e.cause?.let { " (caused by ${it::class.simpleName}: ${it.message})" } ?: ""
-                            log("Transcription error [$cls]: ${e.message}$cause")
+                            log("Picker / file error [$cls]: ${e.message}")
                             e.printStackTrace()
-                            error = when (e) {
-                                is WhisperFileUploadException.FileTooLarge ->
-                                    "File too large: this file is ${e.fileSize / (1024 * 1024)} MB, " +
-                                        "but OpenAI Whisper's per-request limit is 25 MB."
-                                is WhisperFileUploadException.UnsupportedExtension ->
-                                    "Unsupported file format: '${e.extension}'. " +
-                                        "Whisper accepts mp3, mp4, m4a, wav, webm, flac, ogg."
-                                is WhisperFileUploadException.Api ->
-                                    "OpenAI API error ${e.statusCode}: ${e.responseBody.take(200)}"
-                                else -> "[$cls] ${e.message ?: "Unknown error"}"
-                            }
-                        } finally {
-                            uploadProgress = null
-                            isPicking = false
+                            error = "[$cls] ${e.message ?: "Unknown error"}"
                             isTranscribing = false
+                        } finally {
+                            isPicking = false
                         }
                     }
                 }
@@ -578,15 +654,18 @@ private fun FileUploadTab(apiKey: String) {
                     Text("Select Audio File", style = MaterialTheme.typography.titleMedium)
                 }
                 Text(
-                    "MP3, WAV, M4A, MP4, WEBM, OGG, FLAC",
+                    "WAV, AIFF, AU",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
                 )
             }
         }
-        
-        // Processing indicator
-        if (isTranscribing) {
+
+        AnimatedVisibility(
+            visible = isTranscribing,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
@@ -598,43 +677,158 @@ private fun FileUploadTab(apiKey: String) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    val progress = uploadProgress
-                    if (progress != null && progress < 1f) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            LinearProgressIndicator(
-                                progress = { progress },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                "Uploading: ${(progress * 100).toInt()}%",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Text(
-                                selectedFileName ?: "file",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Column {
+                        Text(
+                            "Transcribing: ${selectedFileName ?: "file"}",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            "Streaming chunks to Whisper…",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Transcript",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val showTotals =
+                            finalSegments.isNotEmpty() ||
+                                isTranscribing ||
+                                totalDurationSeconds > 0.0 ||
+                                totalCost > 0.0
+                        if (showTotals) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        SampleIcons.Schedule,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "${formatDecimal(totalDurationSeconds, 1)}s",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.tertiaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        SampleIcons.Payments,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "$${formatDecimal(totalCost, 4)}",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
                         }
-                    } else {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        Column {
-                            Text(
-                                "Transcribing: ${selectedFileName ?: "file"}",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Text(
-                                "This may take a moment...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        if (finalSegments.isNotEmpty()) {
+                            TextButton(
+                                onClick = {
+                                    finalSegments = emptyList()
+                                    partialText = ""
+                                    totalDurationSeconds = 0.0
+                                    totalCost = 0.0
+                                }
+                            ) {
+                                Text("Clear")
+                            }
+                        }
+                    }
+                }
+
+                SelectionContainer {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(finalSegments) { segment ->
+                            TranscriptionSegmentItem(segment)
+                        }
+
+                        if (partialText.isNotBlank()) {
+                            item {
+                                Text(
+                                    text = partialText,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontStyle = FontStyle.Italic,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+
+                        if (
+                            finalSegments.isEmpty() &&
+                            partialText.isBlank() &&
+                            !isTranscribing
+                        ) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = if (selectedFileName == null) {
+                                            "Pick an audio file to transcribe"
+                                        } else {
+                                            "Awaiting transcription results"
+                                        },
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        
-        // Error display
+
         error?.let { errorMessage ->
             Card(
                 colors = CardDefaults.cardColors(
@@ -648,155 +842,9 @@ private fun FileUploadTab(apiKey: String) {
                 )
             }
         }
-        
-        // Results
-        transcriptionResult?.let { result ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // Results header with cost
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Transcript",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Duration badge
-                            Surface(
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(SampleIcons.Schedule, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Text(
-                                        text = "${formatDecimal(result.durationSeconds, 1)}s",
-                                        style = MaterialTheme.typography.labelMedium
-                                    )
-                                }
-                            }
-                            // Cost badge
-                            Surface(
-                                color = MaterialTheme.colorScheme.tertiaryContainer,
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(SampleIcons.Payments, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Text(
-                                        text = "$${formatDecimal(result.cost, 4)}",
-                                        style = MaterialTheme.typography.labelMedium
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Transcript content
-                    SelectionContainer {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp)
-                        ) {
-                            item {
-                                Text(
-                                    text = result.text,
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Empty state when no result
-        if (transcriptionResult == null && !isTranscribing && error == null) {
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = "Select an audio file to transcribe",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.weight(1f))
-        }
     }
 }
 
-/**
- * Result from file transcription.
- */
-data class FileTranscriptionResult(
-    val text: String,
-    val durationSeconds: Double,
-    val cost: Double,
-    val language: String
-)
-
-/**
- * Transcribes a file using OpenAI Whisper API.
- * Uses PlatformFile from FileKit for cross-platform file reading.
- */
-expect suspend fun transcribeFile(
-    file: PlatformFile,
-    apiKey: String,
-    onUploadProgress: ((bytesSent: Long, totalBytes: Long) -> Unit)? = null,
-): FileTranscriptionResult
-
-/**
- * Simple JSON string extraction (avoids adding serialization dependency).
- */
-internal fun extractJsonString(json: String, key: String): String? {
-    val pattern = "\"$key\"\\s*:\\s*\"([^\"]*)\""
-    val regex = Regex(pattern)
-    return regex.find(json)?.groupValues?.get(1)
-}
-
-/**
- * Simple JSON number extraction.
- */
-internal fun extractJsonNumber(json: String, key: String): Double? {
-    val pattern = "\"$key\"\\s*:\\s*([0-9.]+)"
-    val regex = Regex(pattern)
-    return regex.find(json)?.groupValues?.get(1)?.toDoubleOrNull()
-}
-
-/**
- * Guesses content type from file extension.
- */
-internal fun guessContentType(fileName: String): String {
-    return when (fileName.substringAfterLast('.').lowercase()) {
-        "mp3" -> "audio/mpeg"
-        "wav" -> "audio/wav"
-        "m4a" -> "audio/m4a"
-        "mp4" -> "audio/mp4"
-        "webm" -> "audio/webm"
-        "ogg", "oga" -> "audio/ogg"
-        "flac" -> "audio/flac"
-        else -> "audio/mpeg"
-    }
-}
 
 /**
  * A single transcription segment with confidence indicator.

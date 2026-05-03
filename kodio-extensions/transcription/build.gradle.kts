@@ -76,6 +76,7 @@ kotlin {
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
+                implementation("io.ktor:ktor-client-mock:${libs.versions.ktor3.get()}")
             }
         }
         jvmMain {

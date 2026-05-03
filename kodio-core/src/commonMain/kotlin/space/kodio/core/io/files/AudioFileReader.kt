@@ -1,5 +1,6 @@
 package space.kodio.core.io.files
 
+import kotlinx.io.Buffer
 import kotlinx.io.buffered
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
@@ -55,8 +56,43 @@ class AudioFileReader(
     }
 
     companion object {
-        internal fun detectFormat(path: Path): AudioFileFormat {
-            val ext = path.toString().substringAfterLast('.', "").lowercase()
+        /**
+         * Reads an audio file from an in-memory byte array.
+         *
+         * The file format is detected from [fileName]'s extension (WAV, AIFF, AU/SND).
+         * Useful when the bytes come from a non-Path source (uploaded blob, FileKit
+         * PlatformFile.readBytes(), network response, etc.).
+         *
+         * @throws AudioFileReadError.InvalidFile if the bytes are not a valid audio file.
+         * @throws AudioFileReadError.UnsupportedFormat if the audio encoding is not supported.
+         */
+        fun read(bytes: ByteArray, fileName: String): AudioRecording {
+            val format = detectFormatFromFileName(fileName)
+            val source = Buffer().apply { write(bytes) }
+            val audioSource = try {
+                when (format) {
+                    is AudioFileFormat.Wav -> readWav(source)
+                    is AudioFileFormat.Aiff -> readAiff(source)
+                    is AudioFileFormat.Au -> readAu(source)
+                }
+            } catch (e: AudioFileReadError) {
+                throw e
+            } catch (e: Exception) {
+                throw AudioFileReadError.IO(e)
+            }
+
+            val pcmBytes = audioSource.source.readByteArray()
+            return AudioRecording.fromOwnedChunks(
+                format = audioSource.format,
+                chunks = listOf(pcmBytes)
+            )
+        }
+
+        internal fun detectFormat(path: Path): AudioFileFormat =
+            detectFormatFromFileName(path.toString())
+
+        internal fun detectFormatFromFileName(fileName: String): AudioFileFormat {
+            val ext = fileName.substringAfterLast('.', "").lowercase()
             return when (ext) {
                 "wav", "wave" -> AudioFileFormat.Wav
                 "aiff", "aif" -> AudioFileFormat.Aiff
