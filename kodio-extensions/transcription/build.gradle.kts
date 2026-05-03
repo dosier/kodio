@@ -82,6 +82,7 @@ kotlin {
         jvmMain {
             dependencies {
                 implementation(libs.ktor.client.okhttp)
+                implementation(libs.conscrypt.openjdk.uber)
             }
         }
         androidMain {
