@@ -6,7 +6,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    alias(libs.plugins.androidLibrary)
+    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.kotlinSerialization)
     id("kodio-publish-convention")
 }
@@ -20,8 +20,10 @@ kodioPublishing {
 
 kotlin {
     jvm()
-    androidTarget {
-        publishLibraryVariants("release")
+    androidLibrary {
+        namespace = "space.kodio.transcription"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -115,17 +117,5 @@ kotlin {
 tasks.named<Test>("jvmTest") {
     // Live OpenAI integration tests may load multi-minute WAVs; avoid OOM on default 512m test heap.
     maxHeapSize = "4g"
-}
-
-android {
-    namespace = "space.kodio.transcription"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
-    defaultConfig {
-        minSdk = libs.versions.android.minSdk.get().toInt()
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
 }
 
