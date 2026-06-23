@@ -7,7 +7,6 @@ plugins {
 
 kotlin {
     macosArm64()
-    macosX64()
     mingwX64()
 
     // Configure all native targets to build a shared library

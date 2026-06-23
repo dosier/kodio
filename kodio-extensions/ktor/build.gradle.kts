@@ -28,11 +28,9 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
-    macosX64()
     macosArm64()
 
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
@@ -107,13 +105,9 @@ kotlin {
 // with this combination.
 val nativeTestTaskNames = setOf(
     "linkDebugTestMacosArm64",
-    "linkDebugTestMacosX64",
     "linkDebugTestIosArm64",
-    "linkDebugTestIosX64",
     "linkDebugTestIosSimulatorArm64",
     "macosArm64Test",
-    "macosX64Test",
     "iosSimulatorArm64Test",
-    "iosX64Test",
 )
 tasks.matching { it.name in nativeTestTaskNames }.configureEach { enabled = false }

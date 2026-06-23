@@ -31,11 +31,9 @@ kotlin {
         }
         withHostTest {}
     }
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
     listOf(
-        macosX64(),
         macosArm64()
     ).forEach { macosTarget ->
         macosTarget.binaries.executable {
@@ -113,9 +111,7 @@ val isWindowsHost = org.gradle.internal.os.OperatingSystem.current().isWindows
 tasks.named<Copy>("jvmProcessResources") {
     if (isMacOsHost) {
         dependsOn(
-            nativePermissionsProject.tasks.named("macosX64Binaries"),
             nativePermissionsProject.tasks.named("macosArm64Binaries"),
-            nativeProcessingProject.tasks.named("macosX64Binaries"),
             nativeProcessingProject.tasks.named("macosArm64Binaries"),
         )
     }
@@ -133,17 +129,9 @@ tasks.named<Copy>("jvmProcessResources") {
             include("libaudiopermissions.dylib")
             into("$nativeLibsDir/macos-aarch64")
         }
-        from(permissions("macosX64")) {
-            include("libaudiopermissions.dylib")
-            into("$nativeLibsDir/macos-x86-64")
-        }
         from(processing("macosArm64")) {
             include("libaudioprocessing.dylib")
             into("$nativeLibsDir/macos-aarch64")
-        }
-        from(processing("macosX64")) {
-            include("libaudioprocessing.dylib")
-            into("$nativeLibsDir/macos-x86-64")
         }
     }
     if (isWindowsHost) {
