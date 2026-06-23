@@ -9,7 +9,7 @@ import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
 }
@@ -18,7 +18,10 @@ val jsAppName = project.name + "-js"
 val wasmAppName = project.name + "-wasm"
 
 kotlin {
-    androidTarget {
+    androidLibrary {
+        namespace = "space.kodio.sample"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -102,6 +105,10 @@ kotlin {
         val nonWebMacosMain by getting
         val nonIosMain by getting
         val webMain by getting
+        val androidMain by getting {
+            dependsOn(nonIosMain)
+            dependsOn(nonWebMacosMain)
+        }
         androidMain.dependencies {
             implementation(compose.preview)
             implementation(libs.androidx.activity.compose)
@@ -141,37 +148,6 @@ kotlin {
             implementation("io.ktor:ktor-client-js:${libs.versions.ktor3.get()}")
         }
     }
-}
-
-android {
-    namespace = "space.kodio.sample"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
-
-    defaultConfig {
-        applicationId = "space.kodio.sample"
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0"
-    }
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-        }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-}
-
-dependencies {
-    debugImplementation(compose.uiTooling)
 }
 
 // Read API key from local.properties (gitignored)
