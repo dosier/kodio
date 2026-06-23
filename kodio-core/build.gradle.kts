@@ -7,7 +7,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.kotlinJsPlainObjects)
-    alias(libs.plugins.androidLibrary)
+    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     id("kodio-publish-convention")
 }
 
@@ -21,12 +21,15 @@ kodioPublishing {
 kotlin {
     jvm()
     jvmToolchain(21)
-    androidTarget {
-        publishLibraryVariants("release")
+    androidLibrary {
+        namespace = "space.kodio.core"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
         @OptIn(ExperimentalKotlinGradlePluginApi::class)
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
+        withHostTest {}
     }
     iosX64()
     iosArm64()
@@ -82,7 +85,7 @@ kotlin {
         }
         // Android unit tests run on the host JVM and trigger kotlin-logging,
         // which needs an SLF4J binding on its classpath. See GitHub issue #15.
-        val androidUnitTest by getting {
+        val androidHostTest by getting {
             dependencies {
                 implementation(libs.slf4j.simple)
             }
@@ -93,18 +96,6 @@ kotlin {
                 implementation(libs.kotlin.browser.v202575)
             }
         }
-    }
-}
-
-android {
-    namespace = "space.kodio.core"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
-    defaultConfig {
-        minSdk = libs.versions.android.minSdk.get().toInt()
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
     }
 }
 

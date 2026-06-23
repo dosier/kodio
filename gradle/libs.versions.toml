@@ -1,29 +1,28 @@
 [versions]
-agp = "8.10.1"
+agp = "9.2.1"
 android-compileSdk = "36"
 android-minSdk = "24"
-android-targetSdk = "35"
-androidx-activity = "1.11.0"
-androidx-core = "1.17.0"
+android-targetSdk = "36"
+androidx-activity = "1.13.0"
+androidx-core = "1.19.0"
 androidx-lifecycle = "2.10.0"
-composeHotReload = "1.1.0-beta01"
-composeMultiplatform = "1.10.3"
-filekitCore = "0.13.0"
-filekitDialogsCompose = "0.13.0"
+composeMultiplatform = "1.11.1"
+filekitCore = "0.14.2"
+filekitDialogsCompose = "0.14.2"
 junit = "4.13.2"
 kotlin = "2.4.0"
-kotlin-logging = "7.0.4"
-kotlinBrowser = "2026.4.1"
-kotlinx-coroutines = "1.10.2"
+kotlin-logging = "8.0.4"
+kotlinBrowser = "2026.6.4"
+kotlinx-coroutines = "1.11.0"
 kotlinx-io = "0.9.0"
-kotlinx-serialization = "1.10.0"
-kotlinxBenchmarkRuntime = "0.4.14"
-ktor3 = "3.4.2"
+kotlinx-serialization = "1.11.0"
+kotlinxBenchmarkRuntime = "0.4.17"
+ktor3 = "3.5.0"
 material-icons = "1.7.3"
 
 [libraries]
 # Build Logic
-vanniktech-mavenPublish = { module = "com.vanniktech:gradle-maven-publish-plugin", version = "0.34.0" }
+vanniktech-mavenPublish = { module = "com.vanniktech:gradle-maven-publish-plugin", version = "0.36.0" }
 
 # Runtime Dependencies
 filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekitDialogsCompose" }
@@ -53,15 +52,15 @@ ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor3" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor3" }
 ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor3" }
 material-icons = { module = "org.jetbrains.compose.material:material-icons-core", version.ref="material-icons" }
-slf4j-simple = { module = "org.slf4j:slf4j-simple", version = "2.0.16" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version = "2.0.18" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidLibrary = { id = "com.android.library", version.ref = "agp" }
-composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
+androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinJsPlainObjects = { id = "org.jetbrains.kotlin.plugin.js-plain-objects", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version = "0.34.0" }
+vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version = "0.36.0" }
