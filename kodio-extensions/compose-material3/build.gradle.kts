@@ -30,11 +30,9 @@ kotlin {
             jvmTarget.set(JvmTarget.JVM_11)
         }
     }
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
-    macosX64()
     macosArm64()
 
     @OptIn(ExperimentalKotlinGradlePluginApi::class)
