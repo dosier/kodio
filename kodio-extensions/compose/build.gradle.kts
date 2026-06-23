@@ -113,3 +113,16 @@ tasks.matching {
         it.name == "testDebugUnitTest" ||
         it.name == "testReleaseUnitTest"
 }.configureEach { enabled = false }
+
+// Compose ui-uikit (CMP 1.11) references iOS 26 SDK symbols (e.g. UIViewLayoutRegion)
+// that are unavailable in CI's Xcode toolchain, so linking the Apple test
+// binaries fails. These modules have no real Kotlin/Native tests (Compose UI
+// tests only run on the JVM target), so disable the Apple native test tasks.
+val appleNativeTestTaskNames = setOf(
+    "linkDebugTestMacosArm64",
+    "linkDebugTestIosArm64",
+    "linkDebugTestIosSimulatorArm64",
+    "macosArm64Test",
+    "iosSimulatorArm64Test",
+)
+tasks.matching { it.name in appleNativeTestTaskNames }.configureEach { enabled = false }

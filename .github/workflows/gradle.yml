@@ -54,14 +54,14 @@ jobs:
             tasks: "jvmTest"
           - id: android-unit
             os: ubuntu-latest
-            tasks: "testDebugUnitTest testReleaseUnitTest"
+            tasks: "testAndroidHostTest"
           - id: web
             os: ubuntu-latest
             tasks: "jsBrowserTest wasmJsBrowserTest"
             install_chrome: true
           - id: macos-native
             os: macos-latest
-            tasks: "macosArm64Test macosX64Test"
+            tasks: "macosArm64Test"
           - id: ios-sim
             os: macos-latest
             tasks: "iosSimulatorArm64Test"
