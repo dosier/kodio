@@ -3,12 +3,16 @@ package space.kodio.sample
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import io.github.vinceglb.filekit.FileKit
+import space.kodio.core.Kodio
+import space.kodio.core.logging.LogLevel
+import space.kodio.core.logging.platformLogWriter
 
 fun main() {
-    // Enable debug logging for SLF4J simple logger
-    System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug")
-    System.setProperty("org.slf4j.simpleLogger.log.RecorderState", "debug")
-    
+    Kodio.configureLogging {
+        minLevel = LogLevel.Debug
+        addWriter(platformLogWriter())
+    }
+
     application {
         FileKit.init(appId = "KodioApp")
         Window(

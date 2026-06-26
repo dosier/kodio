@@ -11,7 +11,6 @@ filekitCore = "0.14.2"
 filekitDialogsCompose = "0.14.2"
 junit = "4.13.2"
 kotlin = "2.4.0"
-kotlin-logging = "8.0.4"
 kotlinBrowser = "2026.4.1"
 kotlinx-coroutines = "1.11.0"
 kotlinx-io = "0.9.0"
@@ -28,7 +27,6 @@ vanniktech-mavenPublish = { module = "com.vanniktech:gradle-maven-publish-plugin
 filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekitDialogsCompose" }
 filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekitCore" }
 kotlin-browser-v202575 = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlinBrowser" }
-kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlin-logging" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
 junit = { module = "junit:junit", version.ref = "junit" }
@@ -52,7 +50,6 @@ ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor3" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor3" }
 ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor3" }
 material-icons = { module = "org.jetbrains.compose.material:material-icons-core", version.ref="material-icons" }
-slf4j-simple = { module = "org.slf4j:slf4j-simple", version = "2.0.18" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

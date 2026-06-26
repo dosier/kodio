@@ -31,7 +31,7 @@ kodio-docs/
 - `Getting-Started.md`, `Quick-Start.md`, `Installation.md`, `Platform-Setup.md`
 
 ### Core
-- `Recording.md`, `Playback.md`, `Audio-Quality.md`, `Audio-Format.md`, `File-IO.md`, `Error-Handling.md`
+- `Recording.md`, `Playback.md`, `Audio-Quality.md`, `Audio-Format.md`, `File-IO.md`, `Error-Handling.md`, `Logging.md`
 
 ### Compose
 - `Recorder-State.md`, `Player-State.md`, `Audio-Waveform.md`, `Material3-Components.md`

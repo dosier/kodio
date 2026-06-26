@@ -142,6 +142,24 @@ Tests always run for:
 - `local.properties` - SDK paths, API keys (gitignored)
 - `gradle.properties` - Version (`kodio.version=X.X.X`)
 
+## Logging
+
+Kodio uses its own multiplatform logging facade in `space.kodio.core.logging`. It is **silent by default** — no output until the consumer configures it.
+
+Configure at startup via `Kodio.configureLogging { }` (or `KodioLogging.configure { }`):
+
+```kotlin
+Kodio.configureLogging {
+    minLevel = LogLevel.Debug
+    addWriter(platformLogWriter())
+}
+```
+
+**Internal convention (library code):**
+- One logger per file/component: `private val logger = namedLogger("ComponentName")` in kodio-core, or `kodioLogger("ComponentName")` in extension modules.
+- Level guidance: `trace` = very verbose per-sample/per-chunk; `debug` = routine diagnostics; `info` = lifecycle milestones; `warn` = recoverable problems; `error(throwable){}` = failures/caught exceptions.
+- Never use `println` or `printStackTrace()` in library code — always go through the facade.
+
 ## Transcription Module
 
 The transcription module uses OpenAI Whisper API.

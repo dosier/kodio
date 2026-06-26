@@ -64,6 +64,46 @@ dependencies {
 }
 ```
 
+## Logging
+
+Kodio is **silent by default** — no log output is produced until you configure it. This follows library best practice: consumers decide when and where logs appear, rather than Kodio printing to the console unprompted.
+
+Enable logging at application startup with the built-in platform console writer:
+
+```kotlin
+import space.kodio.core.Kodio
+import space.kodio.core.logging.LogLevel
+import space.kodio.core.logging.platformLogWriter
+
+Kodio.configureLogging {
+    minLevel = LogLevel.Debug
+    addWriter(platformLogWriter())
+}
+```
+
+`platformLogWriter()` routes to Logcat on Android, NSLog on Apple platforms, the browser console on JS/Wasm, and stdout/stderr on JVM — the same API works uniformly across all targets.
+
+To stay silent (the default), do nothing, or explicitly disable:
+
+```kotlin
+Kodio.configureLogging { minLevel = LogLevel.None }
+```
+
+Bridge to your own logging backend (Kermit, SLF4J, Crashlytics, etc.) by implementing `KodioLogWriter`:
+
+```kotlin
+Kodio.configureLogging {
+    minLevel = LogLevel.Warn
+    addWriter { level, tag, message, throwable ->
+        MyLogger.log(level.name, tag, message, throwable)
+    }
+}
+```
+
+**Log levels:** `Trace`, `Debug`, `Info`, `Warn`, `Error`, `None`. Messages at or above `minLevel` are forwarded to all registered writers.
+
+See the [Logging](https://dosier.github.io/kodio/logging.html) docs page for full details.
+
 ## Documentation
 
 📚 **[dosier.github.io/kodio](https://dosier.github.io/kodio/)**
@@ -74,6 +114,7 @@ dependencies {
 - [Recording](https://dosier.github.io/kodio/recording.html)
 - [Playback](https://dosier.github.io/kodio/playback.html)
 - [Compose Integration](https://dosier.github.io/kodio/recorder-state.html)
+- [Logging](https://dosier.github.io/kodio/logging.html)
 
 ## License
 

@@ -1,6 +1,5 @@
 package space.kodio.ktor
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocketSession
 import io.ktor.client.request.HttpRequestBuilder
@@ -10,12 +9,13 @@ import io.ktor.websocket.close
 import io.ktor.websocket.readBytes
 import io.ktor.websocket.send
 import kotlinx.coroutines.flow.channelFlow
+import space.kodio.core.logging.kodioLogger
 import space.kodio.core.AudioFlow
 import space.kodio.core.AudioFormat
 import space.kodio.core.io.decodeAsAudioFormat
 import space.kodio.core.io.encodeToByteArray
 
-private val logger = KotlinLogging.logger {}
+private val logger = kodioLogger("AudioFlowKtor")
 
 /**
  * Wire format used by the Kodio Ktor helpers.

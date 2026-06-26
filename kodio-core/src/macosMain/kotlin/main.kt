@@ -3,17 +3,24 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.Path
-import space.kodio.core.AudioPlaybackSession
 import space.kodio.core.DefaultRecordingInt16
+import space.kodio.core.Kodio
 import space.kodio.core.SystemAudioSystem
-import space.kodio.core.enumerateDevices
+import space.kodio.core.logging.LogLevel
+import space.kodio.core.logging.platformLogWriter
 import space.kodio.core.io.collectAsSource
-import space.kodio.core.io.convertAudio
 import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.writeToFile
+import space.kodio.core.util.namedLogger
 import kotlin.time.Duration.Companion.seconds
 
+private val logger = namedLogger("MacosMain")
+
 fun main(): kotlin.Unit = runBlocking {
+    Kodio.configureLogging {
+        minLevel = LogLevel.Debug
+        addWriter(platformLogWriter())
+    }
     recordSaveAndPlayback()
 }
 
@@ -36,9 +43,11 @@ private suspend fun recordSaveAndPlayback() {
     val flow = recording.audioFlow.value
         ?: error("Audio flow should not be null")
 
-    println(flow.format)
-    println(flow.map { it.size }.toList().sum())
-    println(flow.collectAsSource().byteCount)
+    logger.info { "${flow.format}" }
+    val chunkSizeSum = flow.map { it.size }.toList().sum()
+    logger.info { "$chunkSizeSum" }
+    val byteCount = flow.collectAsSource().byteCount
+    logger.info { "$byteCount" }
 
     flow.writeToFile(
         format = AudioFileFormat.Wav,
@@ -49,5 +58,5 @@ private suspend fun recordSaveAndPlayback() {
     playback.load(flow)
     playback.play()
     delay(5.seconds)
-    println("Playback finished")
+    logger.info { "Playback finished" }
 }

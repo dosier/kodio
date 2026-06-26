@@ -16,6 +16,7 @@
         <toc-element topic="Audio-Format.md"/>
         <toc-element topic="File-IO.md"/>
         <toc-element topic="Error-Handling.md"/>
+        <toc-element topic="Logging.md"/>
     </toc-element>
     
     <toc-element toc-title="Compose">

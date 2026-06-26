@@ -86,3 +86,4 @@ src/
 5. **Resources must be released**. `Recorder.release()` / `Player.release()` or use the `.use {}` extension.
 6. **Tests run on JVM**. Primary CI runs `./gradlew jvmTest`. Platform-specific tests require their respective environments.
 7. **Version** is in `gradle.properties` (`kodio.version`). Never hardcode versions elsewhere.
+8. **Logging uses the Kodio facade** (`space.kodio.core.logging`). Silent by default; consumers opt in via `Kodio.configureLogging { }`. In library code use `namedLogger()` / `kodioLogger()` — never `println` or `printStackTrace()`.

@@ -11,6 +11,8 @@ import io.github.vinceglb.filekit.dialogs.init
 import io.github.vinceglb.filekit.manualFileKitCoreInitialization
 import space.kodio.core.Kodio
 import space.kodio.core.initialize
+import space.kodio.core.logging.LogLevel
+import space.kodio.core.logging.platformLogWriter
 import space.kodio.core.onRequestPermissionsResult
 
 class MainActivity : ComponentActivity() {
@@ -20,6 +22,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         FileKit.init(this)
         Kodio.initialize(this)
+        Kodio.configureLogging {
+            minLevel = LogLevel.Debug
+            addWriter(platformLogWriter())
+        }
         setContent {
             App()
         }

@@ -30,6 +30,9 @@ import platform.CoreAudio.kAudioObjectPropertyScopeOutput
 import platform.CoreAudio.kAudioObjectSystemObject
 import platform.CoreAudioTypes.AudioBufferList
 import platform.darwin.noErr
+import space.kodio.core.util.namedLogger
+
+private val logger = namedLogger("MacosDevices")
 
 // ───────────────────────────────────────────────────────────────────────────────
 // CoreAudio helpers
@@ -78,11 +81,10 @@ internal fun enumerateDevices(scope: AudioObjectPropertyScope): List<CoreAudioDe
                 ?: AudioFormatSupport.Unknown
             CoreAudioDevice(deviceId, uid, name, audioFormatSupport)
         }.onFailure { error ->
-            println("Failed to enumerate device $deviceId: $error")
-            error.printStackTrace()
+            logger.warn(error) { "Failed to enumerate device $deviceId: $error" }
         }.onSuccess { coreAudioDevice ->
             if (coreAudioDevice != null) {
-                println("Enumerated device $deviceId: $coreAudioDevice")
+                logger.debug { "Enumerated device $deviceId: $coreAudioDevice" }
                 result += coreAudioDevice
             }
         }

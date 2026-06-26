@@ -10,6 +10,9 @@ import kotlinx.io.Buffer
 import space.kodio.core.*
 import space.kodio.core.SampleEncoding.PcmFloat
 import space.kodio.core.SampleEncoding.PcmInt
+import space.kodio.core.util.namedLogger
+
+private val logger = namedLogger("AudioCodec")
 
 /**
  * Decodes raw PCM bytes to normalized samples in [-1.0, 1.0].
@@ -100,7 +103,7 @@ private fun decodePcmFloat(
         val v = Float.fromBits(bits)
 
         if (v.isNaN()) {
-            println("Found NaN at index $i! Raw bits (hex): ${bits.toUInt().toString(16)}")
+            logger.warn { "Found NaN at index $i! Raw bits (hex): ${bits.toUInt().toString(16)}" }
             out[i] = BigDecimal.ZERO // or some other placeholder
         } else {
             // Clamping is good practice

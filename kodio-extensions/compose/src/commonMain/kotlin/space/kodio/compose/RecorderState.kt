@@ -6,12 +6,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import io.github.oshai.kotlinlogging.KotlinLogging
 import space.kodio.core.*
+import space.kodio.core.logging.kodioLogger
 import space.kodio.core.security.AudioPermissionManager
 import kotlin.math.sqrt
 
-private val logger = KotlinLogging.logger("RecorderState")
+private val logger = kodioLogger("RecorderState")
 
 /**
  * State holder for audio recording in Compose.

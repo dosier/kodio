@@ -1,6 +1,7 @@
 package space.kodio.core.util
 
-import io.github.oshai.kotlinlogging.KotlinLogging
+import space.kodio.core.logging.KodioLogger
+import space.kodio.core.logging.kodioLogger
 
 /**
  * Create a logger for the enclosing class.
@@ -17,7 +18,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  * }
  * ```
  */
-internal inline fun <reified T> T.classLogger() = KotlinLogging.logger(T::class.simpleName ?: "Unknown")
+internal inline fun <reified T> T.classLogger(): KodioLogger = kodioLogger(T::class.simpleName ?: "Unknown")
 
 /**
  * Create a named logger for file-level or component use.
@@ -32,4 +33,4 @@ internal inline fun <reified T> T.classLogger() = KotlinLogging.logger(T::class.
  * }
  * ```
  */
-internal fun namedLogger(name: String) = KotlinLogging.logger(name)
+internal fun namedLogger(name: String): KodioLogger = kodioLogger(name)

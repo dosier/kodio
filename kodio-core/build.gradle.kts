@@ -61,7 +61,6 @@ kotlin {
             dependencies {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.io)
-                implementation(libs.kotlin.logging)
                 api(libs.bignum)
             }
         }
@@ -71,21 +70,9 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.test)
             }
         }
-        jvmTest {
-            dependencies {
-                implementation(libs.slf4j.simple)
-            }
-        }
         androidMain {
             dependencies {
                 implementation(libs.androidx.core.ktx)
-            }
-        }
-        // Android unit tests run on the host JVM and trigger kotlin-logging,
-        // which needs an SLF4J binding on its classpath. See GitHub issue #15.
-        val androidHostTest by getting {
-            dependencies {
-                implementation(libs.slf4j.simple)
             }
         }
         @Suppress("unused")

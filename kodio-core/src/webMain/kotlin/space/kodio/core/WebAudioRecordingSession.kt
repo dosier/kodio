@@ -9,7 +9,10 @@ import web.mediadevices.getUserMedia
 import web.mediastreams.MediaStream
 import web.messaging.MessageEvent
 import web.navigator.navigator
+import space.kodio.core.util.namedLogger
 import web.worklets.addModule
+
+private val logger = namedLogger("WebRecording")
 
 class WebAudioRecordingSession(
     private val device: AudioDevice.Input?,
@@ -39,8 +42,8 @@ class WebAudioRecordingSession(
         val settings = inputTrack.getSettings()
         val actualSampleRate = settings.sampleRate ?: format.sampleRate
 
-        println("[WebRecording] Requested: rate=${format.sampleRate}, channels=${format.channels.count}, sampleSize=${format.bytesPerSample * 8}")
-        println("[WebRecording] Track settings: rate=${settings.sampleRate}, channels=${settings.channelCount}")
+        logger.debug { "Requested: rate=${format.sampleRate}, channels=${format.channels.count}, sampleSize=${format.bytesPerSample * 8}" }
+        logger.debug { "Track settings: rate=${settings.sampleRate}, channels=${settings.channelCount}" }
 
         val finalFormat = AudioFormat(
             sampleRate = actualSampleRate,
@@ -55,7 +58,7 @@ class WebAudioRecordingSession(
         )
         audioContext = context
 
-        println("[WebRecording] AudioContext sampleRate=${context.sampleRate}, finalFormat=$finalFormat")
+        logger.debug { "AudioContext sampleRate=${context.sampleRate}, finalFormat=$finalFormat" }
 
         context.audioWorklet.addModule(blobUrl)
         return finalFormat
@@ -81,12 +84,12 @@ class WebAudioRecordingSession(
                         if (v < min) min = v
                         if (v > max) max = v
                     }
-                    println("[WebRecording] Chunk #$chunkCount: samples=${pcmData.length}, range=[$min, $max]")
+                    logger.debug { "Chunk #$chunkCount: samples=${pcmData.length}, range=[$min, $max]" }
                 }
                 val byteData = pcmData.encodeAs16BitPcmByteArray()
                 channel.trySend(byteData)
             } catch (e: Throwable) {
-                e.printStackTrace()
+                logger.error(e) { "Worklet message handling failed" }
             }
         }
         this.audioWorkletNode = workletNode

@@ -1,6 +1,5 @@
 package space.kodio.transcription.cloud
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
@@ -12,11 +11,12 @@ import kotlinx.io.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import space.kodio.core.*
+import space.kodio.core.logging.kodioLogger
 import space.kodio.transcription.*
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
-private val logger = KotlinLogging.logger {}
+private val logger = kodioLogger("OpenAIWhisperEngine")
 
 // OpenAI Whisper pricing: $0.006 per minute
 private const val WHISPER_COST_PER_MINUTE = 0.006

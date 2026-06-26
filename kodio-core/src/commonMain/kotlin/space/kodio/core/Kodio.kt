@@ -66,6 +66,21 @@ import kotlin.time.Duration
  */
 object Kodio {
 
+    // ==================== LOGGING ====================
+
+    /**
+     * Configure Kodio's logging. Silent by default; see [space.kodio.core.logging.KodioLogging].
+     *
+     * ```
+     * Kodio.configureLogging {
+     *     minLevel = space.kodio.core.logging.LogLevel.Debug
+     *     addWriter(space.kodio.core.logging.platformLogWriter())
+     * }
+     * ```
+     */
+    fun configureLogging(block: space.kodio.core.logging.KodioLogging.() -> Unit) =
+        space.kodio.core.logging.KodioLogging.configure(block)
+
     // ==================== DEVICE LISTING ====================
 
     /**

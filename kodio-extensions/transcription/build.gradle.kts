@@ -67,9 +67,6 @@ kotlin {
 
                 // Serialization for API messages
                 implementation(libs.kotlinx.serialization.json)
-
-                // Logging
-                implementation(libs.kotlin.logging)
             }
         }
         commonTest {
@@ -88,8 +85,6 @@ kotlin {
             dependencies {
                 // JUnit 4 runner + Assume for the live OpenAI integration test.
                 implementation(libs.kotlin.testJunit)
-                // SLF4J binding so the engine's KotlinLogging output appears in test logs.
-                implementation(libs.slf4j.simple)
             }
         }
         androidMain {

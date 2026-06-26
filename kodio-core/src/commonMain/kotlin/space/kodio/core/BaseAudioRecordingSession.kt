@@ -83,7 +83,6 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             launchRecordingJob(hotSource)
         } catch (e: Exception) {
             logger.error(e) { "Error in start(): ${e.message}" }
-            e.printStackTrace()
             _state.value = State.Error(e)
             cleanupRecording()
         }

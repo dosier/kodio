@@ -37,14 +37,15 @@ import space.kodio.core.io.files.AudioFileReadError
 import space.kodio.core.io.files.AudioFileReader
 import space.kodio.core.Kodio
 import space.kodio.core.Recorder
+import space.kodio.core.logging.kodioLogger
 import space.kodio.core.security.AudioPermissionManager
 import space.kodio.sample.icons.SampleIcons
 import space.kodio.transcription.*
 import space.kodio.transcription.cloud.OpenAIWhisperEngine
 import kotlin.time.Duration
 
-// Simple logging for debugging
-private fun log(message: String) = println("[TranscriptionShowcase] $message")
+private val logger = kodioLogger("TranscriptionShowcase")
+private fun log(message: String) = logger.info { message }
 
 // Matches OpenAI Whisper list pricing ($0.006 / minute) used by OpenAIWhisperEngine.
 private const val WHISPER_PRICE_PER_MINUTE_USD = 0.006
@@ -434,7 +435,7 @@ private fun LiveRecordingTab(apiKey: String) {
                                             log("Transcription cancelled")
                                         } else {
                                             log("ERROR: Transcription error in catch: ${e.message}")
-                                            e.printStackTrace()
+                                            logger.error(e) { "Transcription error in catch" }
                                             error = "Transcription error: ${e.message}"
                                         }
                                         // Note: cleanup is handled in onCompletion
@@ -483,7 +484,7 @@ private fun LiveRecordingTab(apiKey: String) {
                                 log("Transcription cancelled (user stopped)")
                             } else {
                                 log("ERROR: Exception in transcription: ${e.message}")
-                                e.printStackTrace()
+                                logger.error(e) { "Exception in transcription" }
                                 error = "Error: ${e.message}"
                             }
                             // Ensure cleanup on any exception
@@ -642,7 +643,7 @@ private fun FileUploadTab(apiKey: String) {
                                     throw e
                                 } catch (e: Exception) {
                                     log("File transcription error: ${e.message}")
-                                    e.printStackTrace()
+                                    logger.error(e) { "File transcription error" }
                                     error = "Transcription error: ${e.message ?: "Unknown"}"
                                 } finally {
                                     isTranscribing = false
@@ -660,7 +661,7 @@ private fun FileUploadTab(apiKey: String) {
                         } catch (e: Exception) {
                             val cls = e::class.simpleName ?: "Exception"
                             log("Picker / file error [$cls]: ${e.message}")
-                            e.printStackTrace()
+                            logger.error(e) { "Picker / file error" }
                             error = "[$cls] ${e.message ?: "Unknown error"}"
                             isTranscribing = false
                         } finally {

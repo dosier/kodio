@@ -11,6 +11,9 @@ import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragData
 import androidx.compose.ui.draganddrop.dragData
+import space.kodio.core.logging.kodioLogger
+
+private val logger = kodioLogger("DropTarget")
 
 @OptIn(ExperimentalComposeUiApi::class)
 actual fun Modifier.audioFileDropTarget(
@@ -37,7 +40,7 @@ actual fun Modifier.audioFileDropTarget(
                             currentOnDrop(file.name, file.readBytes())
                             return true
                         } catch (e: Exception) {
-                            println("Drop error: ${e.message}")
+                            logger.warn(e) { "Drop error" }
                         }
                     }
                 }

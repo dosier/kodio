@@ -53,7 +53,6 @@ kotlin {
                 api(libs.ktor.client.websockets)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.io)
-                implementation(libs.kotlin.logging)
             }
         }
         commonTest {
@@ -72,7 +71,6 @@ kotlin {
                 implementation(libs.ktor.server.core)
                 implementation(libs.ktor.server.cio)
                 implementation(libs.ktor.server.websockets)
-                implementation(libs.slf4j.simple)
             }
         }
         androidMain {
