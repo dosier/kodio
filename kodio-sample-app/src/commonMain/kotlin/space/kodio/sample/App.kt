@@ -402,7 +402,7 @@ internal fun <T : AudioDevice> DeviceSelector(
                     readOnly = true,
                     enabled = enabled,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                    modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
                     singleLine = true,
                 )
 
