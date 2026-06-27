@@ -11,7 +11,7 @@ Kodio provides two approaches to recording: a simple one-liner for timed recordi
 
 ## Timed recording {id="timed"}
 
-The simplest way to record audio is with `Kodio.record()`. Pass a duration and Kodio handles the rest—starting, stopping, and packaging the audio into a recording.
+The simplest way to record audio is with `Kodio.record()`. Pass a duration and Kodio handles starting, stopping, and packaging the audio into a recording.
 
 ```kotlin
 val recording = Kodio.record(duration = 5.seconds)
@@ -43,7 +43,7 @@ val recording = Kodio.record { recorder ->
 }
 ```
 
-The lambda receives a `Recorder` instance and returns whatever the lambda returns—typically the recording itself.
+The lambda receives a `Recorder` instance and returns whatever the lambda returns, typically the recording itself.
 
 ## Using Recorder directly {id="recorder"}
 
@@ -63,11 +63,11 @@ recorder.use { r ->
 }
 ```
 
-The `use` extension ensures resources are properly released, even if an exception occurs.
+The `use` extension releases resources when the block exits, even if an exception occurs.
 
 ## Live audio processing {id="live-audio"}
 
-The `Recorder` provides a `liveAudioFlow` that emits audio chunks in real-time while recording. This is perfect for visualizations like waveforms or level meters.
+The `Recorder` provides a `liveAudioFlow` that emits audio chunks in real-time while recording. Use it for visualizations like waveforms or level meters.
 
 ```kotlin
 recorder.liveAudioFlow?.collect { chunk ->
@@ -83,7 +83,7 @@ recorder.liveAudioFlow?.collect { chunk ->
 ## Pause / resume {id="pause-resume"}
 
 Use `recorder.pause()` to halt capture and `recorder.resume()` to continue
-appending to the same recording — the data captured before the pause is
+appending to the same recording. The data captured before the pause is
 preserved as part of one continuous `AudioRecording`:
 
 ```kotlin
@@ -107,7 +107,7 @@ Each platform exposes a native pause primitive when available (Android
 `AudioWorklet.disconnect()`), so resume is fast and doesn't re-acquire the
 microphone.
 
-> Calling `recorder.start()` after `stop()` is a different operation —
+> Calling `recorder.start()` after `stop()` is a different operation.
 > Kodio treats it as starting a brand-new recording and refuses to silently
 > discard the previous one. You must either call `recorder.reset()` first to
 > explicitly throw the prior recording away, or stitch multiple recordings
@@ -125,7 +125,7 @@ val full = AudioRecording.concat(firstRecording, secondRecording)
 full.saveAs(Path("voice_note.wav"))
 ```
 
-`concat` accepts segments with different formats — they are converted to a
+`concat` accepts segments with different formats; they are converted to a
 common target format (the first segment's format by default) using
 [`AudioFlow.convertAudio`](Custom-Formats.md). See
 [GitHub issue #24](https://github.com/dosier/kodio/issues/24) for the original
@@ -160,7 +160,7 @@ Observable state changes for reactive UIs.
 
 <deflist type="medium">
 <def title="start()">
-Begin recording audio. Throws <code>IllegalStateException</code> if the recorder is already in the <code>Stopped</code> state — call <code>reset()</code> first or stitch segments via <code>AudioRecording.concat()</code>.
+Begin recording audio. Throws <code>IllegalStateException</code> if the recorder is already in the <code>Stopped</code> state. Call <code>reset()</code> first or stitch segments via <code>AudioRecording.concat()</code>.
 </def>
 <def title="pause()">
 Pause capture without losing audio captured so far. Use <code>resume()</code> to continue.

@@ -96,8 +96,8 @@ Mitigations that help in practice:
    audio bridge does not need to resample.
 2. **Configure the AVD to use the host audio backend directly.** From the
   command line:
-3. **Test on a physical device** for production audio quality validation —
-  the emulator bridge is a known weak link and is not representative of
+3. **Test on a physical device** for production audio quality validation.
+  The emulator bridge is a known weak link and is not representative of
    on-device capture.
 
 If the noise persists after the steps above, please attach a host-mic recording
@@ -171,9 +171,9 @@ When running from an IDE or Terminal during development, you may encounter silen
 
 ## JVM (Desktop) {id="jvm"}
 
-No setup required for basic usage. ✅
+No setup required for basic usage.
 
-Kodio uses the Java Sound API which is available on all JVM platforms. Recording and playback work out of the box.
+Kodio uses the Java Sound API which is available on all JVM platforms. Recording and playback work without extra setup.
 
 ```kotlin
 fun main() = runBlocking {
@@ -204,7 +204,7 @@ Kodio supports the following system properties for JVM configuration:
 - Lower it (e.g. `50`) if you're capturing extremely short snippets and the
 warmup is eating real audio
 - Raise it (e.g. `400`) if your JDK / OS combination has a slower priming
-ramp than 200 ms — symptoms are silence at the start of recordings on JVM
+ramp than 200 ms. Symptoms are silence at the start of recordings on JVM
 - Set it to `0` to disable the drain entirely (useful when measuring raw
 JavaSound latency)
 
@@ -237,7 +237,7 @@ Ensure your site is served over **HTTPS** (or localhost for development). Browse
 
 
 
-That's it! The browser will automatically prompt the user for microphone permission when you call `Kodio.record()`.
+The browser will automatically prompt the user for microphone permission when you call `Kodio.record()`.
 
 
 
@@ -246,10 +246,10 @@ That's it! The browser will automatically prompt the user for microphone permiss
 
 | Browser | Support        |
 | ------- | -------------- |
-| Chrome  | ✅ Full support |
-| Firefox | ✅ Full support |
-| Safari  | ✅ Full support |
-| Edge    | ✅ Full support |
+| Chrome  | Full support |
+| Firefox | Full support |
+| Safari  | Full support |
+| Edge    | Full support |
 
 
 > Users must grant permission through the browser's native dialog. There's no way to bypass this.
@@ -261,10 +261,10 @@ That's it! The browser will automatically prompt the user for microphone permiss
 
 | Platform   | Permission         | Initialization               | Extra                       |
 | ---------- | ------------------ | ---------------------------- | --------------------------- |
-| 🤖 Android | Manifest + Runtime | `Kodio.initialize(activity)` | —                           |
-| 🍎 iOS     | Info.plist         | —                            | —                           |
-| 🍏 macOS   | Info.plist         | —                            | Entitlement, Java 21+       |
-| ☕ JVM      | —                  | —                            | `kodio.useJavaSound` option |
-| 🌐 Web     | Browser prompt     | —                            | HTTPS                       |
+| Android    | Manifest + Runtime | `Kodio.initialize(activity)` | None                        |
+| iOS        | Info.plist         | None                         | None                        |
+| macOS      | Info.plist         | None                         | Entitlement, Java 21+       |
+| JVM        | None               | None                         | `kodio.useJavaSound` option |
+| Web        | Browser prompt     | None                         | HTTPS                       |
 
 

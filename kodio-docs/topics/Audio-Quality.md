@@ -13,10 +13,10 @@ Kodio provides predefined quality presets optimized for common recording scenari
 
 | Preset | Sample Rate | Channels | Bit Depth | Best For |
 |--------|-------------|----------|-----------|----------|
-| 🎤 `Voice` | 16 kHz | Mono | 16-bit | Speech, voice memos, transcription |
-| 🎵 `Standard` | 44.1 kHz | Mono | 16-bit | General audio, podcasts (default) |
-| 🎧 `High` | 48 kHz | Stereo | 16-bit | Music, professional content |
-| 🎚️ `Lossless` | 96 kHz | Stereo | 24-bit | Studio recording, archival |
+| `Voice` | 16 kHz | Mono | 16-bit | Speech, voice memos, transcription |
+| `Standard` | 44.1 kHz | Mono | 16-bit | General audio, podcasts (default) |
+| `High` | 48 kHz | Stereo | 16-bit | Music, professional content |
+| `Lossless` | 96 kHz | Stereo | 24-bit | Studio recording, archival |
 
 ## Usage {id="usage"}
 
@@ -59,19 +59,19 @@ val recorderState = rememberRecorderState(
 ## Choosing a preset {id="choosing"}
 
 <deflist type="medium">
-<def title="🎤 Voice">
+<def title="Voice">
 <p><b>When to use</b>: Voice memos, speech-to-text input, phone calls, podcasts with speech only.</p>
 <p><b>Trade-off</b>: Smallest files, optimized for speech frequencies (human voice range). Not suitable for music.</p>
 </def>
-<def title="🎵 Standard">
+<def title="Standard">
 <p><b>When to use</b>: General-purpose recording, mixed content, compatibility with most playback systems.</p>
 <p><b>Trade-off</b>: CD-quality sample rate (44.1 kHz), good balance of quality and file size. Default if not specified.</p>
 </def>
-<def title="🎧 High">
+<def title="High">
 <p><b>When to use</b>: Music recording, professional podcasts, content for distribution.</p>
 <p><b>Trade-off</b>: Stereo capture, higher sample rate. Larger files than Standard.</p>
 </def>
-<def title="🎚️ Lossless">
+<def title="Lossless">
 <p><b>When to use</b>: Studio recording, archival, post-processing workflows.</p>
 <p><b>Trade-off</b>: Maximum quality, largest files (~35 MB/minute). Overkill for most applications.</p>
 </def>
@@ -94,7 +94,7 @@ Approximate sizes for uncompressed WAV files:
 
 ## Platform negotiation {id="negotiation"}
 
-Quality presets are forwarded to the platform's audio system as a *request*. If the exact format isn't supported, the platform gracefully falls back to the closest supported format:
+Quality presets are forwarded to the platform's audio system as a *request*. If the exact format isn't supported, the platform falls back to the closest supported format:
 
 | Platform | Negotiation behavior |
 |----------|---------------------|

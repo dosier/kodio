@@ -243,7 +243,7 @@ Modify `build-logic/src/main/kotlin/kodio-publish-convention.gradle.kts` to upda
 Options:
 - **Maven Central**: Create account at [central.sonatype.com](https://central.sonatype.com)
 - **GitHub Packages**: Free for public repos
-- **JitPack**: Just tag and it builds automatically
+- **JitPack**: Tag the repo and it builds automatically
 - **Private Artifactory/Nexus**: For enterprise use
 
 ### Publishing to GitHub Packages
@@ -266,7 +266,7 @@ publishing {
 
 ### Publishing to JitPack
 
-Simply tag your fork and use:
+Tag your fork and use:
 ```kotlin
 repositories {
     maven { url = uri("https://jitpack.io") }
@@ -329,5 +329,5 @@ chore: update dependencies
 
 - Open an [issue](https://github.com/dosier/kodio/issues) for bugs or feature requests
 
-Thank you for contributing! 🎉
+Thank you for contributing!
 

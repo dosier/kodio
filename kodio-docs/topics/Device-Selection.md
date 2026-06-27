@@ -88,14 +88,14 @@ Device selection support varies by platform:
 
 | Platform   | Input selection | Output selection | Notes                                                                                                          |
 | ---------- | --------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- |
-| ☕ JVM      | ✅ Full          | ✅ Full           | Complete device enumeration via `javax.sound.sampled`                                                          |
-| 🍏 macOS   | ✅ Full          | ✅ Full           | Resolves to a real CoreAudio device UID                                                                        |
-| 🍎 iOS     | ✅ Full          | ✅ Full           | Routed via `AVAudioSession` ports                                                                              |
-| 🤖 Android | ⚠️ Limited      | ⚠️ Limited       | Honoured via `AudioRecord.preferredDevice` / `AudioTrack.preferredDevice`; final routing decided by the system |
-| 🌐 Web     | ❌ Not supported | ❌ Not supported  | Throws `AudioError.DeviceSelectionUnsupported` when a non-null device is passed                                |
+| JVM        | Full            | Full             | Complete device enumeration via `javax.sound.sampled`                                                          |
+| macOS      | Full            | Full             | Resolves to a real CoreAudio device UID                                                                        |
+| iOS        | Full            | Full             | Routed via `AVAudioSession` ports                                                                              |
+| Android    | Limited         | Limited          | Honoured via `AudioRecord.preferredDevice` / `AudioTrack.preferredDevice`; final routing decided by the system |
+| Web        | Not supported   | Not supported    | Throws `AudioError.DeviceSelectionUnsupported` when a non-null device is passed                                |
 
 
-> Pass `null` for the device parameter to use the system default — this is the safest default and works on every platform.
+> Pass `null` for the device parameter to use the system default. This works on every platform.
 
 {style="tip"}
 

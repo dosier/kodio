@@ -27,13 +27,13 @@ because their HTTP stacks are not bound by the browser CORS policy.
 
 `OpenAIWhisperEngine` (since `0.1.4`) accepts two new constructor parameters:
 
-- `endpointUrl` — the URL the engine will POST audio chunks to. Defaults to
+- `endpointUrl`: the URL the engine will POST audio chunks to. Defaults to
   OpenAI's public endpoint; override it to point at your backend.
-- `additionalHeaders` — extra headers appended to every request, e.g. an
+- `additionalHeaders`: extra headers appended to every request, e.g. an
   app-level token your backend uses to authenticate the call.
 
 When `endpointUrl` is overridden you can pass an empty `apiKey` and the engine
-will skip adding the `Authorization: Bearer …` header — your backend should
+will skip adding the `Authorization: Bearer …` header. Your backend should
 hold the OpenAI key.
 
 ```kotlin
@@ -89,7 +89,7 @@ fun main() {
 ```
 
 The same pattern works on Cloudflare Workers, Vercel/Netlify edge functions,
-or any other serverless runtime — anywhere you can hold a secret and forward
+or any other serverless runtime where you can hold a secret and forward
 a multipart POST.
 
 ## File uploads {id="file-uploads"}

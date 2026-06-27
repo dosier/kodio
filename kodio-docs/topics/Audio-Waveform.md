@@ -7,7 +7,7 @@
 <p><b>Waveform visualization</b>: Real-time audio amplitude display with customizable bars, colors, and gradients.</p>
 </tldr>
 
-`AudioWaveform` is a Compose component that visualizes audio amplitudes as animated bars—perfect for showing recording activity or audio levels.
+`AudioWaveform` is a Compose component that visualizes audio amplitudes as animated bars, useful for recording activity or audio levels.
 
 ## Basic usage {id="usage"}
 

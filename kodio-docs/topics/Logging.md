@@ -8,7 +8,7 @@
 <p><b>Silent by default</b>: Kodio produces no log output until you configure a minimum level and at least one writer.</p>
 </tldr>
 
-Kodio includes a lightweight, multiplatform logging facade in `space.kodio.core.logging`. As a library, it stays **silent by default** so your app controls when and where logs appear — nothing is printed to the console unless you opt in.
+Kodio includes a lightweight, multiplatform logging facade in `space.kodio.core.logging`. As a library, it stays **silent by default** so your app controls when and where logs appear; nothing is printed to the console unless you opt in.
 
 ## Enable logging {id="enable"}
 
@@ -49,7 +49,7 @@ KodioLogging.configure {
 
 ## Disable logging {id="disable"}
 
-Logging is off by default — if you never call `configureLogging`, Kodio stays silent. To explicitly disable output:
+Logging is off by default. If you never call `configureLogging`, Kodio stays silent. To explicitly disable output:
 
 ```kotlin
 Kodio.configureLogging {
@@ -69,16 +69,16 @@ Levels are defined by the `LogLevel` enum. A message is emitted when its level i
 
 <deflist type="medium">
 <def title="Trace">
-Very verbose diagnostics — per-sample or per-chunk detail. Use sparingly.
+Very verbose diagnostics: per-sample or per-chunk detail. Use sparingly.
 </def>
 <def title="Debug">
 Routine internal diagnostics useful during development.
 </def>
 <def title="Info">
-Lifecycle milestones — recording started, device selected, session released.
+Lifecycle milestones: recording started, device selected, session released.
 </def>
 <def title="Warn">
-Recoverable problems — fallback paths, deprecated usage, missing optional features.
+Recoverable problems: fallback paths, deprecated usage, missing optional features.
 </def>
 <def title="Error">
 Failures and caught exceptions. Prefer <code>error(throwable) { }</code> to attach the cause.
@@ -90,7 +90,7 @@ Disables all output when set as <code>minLevel</code>.
 
 ## Bridge to a custom backend {id="custom-writer"}
 
-Implement [`KodioLogWriter`](API-Reference.md) — a single-method functional interface — to forward Kodio logs to any backend (Kermit, SLF4J, Crashlytics, your own logger):
+Implement [`KodioLogWriter`](API-Reference.md), a single-method functional interface, to forward Kodio logs to any backend (Kermit, SLF4J, Crashlytics, your own logger):
 
 ```kotlin
 import space.kodio.core.Kodio
@@ -131,7 +131,7 @@ Messages are evaluated only when the configured `minLevel` allows the event thro
 
 ## Platform coverage {id="platforms"}
 
-The logging facade works uniformly across all Kodio targets — Android, iOS, macOS, JVM, JS, and Wasm. No platform-specific setup is required beyond calling `configureLogging` in your shared or platform entry point.
+The logging facade works uniformly across all Kodio targets: Android, iOS, macOS, JVM, JS, and Wasm. No platform-specific setup is required beyond calling `configureLogging` in your shared or platform entry point.
 
 <seealso style="cards">
     <category ref="core-api">

@@ -15,18 +15,18 @@
 
 # Kodio
 
-**Kotlin Multiplatform Audio Library** — Recording, playback, and transcription with a modern coroutines-based API.
+**Kotlin Multiplatform Audio Library** for recording, playback, and transcription with a coroutines-based API.
 
 ## Features
 
-- **Simple Recording** — One-line recording with quality presets
-- **Easy Playback** — Play recordings with a single method call
-- **Multiplatform** — JVM, Android, iOS, macOS, JS, Wasm
-- **Compose Integration** — Ready-to-use state holders and UI components
-- **Live Waveforms** — Real-time amplitude data for visualizations
-- **Permission Handling** — Built-in permission management
-- **File I/O** — Save/load WAV files easily
-- **Transcription** — Speech-to-text via OpenAI Whisper API
+- **Recording**: One-line recording with quality presets
+- **Playback**: Play recordings with a single method call
+- **Multiplatform**: JVM, Android, iOS, macOS, JS, Wasm
+- **Compose Integration**: State holders and UI components
+- **Live Waveforms**: Real-time amplitude data for visualizations
+- **Permission Handling**: Built-in permission management
+- **File I/O**: Save and load WAV files
+- **Transcription**: Speech-to-text via OpenAI Whisper API
 
 ## Quick Start
 
@@ -66,7 +66,7 @@ dependencies {
 
 ## Logging
 
-Kodio is **silent by default** — no log output is produced until you configure it. This follows library best practice: consumers decide when and where logs appear, rather than Kodio printing to the console unprompted.
+Kodio is **silent by default**: no log output is produced until you configure it. Consumers decide when and where logs appear, rather than Kodio printing to the console unprompted.
 
 Enable logging at application startup with the built-in platform console writer:
 
@@ -81,7 +81,7 @@ Kodio.configureLogging {
 }
 ```
 
-`platformLogWriter()` routes to Logcat on Android, NSLog on Apple platforms, the browser console on JS/Wasm, and stdout/stderr on JVM — the same API works uniformly across all targets.
+`platformLogWriter()` routes to Logcat on Android, NSLog on Apple platforms, the browser console on JS/Wasm, and stdout/stderr on JVM. The same API works across all targets.
 
 To stay silent (the default), do nothing, or explicitly disable:
 
@@ -106,7 +106,7 @@ See the [Logging](https://dosier.github.io/kodio/logging.html) docs page for ful
 
 ## Documentation
 
-📚 **[dosier.github.io/kodio](https://dosier.github.io/kodio/)**
+**[dosier.github.io/kodio](https://dosier.github.io/kodio/)**
 
 - [Getting Started](https://dosier.github.io/kodio/getting-started.html)
 - [Installation](https://dosier.github.io/kodio/installation.html)

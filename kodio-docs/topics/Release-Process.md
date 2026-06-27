@@ -61,19 +61,19 @@ gh run list --branch master --limit 3
 
 There are three files that hold version references:
 
-**`gradle.properties`** — the Gradle build version (used for local dev; CI overrides from the tag):
+**`gradle.properties`**: the Gradle build version (used for local dev; CI overrides from the tag):
 
 ```properties
 kodio.version=X.Y.Z
 ```
 
-**`kodio-docs/v.list`** — the Writerside docs variable (all `%kodio-version%` placeholders in Installation, Getting Started, etc. resolve from this):
+**`kodio-docs/v.list`**: the Writerside docs variable (all `%kodio-version%` placeholders in Installation, Getting Started, etc. resolve from this):
 
 ```xml
 <var name="kodio-version" value="X.Y.Z"/>
 ```
 
-**`README.md`** — the installation section has hardcoded version strings for all four artifacts. Update each `implementation(...)` line to the new version.
+**`README.md`**: the installation section has hardcoded version strings for all four artifacts. Update each `implementation(...)` line to the new version.
 
 Update all three to the new release version.
 
@@ -142,7 +142,7 @@ Confirm:
 
 Artifacts appear on Maven Central after Sonatype processing (can take 15-30 minutes):
 
-- [search.maven.org — space.kodio:core](https://search.maven.org/search?q=g:space.kodio)
+- [search.maven.org: space.kodio:core](https://search.maven.org/search?q=g:space.kodio)
 - [central.sonatype.com](https://central.sonatype.com/artifact/space.kodio/core)
 
 ### 9. Post-release (optional)

@@ -25,7 +25,7 @@ below 35.
 - [ ] Update README and Writerside dependency examples to `0.1.5`.
 - [ ] Commit the version bump and documentation updates.
 - [ ] `git push origin master`.
-- [ ] `git tag v0.1.5 && git push origin v0.1.5` — `publish.yml` runs CI,
+- [ ] `git tag v0.1.5 && git push origin v0.1.5`. `publish.yml` runs CI,
       then publishes to Maven Central.
 - [ ] Once `publish` is green, verify the artifacts appear on Maven Central:
       `space.kodio:core:0.1.5`,

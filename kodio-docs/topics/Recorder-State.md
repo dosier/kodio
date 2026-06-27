@@ -7,11 +7,11 @@
 <p><b>Compose state holder</b> for recording with automatic permission handling, live waveform data, and reactive UI updates.</p>
 </tldr>
 
-`RecorderState` is a Compose state holder that makes building recording UIs simple. It handles recording lifecycle, permission requests, error states, and provides live amplitude data for waveform visualizations.
+`RecorderState` is a Compose state holder for recording UIs. It handles recording lifecycle, permission requests, error states, and provides live amplitude data for waveform visualizations.
 
 ## Basic usage {id="basic"}
 
-Create a recording UI in just a few lines:
+Create a recording UI in a few lines:
 
 ```kotlin
 @Composable
@@ -42,7 +42,7 @@ val recorderState = rememberRecorderState(
 
 ## Waveform visualization {id="waveform"}
 
-`RecorderState` provides `liveAmplitudes`—a list of normalized amplitude values (0.0 to 1.0) updated in real-time during recording:
+`RecorderState` provides `liveAmplitudes`, a list of normalized amplitude values (0.0 to 1.0) updated in real-time during recording:
 
 ```kotlin
 if (recorderState.isRecording) {
@@ -106,7 +106,7 @@ recorderState.error?.let { error ->
 
 ## Complete example {id="complete"}
 
-Here's a full recording UI with permission handling, waveform, and error display:
+Full recording UI with permission handling, waveform, and error display:
 
 ```kotlin
 @Composable

@@ -57,7 +57,7 @@ kotlin {
 
 ## Record and play audio {id="record-and-play"}
 
-With Kodio, you can record audio and play it back with just a few lines of code. The API is designed to be intuitive and follows Kotlin idioms like coroutines and extension functions.
+With Kodio, you can record audio and play it back in a few lines of code. The API follows Kotlin idioms like coroutines and extension functions.
 
 ```kotlin
 // Record 5 seconds of audio
@@ -78,12 +78,12 @@ Kodio supports all major Kotlin Multiplatform targets:
 
 | Platform | Status | Notes |
 |----------|--------|-------|
-| 🤖 Android | ✅ Stable | Requires `Kodio.initialize()` |
-| 🍎 iOS | ✅ Stable | Requires Info.plist entry |
-| 🍏 macOS | ✅ Stable | Requires entitlements |
-| ☕ JVM | ✅ Stable | No setup required |
-| 🌐 JS | ✅ Stable | HTTPS required |
-| 🔮 Wasm | ✅ Stable | HTTPS required |
+| Android | Stable | Requires `Kodio.initialize()` |
+| iOS | Stable | Requires Info.plist entry |
+| macOS | Stable | Requires entitlements |
+| JVM | Stable | No setup required |
+| JS | Stable | HTTPS required |
+| Wasm | Stable | HTTPS required |
 
 > For platform-specific setup instructions, see [Platform Setup](Platform-Setup.md).
 > 

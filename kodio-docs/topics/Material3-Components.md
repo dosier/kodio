@@ -4,10 +4,10 @@
 <primary-label ref="material3"/>
 
 <tldr>
-<p><b>Pre-built UI</b>: Drop-in Material 3 buttons, dialogs, and indicators for audio recording and playback.</p>
+<p><b>Pre-built UI</b>: Material 3 buttons, dialogs, and indicators for audio recording and playback.</p>
 </tldr>
 
-The `compose-material3` module provides ready-to-use Material 3 components that work out of the box with `RecorderState` and `PlayerState`.
+The `compose-material3` module provides ready-to-use Material 3 components for `RecorderState` and `PlayerState`.
 
 ## Add the dependency {id="dependency"}
 
@@ -43,9 +43,9 @@ RecordAudioButton(
 ```
 
 The button automatically displays:
-- 🎙️ **Microphone icon** when idle
-- ⏹️ **Stop icon** while recording  
-- ⏳ **Loading indicator** while processing
+- **Microphone icon** when idle
+- **Stop icon** while recording
+- **Loading indicator** while processing
 
 ## PlayAudioButton {id="play-button"}
 
@@ -64,9 +64,9 @@ PlayAudioButton(
 ```
 
 The button shows:
-- ▶️ **Play icon** when ready or paused
-- ⏸️ **Pause icon** while playing
-- 🔄 **Replay icon** when finished
+- **Play icon** when ready or paused
+- **Pause icon** while playing
+- **Replay icon** when finished
 
 ## AudioPermissionButton {id="permission-button"}
 
@@ -102,7 +102,7 @@ The dialog automatically formats error messages based on the error type:
 
 ## Complete example {id="complete"}
 
-Here's a full recording UI using all Material 3 components:
+Full recording UI using all Material 3 components:
 
 ```kotlin
 @Composable

@@ -7,7 +7,7 @@
 <p><b>Exhaustive error handling</b>: Use Kotlin's <code>when</code> expression with the sealed <code>AudioError</code> hierarchy.</p>
 </tldr>
 
-Kodio uses a sealed class hierarchy for errors, enabling exhaustive `when` expressions and pattern matching. This ensures you handle all possible error cases at compile time.
+Kodio uses a sealed class hierarchy for errors, so you can write exhaustive `when` expressions and catch missing cases at compile time.
 
 ## Error types {id="error-types"}
 

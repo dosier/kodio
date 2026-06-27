@@ -7,7 +7,7 @@
 <p><b>Save and load audio files</b> with <code>recording.saveAs()</code> and <code>AudioRecording.fromFile()</code> / <code>fromBytes()</code> / <code>fromSource()</code>.</p>
 </tldr>
 
-Kodio supports reading and writing audio files in common container formats. The API is designed to work across all Kotlin Multiplatform targets, including platforms without filesystem access.
+Kodio supports reading and writing audio files in common container formats. The API works across all Kotlin Multiplatform targets, including platforms without filesystem access.
 
 ## Supported formats {id="formats"}
 
@@ -42,7 +42,7 @@ val buffer = audioFlow.collectAsBuffer(AudioFileFormat.Wav)
 
 ## Loading audio files {id="loading"}
 
-Kodio provides three ways to load audio files, covering every KMP platform.
+Kodio provides three ways to load audio files, for all KMP platforms.
 
 ### From Compose resources or byte arrays {id="from-bytes"}
 

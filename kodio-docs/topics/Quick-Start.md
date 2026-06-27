@@ -34,7 +34,7 @@ val recording = Kodio.record { recorder ->
 
 ## Record with automatic cleanup {id="with-cleanup"}
 
-Use Kotlin's `use` extension to ensure resources are released even if something goes wrong:
+Use Kotlin's `use` extension so resources are released even if something goes wrong:
 
 ```kotlin
 Kodio.recorder().use { recorder ->
@@ -85,7 +85,7 @@ recording.saveAs(Path("my-recording.wav"))
 
 ## Compose UI {id="compose-ui"}
 
-Build a recording UI with just a few lines:
+Build a recording UI in a few lines:
 
 ```kotlin
 @Composable
@@ -115,10 +115,10 @@ Choose the right quality for your use case:
 
 | Preset | Sample Rate | Channels | Best for |
 |--------|-------------|----------|----------|
-| 🎤 `Voice` | 16 kHz | Mono | Speech, voice memos |
-| 🎵 `Standard` | 44.1 kHz | Mono | General audio |
-| 🎧 `High` | 48 kHz | Stereo | Music, podcasts |
-| 🎚️ `Lossless` | 96 kHz | Stereo, 24-bit | Studio recording |
+| `Voice` | 16 kHz | Mono | Speech, voice memos |
+| `Standard` | 44.1 kHz | Mono | General audio |
+| `High` | 48 kHz | Stereo | Music, podcasts |
+| `Lossless` | 96 kHz | Stereo, 24-bit | Studio recording |
 
 ```kotlin
 Kodio.record(duration = 5.seconds, quality = AudioQuality.Voice)
@@ -127,7 +127,7 @@ Kodio.record(duration = 5.seconds, quality = AudioQuality.High)
 
 <seealso style="cards">
     <category ref="core-api">
-        <a href="Recording.md" summary="Deep dive into recording APIs">Recording</a>
+        <a href="Recording.md" summary="Recording APIs">Recording</a>
         <a href="Playback.md" summary="Playback controls and options">Playback</a>
     </category>
     <category ref="compose">

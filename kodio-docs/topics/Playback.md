@@ -7,11 +7,11 @@
 <p><b>Play audio</b> with <code>recording.play()</code> for simple playback or <code>Kodio.player()</code> for full control.</p>
 </tldr>
 
-Kodio provides flexible audio playback APIs, from a simple one-liner to a full-featured `Player` class with pause, resume, and device selection.
+Kodio provides several playback APIs, from `recording.play()` to a `Player` class with pause, resume, and device selection.
 
 ## Simple playback {id="simple"}
 
-The easiest way to play audio is directly on a recording. This suspends until playback completes:
+To play audio, call `play()` on a recording. This suspends until playback completes:
 
 ```kotlin
 recording.play()
@@ -42,7 +42,7 @@ The lambda receives a `Player` instance that gives you full control over playbac
 
 ## Using Player directly {id="player"}
 
-For maximum flexibility, create a `Player` instance directly. This is useful for:
+For more control, create a `Player` instance directly. This is useful for:
 - Loading different recordings into the same player
 - Managing the player's lifecycle explicitly
 - Building custom playback UIs
@@ -116,7 +116,7 @@ Continue playback after pausing.
 Stop playback and reset to the beginning.
 </def>
 <def title="toggle()">
-Play if stopped/paused, pause if playing. Convenient for single-button UIs.
+Play if stopped/paused, pause if playing. Useful for single-button UIs.
 </def>
 <def title="release()">
 Release all resources. Called automatically when using <code>use {}</code>.
