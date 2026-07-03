@@ -5,17 +5,7 @@ import android.media.AudioFormat as AndroidAudioFormat
 
 /* ---------------- Defaults ---------------- */
 
-val DefaultAndroidRecordingAudioFormat = AudioFormat(
-    sampleRate = 48000,
-    channels = Channels.Mono,
-    encoding = SampleEncoding.PcmInt(
-        bitDepth = IntBitDepth.Sixteen,
-        endianness = Endianness.Little,
-        layout = SampleLayout.Interleaved,
-        signed = true,
-        packed = true
-    )
-)
+val DefaultAndroidRecordingAudioFormat = DefaultRecordingInt16
 
 /* ---------------- Channel masks ---------------- */
 

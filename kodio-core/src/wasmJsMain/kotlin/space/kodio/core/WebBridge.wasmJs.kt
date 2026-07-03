@@ -4,7 +4,6 @@ package space.kodio.core
 
 import kotlin.js.ExperimentalWasmJsInterop
 import kotlin.js.JsAny
-import kotlin.js.JsArray
 import kotlin.js.toJsString
 import js.buffer.ArrayBuffer
 import js.buffer.ArrayBufferLike
@@ -77,9 +76,6 @@ internal actual fun FloatArray.toJsFloat32Array(): Float32Array<ArrayBuffer> {
 @Suppress("unused")
 private fun newJsFloat32Array(length: Int): Float32Array<ArrayBuffer> =
     js("new Float32Array(length)")
-
-actual fun <T : JsAny?> JsArray<T>.toList(): List<T> =
-    this.toArray().toList()
 
 actual fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode =
     AudioWorkletNode(context, name.toJsString().unsafeCast<AudioWorkletProcessorName>())

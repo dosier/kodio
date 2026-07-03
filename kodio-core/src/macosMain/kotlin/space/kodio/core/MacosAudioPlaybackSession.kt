@@ -86,11 +86,12 @@ class MacosAudioPlaybackSession(
         logger.debug { "playBlocking: input=${audioFlow.format}, output=$outputFormat" }
         
         // Fast mono-to-stereo conversion (bypasses slow BigDecimal convertAudio)
-        val playbackFlow = if (audioFlow.format.channels == Channels.Mono && outputFormat?.channels == Channels.Stereo) {
+        val stereoOutputFormat = outputFormat?.takeIf { it.channels == Channels.Stereo }
+        val playbackFlow = if (audioFlow.format.channels == Channels.Mono && stereoOutputFormat != null) {
             logger.debug { "Doing fast mono-to-stereo conversion" }
             val bytesPerSample = audioFlow.format.bytesPerSample
             AudioFlow(
-                format = outputFormat!!,
+                format = stereoOutputFormat,
                 data = audioFlow.map { chunk ->
                     // Duplicate each sample for left and right channels
                     val stereo = ByteArray(chunk.size * 2)

@@ -7,6 +7,7 @@ import platform.AVFAudio.currentRoute
 import space.kodio.core.security.AudioPermissionDeniedException
 import space.kodio.core.security.AudioPermissionManager
 import space.kodio.core.IosAudioPermissionManager
+import space.kodio.core.util.namedLogger
 
 /**
  * IOS implementation for [AudioSystem].
@@ -14,6 +15,8 @@ import space.kodio.core.IosAudioPermissionManager
  * @see IosAudioPlaybackSession for playback session implementation.
  * @see IosAudioRecordingSession for recording session implementation.
  */
+private val logger = namedLogger("IosAudioSystem")
+
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
     private val audioSession get() = AVAudioSession.sharedInstance()
@@ -35,7 +38,8 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
                     }
                     ?: emptyList()
             }
-        } catch (_: AudioPermissionDeniedException) {
+        } catch (e: AudioPermissionDeniedException) {
+            logger.warn(e) { "Cannot list input devices: microphone permission denied" }
             emptyList()
         }
     }

@@ -76,8 +76,12 @@ abstract class AVAudioRecordingSession(
             if (buffer == null) return@installTapOnBus
             val bufferInTargetFormat = converter.convert(buffer, resolvedAVFormat)
             val bufferData = bufferInTargetFormat.toByteArray()
-            if (bufferData != null)
-                channel.trySend(bufferData)
+            if (bufferData != null) {
+                val sendResult = channel.trySend(bufferData)
+                if (sendResult.isFailure) {
+                    log.warn { "Failed to emit ${bufferData.size} bytes" }
+                }
+            }
         }
 
         log.info { "Starting audio engine" }

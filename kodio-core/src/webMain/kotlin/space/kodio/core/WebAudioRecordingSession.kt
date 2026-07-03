@@ -87,7 +87,10 @@ class WebAudioRecordingSession(
                     logger.debug { "Chunk #$chunkCount: samples=${pcmData.length}, range=[$min, $max]" }
                 }
                 val byteData = pcmData.encodeAs16BitPcmByteArray()
-                channel.trySend(byteData)
+                val sendResult = channel.trySend(byteData)
+                if (sendResult.isFailure) {
+                    logger.warn { "Failed to emit ${byteData.size} bytes" }
+                }
             } catch (e: Throwable) {
                 logger.error(e) { "Worklet message handling failed" }
             }

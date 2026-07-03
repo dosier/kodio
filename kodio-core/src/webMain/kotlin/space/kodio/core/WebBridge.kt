@@ -29,8 +29,6 @@ expect val microphonePermissionDescriptor: PermissionDescriptor
  */
 internal expect fun FloatArray.toJsFloat32Array(): Float32Array<ArrayBuffer>
 
-expect fun <T : JsAny?> JsArray<T>.toList(): List<T>
-
 expect fun createCodeBlobUrl(code: String): String
 expect fun <B : ArrayBufferLike> Float32Array<B>.encodeAs16BitPcmByteArray(): ByteArray
 
@@ -38,3 +36,6 @@ expect fun createAudioContextOptions(latencyHint: AudioContextLatencyCategory, s
 expect fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStreamConstraints
 expect fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints
 expect fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode
+
+fun <T : JsAny?> JsArray<T>.toList(): List<T> =
+    this.toArray().toList()

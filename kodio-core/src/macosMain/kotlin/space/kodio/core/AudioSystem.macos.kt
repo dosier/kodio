@@ -5,6 +5,7 @@ import platform.CoreAudio.kAudioObjectPropertyScopeInput
 import platform.CoreAudio.kAudioObjectPropertyScopeOutput
 import space.kodio.core.security.AudioPermissionDeniedException
 import space.kodio.core.security.AudioPermissionManager
+import space.kodio.core.util.namedLogger
 
 /**
  * macOS implementation for [AudioSystem].
@@ -16,6 +17,8 @@ import space.kodio.core.security.AudioPermissionManager
  * @see MacosAudioPlaybackSession
  * @see MacosAudioRecordingSession
  */
+private val logger = namedLogger("MacosAudioSystem")
+
 actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
 
     override val permissionManager: AudioPermissionManager
@@ -39,7 +42,8 @@ actual val SystemAudioSystem: AudioSystem = object : SystemAudioSystemImpl() {
                         )
                     }
             }
-        } catch (_: AudioPermissionDeniedException) {
+        } catch (e: AudioPermissionDeniedException) {
+            logger.warn(e) { "Cannot list input devices: microphone permission denied" }
             emptyList()
         }
     }

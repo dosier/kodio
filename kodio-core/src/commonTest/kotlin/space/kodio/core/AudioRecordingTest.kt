@@ -245,13 +245,13 @@ class AudioRecordingTest {
     }
 
     @Test
-    fun `equals returns true for same format and size`() {
+    fun `equals compares content not just format and size`() {
         val r1 = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
         val r2 = AudioRecording.fromBytes(testFormat, byteArrayOf(5, 6, 7, 8))
+        val r3 = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
 
-        // Note: Current implementation considers same format + size as equal
-        // This is documented as a performance trade-off
-        assertEquals(r1, r2)
+        assertFalse(r1 == r2)
+        assertEquals(r1, r3)
     }
 
     @Test

@@ -20,7 +20,10 @@ kodioPublishing {
 
 kotlin {
     jvm()
-    jvmToolchain(21)
+    // JDK 22 finalized the Foreign Function and Memory API (JEP 454) used by the
+    // native macOS path. Building on 22+ compiles those calls as a final (non-preview)
+    // API. Consumers of the jvm artifact therefore need a Java 22+ runtime.
+    jvmToolchain(22)
     androidLibrary {
         namespace = "space.kodio.core"
         compileSdk = libs.versions.android.compileSdk.get().toInt()

@@ -32,7 +32,7 @@ sealed class MacosAudioQueueProperty<V : CVariable, T>(val id: AudioQueuePropert
     data object CurrentDevice : MacosAudioQueueProperty<CFStringRefVar, String>(kAudioQueueProperty_CurrentDevice) {
 
         override fun readValue(variable: CFStringRefVar): String =
-            memScoped { cfStringToKString(variable.value!!) }
+            memScoped { cfStringToKString(requireNotNull(variable.value) { "AudioQueue CurrentDevice property returned null CFString" }) }
 
         override fun alloc(scope: MemScope, value: String): CFStringRefVar =
             scope.alloc<CFStringRefVar>().apply { this.value = value.toCFString() }

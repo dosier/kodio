@@ -11,7 +11,7 @@ public expect val SystemAudioSystem: AudioSystem
  */
 public sealed interface AudioSystem {
 
-    val permissionManager: AudioPermissionManager get() = TODO()
+    val permissionManager: AudioPermissionManager
 
     /** Lists all available audio input devices. */
     suspend fun listInputDevices(): List<AudioDevice.Input>

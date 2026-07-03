@@ -2,12 +2,15 @@ package space.kodio.core
 
 import space.kodio.core.security.AudioPermissionDeniedException
 import space.kodio.core.security.AudioPermissionManager
+import space.kodio.core.util.namedLogger
 import web.mediadevices.MediaDeviceInfo
 import web.mediadevices.MediaDeviceKind
 import web.mediadevices.audioinput
 import web.mediadevices.audiooutput
 import web.mediadevices.enumerateDevices
 import web.navigator.navigator
+
+private val logger = namedLogger("WebAudioSystem")
 
 open class WebAudioSystem : SystemAudioSystemImpl() {
 
@@ -48,7 +51,8 @@ open class WebAudioSystem : SystemAudioSystemImpl() {
                     .toList()
                     .filter { it.kind == type }
             }
-        } catch (_: AudioPermissionDeniedException) {
+        } catch (e: AudioPermissionDeniedException) {
+            logger.warn(e) { "Cannot enumerate $type devices: microphone permission denied" }
             emptyList()
         }
     }

@@ -5,11 +5,7 @@ import space.kodio.core.util.namedLogger
 
 private val log = namedLogger("AVAudioFormatExt")
 
-val DefaultAppleRecordingAudioFormat = AudioFormat(
-    sampleRate = 48000,
-    channels = Channels.Mono,
-    encoding = SampleEncoding.PcmInt(IntBitDepth.Sixteen, Endianness.Little, SampleLayout.Interleaved, signed = true)
-)
+val DefaultAppleRecordingAudioFormat = DefaultRecordingInt16
 
 /**
  * Converts this common [AudioFormat] to an [AVAudioFormat] instance.

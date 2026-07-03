@@ -86,7 +86,8 @@ internal fun AVAudioConverter.convert(buffer: AVAudioPCMBuffer, targetFormat: AV
 @OptIn(ExperimentalForeignApi::class)
 internal fun AVAudioPCMBuffer.toByteArray(): ByteArray? {
     val buffer = audioBufferList?.pointed?.mBuffers?.pointed
-    val dataSize = frameLength.toInt() * format.streamDescription!!.pointed.mBytesPerFrame.toInt()
+    val streamDescription = format.streamDescription ?: return null
+    val dataSize = frameLength.toInt() * streamDescription.pointed.mBytesPerFrame.toInt()
     val data = buffer?.mData?.readBytes(dataSize)
     return data
 }

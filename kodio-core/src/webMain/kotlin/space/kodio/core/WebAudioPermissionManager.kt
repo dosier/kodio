@@ -20,7 +20,8 @@ open class WebAudioPermissionManager : AudioPermissionManager() {
             val stream = navigator.mediaDevices.getUserMedia(constraints)
             stream.getTracks().toList().forEach { it.stop() }
             setState(State.Granted)
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            logger.warn(e) { "Microphone permission request failed" }
             setState(State.Denied)
         }
         registerOnChangeListener()
