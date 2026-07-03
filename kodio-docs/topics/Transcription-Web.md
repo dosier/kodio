@@ -19,21 +19,19 @@ Browsers refuse the cross-origin request to `api.openai.com` because:
 2. Embedding an API key in browser requests would leak it to anyone who opens
    DevTools.
 
-Affects both live recording transcription and file upload transcription on JS
-and WasmJS targets. Native targets (JVM, Android, iOS, macOS) are unaffected
-because their HTTP stacks are not bound by the browser CORS policy.
+This affects live recording transcription on JS and WasmJS targets. Native targets (JVM, Android, iOS, macOS) are unaffected because their HTTP stacks are not bound by the browser CORS policy.
 
 ## The fix: configure `endpointUrl` {id="endpoint"}
 
-`OpenAIWhisperEngine` (since `0.1.4`) accepts two new constructor parameters:
+`OpenAIWhisperEngine` accepts an optional `endpointUrl` and `additionalHeaders`:
 
 - `endpointUrl`: the URL the engine will POST audio chunks to. Defaults to
   OpenAI's public endpoint; override it to point at your backend.
-- `additionalHeaders`: extra headers appended to every request, e.g. an
+- `additionalHeaders`: extra headers appended to every request, for example an
   app-level token your backend uses to authenticate the call.
 
 When `endpointUrl` is overridden you can pass an empty `apiKey` and the engine
-will skip adding the `Authorization: Bearer …` header. Your backend should
+will skip adding the `Authorization: Bearer ...` header. Your backend should
 hold the OpenAI key.
 
 ```kotlin
@@ -45,8 +43,53 @@ val engine = OpenAIWhisperEngine(
 )
 
 recorder.audioFlow?.transcribe(engine, TranscriptionConfig(language = "en-US"))
-    ?.collect { result -> /* … */ }
+    ?.collect { result -> /* ... */ }
 ```
+
+## Live transcription {id="live-transcription"}
+
+Create an engine and pipe a live `AudioFlow` into it:
+
+```kotlin
+val engine = OpenAIWhisperEngine(apiKey = "sk-...")
+val recorder = Kodio.recorder()
+
+recorder.start()
+
+recorder.audioFlow?.transcribe(engine, TranscriptionConfig.Default)
+    ?.collect { result ->
+        when (result) {
+            is TranscriptionResult.Partial -> updateUI(result.text)
+            is TranscriptionResult.Final -> saveTranscript(result.text)
+            is TranscriptionResult.Error -> showError(result.message)
+        }
+    }
+
+recorder.stop()
+```
+
+`TranscriptionConfig` only exposes `language` (default `"en-US"`) and the `Default` preset.
+
+## Transcribing a saved recording {id="file-transcription"}
+
+There is no `Kodio.transcribe(file)` API. Load the recording, convert it to an `AudioFlow`, and pass it to the engine:
+
+```kotlin
+val recording = AudioRecording.fromBytes(wavBytes)
+val engine = OpenAIWhisperEngine(apiKey = "sk-...")
+
+recording.asFlow().let { flow ->
+    AudioFlow(recording.format, flow).transcribe(engine, TranscriptionConfig.Default)
+}.collect { result ->
+    when (result) {
+        is TranscriptionResult.Final -> println(result.text)
+        is TranscriptionResult.Error -> println(result.message)
+        else -> Unit
+    }
+}
+```
+
+On web, prefer posting file bytes to your backend proxy rather than calling OpenAI directly.
 
 ## Example proxy: Ktor server {id="ktor-proxy"}
 
@@ -91,15 +134,6 @@ fun main() {
 The same pattern works on Cloudflare Workers, Vercel/Netlify edge functions,
 or any other serverless runtime where you can hold a secret and forward
 a multipart POST.
-
-## File uploads {id="file-uploads"}
-
-`Kodio.transcribe(file, …)` is currently not wired to use `endpointUrl` from
-JS/WasmJS in the sample app. The straightforward path is to POST the
-`PlatformFile` bytes directly to your proxy from your own JS code, or call
-the engine's live recording flow with a one-shot `AudioFlow` produced from the
-file. See [GitHub issue #16](https://github.com/dosier/kodio/issues/16) for
-status updates.
 
 <seealso style="cards">
     <category ref="advanced">

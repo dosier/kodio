@@ -1,14 +1,20 @@
 # Kodio Project Rules
 
 ## Project Overview
-Kodio is a Kotlin Multiplatform (KMP) audio library with extensions for Compose UI and transcription (OpenAI Whisper).
+Kodio is a Kotlin Multiplatform (KMP) audio library with extensions for Compose UI, Ktor streaming, and transcription (OpenAI Whisper).
 
 ## Repository Structure
 - `kodio-core/` - Core audio library
-- `kodio-extensions/compose/` - Compose UI components
+- `kodio-extensions/compose/` - Compose UI state holders and waveform
 - `kodio-extensions/compose-material3/` - Material 3 themed components
+- `kodio-extensions/ktor/` - Ktor WebSocket streaming of AudioFlow
 - `kodio-extensions/transcription/` - Audio transcription (OpenAI Whisper)
-- `kodio-sample-app/` - Demo application
+- `kodio-native/audio-permissions/` - Native permission handling
+- `kodio-native/audio-processing/` - Native audio processing utilities
+- `kodio-benchmark/` - Performance benchmarks
+- `kodio-sample-app/` - KMP sample library (desktop, Android library target, iOS, JS, Wasm)
+- `kodio-sample-app-android/` - Android application wrapper for the sample
+- `kodio-docs/` - Writerside documentation
 - `build-logic/` - Shared Gradle convention plugins
 
 ## GitHub CLI Commands
@@ -47,23 +53,18 @@ gh pr merge <pr-number>
 
 ## Release Process
 
-### Tag-Based Releases
-Releases are automated via GitHub Actions when you push a version tag:
+See [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for the full release procedure.
+
+Releases are automated via GitHub Actions when you push a version tag to `master`:
 
 ```bash
-# 1. Ensure you're on master with latest changes
 git checkout master
 git pull origin master
-
-# 2. Create and push a version tag
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-This automatically:
-1. Runs the full test suite
-2. Creates a GitHub Release with auto-generated changelog
-3. Publishes all artifacts to Maven Central
+This triggers CI, creates a GitHub Release, and publishes all artifacts to Maven Central.
 
 ### Tag Naming Convention
 - Release versions: `v1.0.0`, `v0.2.0`, `v1.2.3`
@@ -97,10 +98,20 @@ gh release view <tag>
 ## CI/CD Workflows
 
 ### Workflows
-- `.github/workflows/gradle.yml` - CI tests (jvmTest)
-- `.github/workflows/publish.yml` - Tag-triggered release & publish
+- `.github/workflows/gradle.yml` - CI matrix across platforms
+- `.github/workflows/publish.yml` - Tag-triggered release and publish
 - `.github/workflows/release-drafter.yml` - Auto-draft release notes
 - `.github/workflows/docs.yml` - Build and deploy docs to GitHub Pages
+
+### CI Matrix Jobs (gradle.yml)
+| Job ID | Runner | Gradle tasks |
+|--------|--------|--------------|
+| `linux-jvm` | ubuntu-latest | `jvmTest` |
+| `android-unit` | ubuntu-latest | `testAndroidHostTest` |
+| `web` | ubuntu-latest | `jsBrowserTest wasmJsBrowserTest` |
+| `macos-native` | macos-latest | `macosArm64Test` |
+| `ios-sim` | macos-latest | `iosSimulatorArm64Test` |
+| `compile-samples` | ubuntu-latest | `:kodio-sample-app:compileKotlinDesktop :kodio-sample-app:compileAndroidMain :kodio-benchmark:compileKotlinJvm` |
 
 ### CI Skip Behavior
 Tests are automatically skipped for documentation-only changes:
@@ -144,7 +155,7 @@ Tests always run for:
 
 ## Logging
 
-Kodio uses its own multiplatform logging facade in `space.kodio.core.logging`. It is **silent by default** — no output until the consumer configures it.
+Kodio uses its own multiplatform logging facade in `space.kodio.core.logging`. It is **silent by default**: no output until the consumer configures it.
 
 Configure at startup via `Kodio.configureLogging { }` (or `KodioLogging.configure { }`):
 
@@ -158,7 +169,7 @@ Kodio.configureLogging {
 **Internal convention (library code):**
 - One logger per file/component: `private val logger = namedLogger("ComponentName")` in kodio-core, or `kodioLogger("ComponentName")` in extension modules.
 - Level guidance: `trace` = very verbose per-sample/per-chunk; `debug` = routine diagnostics; `info` = lifecycle milestones; `warn` = recoverable problems; `error(throwable){}` = failures/caught exceptions.
-- Never use `println` or `printStackTrace()` in library code — always go through the facade.
+- Never use `println` or `printStackTrace()` in library code. Always go through the facade.
 
 ## Transcription Module
 

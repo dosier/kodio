@@ -19,7 +19,7 @@ fun VoiceRecorder() {
     val recorderState = rememberRecorderState()
 
     Button(onClick = { recorderState.toggle() }) {
-        Text(if (recorderState.isRecording) "⏹ Stop" else "🎙 Record")
+        Text(if (recorderState.isRecording) "Stop" else "Record")
     }
 }
 ```
@@ -53,7 +53,7 @@ if (recorderState.isRecording) {
 }
 ```
 
-> See [AudioWaveform](Audio-Waveform.md) for customization options like colors, bar width, and gradients.
+> See [AudioWaveform](Audio-Waveform.md) for customization options like colors, styles, and gradients.
 >
 {style="tip"}
 
@@ -69,7 +69,7 @@ fun RecorderWithPermission() {
     if (recorderState.needsPermission) {
         // Show permission request UI
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("🎤 Microphone access required")
+            Text("Microphone access required")
             Button(onClick = { recorderState.requestPermission() }) {
                 Text("Grant Access")
             }
@@ -124,7 +124,7 @@ fun CompleteRecorder() {
     ) {
         // Permission check
         if (recorderState.needsPermission) {
-            Text("🎤 Microphone access needed")
+            Text("Microphone access needed")
             Spacer(Modifier.height(8.dp))
             Button(onClick = { recorderState.requestPermission() }) {
                 Text("Grant Access")
@@ -137,7 +137,7 @@ fun CompleteRecorder() {
             AudioWaveform(
                 amplitudes = recorderState.liveAmplitudes,
                 modifier = Modifier.fillMaxWidth().height(80.dp),
-                barColor = MaterialTheme.colorScheme.primary
+                colors = WaveformColors.solidColor(MaterialTheme.colorScheme.primary)
             )
             Spacer(Modifier.height(16.dp))
         }
@@ -152,7 +152,7 @@ fun CompleteRecorder() {
                     MaterialTheme.colorScheme.primary
             )
         ) {
-            Text(if (recorderState.isRecording) "⏹ Stop Recording" else "🎙 Start Recording")
+            Text(if (recorderState.isRecording) "Stop Recording" else "Start Recording")
         }
 
         // Error dialog

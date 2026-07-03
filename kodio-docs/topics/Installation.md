@@ -36,6 +36,7 @@ kodio-core = { module = "space.kodio:core", version.ref = "kodio" }
 kodio-compose = { module = "space.kodio.extensions:compose", version.ref = "kodio" }
 kodio-compose-material3 = { module = "space.kodio.extensions:compose-material3", version.ref = "kodio" }
 kodio-transcription = { module = "space.kodio.extensions:transcription", version.ref = "kodio" }
+kodio-ktor = { module = "space.kodio.extensions:ktor", version.ref = "kodio" }
 ```
 
 </step>
@@ -94,6 +95,9 @@ commonMain.dependencies {
     
     // Audio transcription (OpenAI Whisper)
     implementation(libs.kodio.transcription)
+    
+    // Ktor WebSocket streaming for AudioFlow
+    implementation(libs.kodio.ktor)
 }
 ```
 
@@ -113,6 +117,9 @@ commonMain.dependencies {
     
     // Audio transcription (OpenAI Whisper)
     implementation("space.kodio.extensions:transcription:%kodio-version%")
+    
+    // Ktor WebSocket streaming for AudioFlow
+    implementation("space.kodio.extensions:ktor:%kodio-version%")
 }
 ```
 
@@ -127,6 +134,7 @@ commonMain.dependencies {
 | `compose` | `rememberRecorderState`, `rememberPlayerState`, `AudioWaveform` | Compose Multiplatform apps |
 | `compose-material3` | `RecordAudioButton`, `PlayAudioButton`, `ErrorDialog` | Quick Material 3 UIs |
 | `transcription` | `OpenAIWhisperEngine`, `AudioFlow.transcribe()` | Speech-to-text transcription |
+| `ktor` | `sendOverWebSocket`, `receiveAudioFlowFromWebSocket` | Stream `AudioFlow` over WebSockets |
 
 ## Verify installation {id="verify"}
 

@@ -51,11 +51,14 @@ kodio/
 │   └── src/main/kotlin/      # Convention plugin sources
 ├── kodio-core/               # Core audio library (recording, playback, formats)
 ├── kodio-extensions/
-│   ├── compose/              # Compose UI components
+│   ├── compose/              # Compose UI state holders and waveform
 │   ├── compose-material3/    # Material 3 themed components
+│   ├── ktor/                 # Ktor WebSocket streaming of AudioFlow
 │   └── transcription/        # Audio transcription (OpenAI Whisper)
 ├── kodio-native/             # Native platform code (permissions, processing)
-├── kodio-sample-app/         # Demo application
+├── kodio-benchmark/          # Performance benchmarks
+├── kodio-sample-app/         # KMP sample library (desktop, Android, iOS, web)
+├── kodio-sample-app-android/ # Android application wrapper for the sample
 └── kodio-docs/               # Documentation (Writerside)
 ```
 
@@ -102,6 +105,7 @@ Kodio uses [Vanniktech Maven Publish Plugin](https://github.com/vanniktech/gradl
 | Compose | `space.kodio.extensions:compose` |
 | Compose Material3 | `space.kodio.extensions:compose-material3` |
 | Transcription | `space.kodio.extensions:transcription` |
+| Ktor | `space.kodio.extensions:ktor` |
 
 ### Version Management
 
@@ -119,53 +123,9 @@ To publish with a custom version:
 
 ### Creating a Release (Tag-Based)
 
-Releases are automated via GitHub Actions when you push a version tag:
+See **[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)** for the full release procedure, including version bumps, CI matrix verification, tagging, and artifact checks.
 
-```bash
-# 1. Make sure all changes are committed and pushed to main
-git checkout master
-git pull origin master
-
-# 2. Create and push a version tag
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-This will automatically:
-1. Run the full test suite on all platforms
-2. Create a GitHub Release with auto-generated changelog
-3. Publish all artifacts to Maven Central
-
-**Tag Format:**
-- Release versions: `v1.0.0`, `v0.2.0`, `v1.2.3`
-- Pre-releases: `v1.0.0-alpha`, `v1.0.0-beta.1`, `v1.0.0-rc.1` (automatically marked as prerelease)
-
-### Release Drafter (Auto Changelog)
-
-The repository uses [Release Drafter](https://github.com/release-drafter/release-drafter) to automatically draft release notes as PRs are merged. This creates a draft release that accumulates changes until you're ready to publish.
-
-**How it works:**
-1. Every merged PR is automatically categorized based on labels
-2. Draft release notes are updated with each merge
-3. When ready to release, you can review the draft in GitHub Releases
-4. Push a tag to finalize and publish
-
-**PR Labels for Changelog Categories:**
-
-| Label | Category | Version Bump |
-|-------|----------|--------------|
-| `feature`, `enhancement` | Features | Minor |
-| `fix`, `bugfix`, `bug` | Bug Fixes | Patch |
-| `breaking`, `breaking-change` | Breaking Changes | Major |
-| `chore`, `maintenance`, `dependencies` | Maintenance | Patch |
-| `documentation`, `docs` | Documentation | Patch |
-| `skip-changelog` | (excluded) | - |
-
-**Auto-labeling:** PRs are automatically labeled based on branch names:
-- `feature/*` → `feature`
-- `fix/*`, `bugfix/*` → `fix`
-- `chore/*` → `chore`
-- `docs/*` → `documentation`
+Releases are tag-driven: push a `v*` tag to `master` and `publish.yml` runs the CI matrix, creates a GitHub Release, and publishes all artifacts to Maven Central.
 
 ### Manual Publishing (Maintainers)
 

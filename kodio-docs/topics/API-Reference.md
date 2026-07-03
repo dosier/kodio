@@ -8,21 +8,22 @@ Quick reference for all Kodio APIs.
 
 ```kotlin
 // Recording
-Kodio.record(duration, quality?, device?)
-Kodio.record { recorder -> ... }
-Kodio.recorder(quality?, device?)
+suspend fun record(duration: Duration, quality: AudioQuality = Default, device: Input? = null): AudioRecording
+suspend fun <T> record(quality: AudioQuality = Default, device: Input? = null, block: suspend (Recorder) -> T): T
+fun recorder(quality: AudioQuality = Default, device: Input? = null): Recorder
 
 // Playback
-Kodio.play(recording, device?)
-Kodio.play(recording) { player -> ... }
-Kodio.player(device?)
+suspend fun play(recording: AudioRecording, device: Output? = null)
+suspend fun <T> play(recording: AudioRecording, device: Output? = null, block: suspend (Player) -> T): T
+suspend fun play(audioFlow: AudioFlow, device: Output? = null)
+fun player(device: Output? = null): Player
 
-// Devices
-Kodio.listInputDevices()
-Kodio.listOutputDevices()
+// Devices (suspend)
+suspend fun listInputDevices(): List<AudioDevice.Input>
+suspend fun listOutputDevices(): List<AudioDevice.Output>
 
 // Permissions
-Kodio.microphonePermission
+val microphonePermission: AudioPermissionManager
 ```
 
 ## Recorder {id="recorder"}
@@ -33,11 +34,12 @@ recorder.stop()
 recorder.toggle()
 recorder.reset()
 recorder.release()
-recorder.getRecording()
+suspend fun getRecording(): AudioRecording?
 
-recorder.isRecording
-recorder.hasRecording
-recorder.liveAudioFlow
+val isRecording: Boolean
+val hasRecording: Boolean
+val liveAudioFlow: Flow<ByteArray>?
+val audioFlow: AudioFlow?
 
 recorder.use { r -> ... }
 ```
@@ -45,19 +47,20 @@ recorder.use { r -> ... }
 ## Player {id="player"}
 
 ```kotlin
-player.load(recording)
+suspend fun load(recording: AudioRecording)
+suspend fun loadAudioFlow(audioFlow: AudioFlow)
 player.start()
 player.pause()
 player.resume()
 player.stop()
 player.toggle()
 player.release()
-player.awaitComplete()
+suspend fun awaitComplete()
 
-player.isPlaying
-player.isPaused
-player.isReady
-player.isFinished
+val isPlaying: Boolean
+val isPaused: Boolean
+val isReady: Boolean
+val isFinished: Boolean
 
 player.use { p -> ... }
 ```
@@ -65,17 +68,24 @@ player.use { p -> ... }
 ## AudioRecording {id="audio-recording"}
 
 ```kotlin
-recording.play()
-recording.saveAs(path)
-recording.toByteArray()
-recording.asFlow()
+suspend fun play()
+suspend fun saveAs(path: Path, fileFormat: AudioFileFormat = Wav)
+fun toByteArray(): ByteArray
+fun asFlow(defensiveCopy: Boolean = true): Flow<ByteArray>
 
-recording.format
-recording.calculatedDuration
-recording.sizeInBytes
+val format: AudioFormat
+val calculatedDuration: Duration
+val sizeInBytes: Long
 
-AudioRecording.fromBytes(format, data)
-AudioRecording.fromChunks(format, chunks)
+// Raw PCM
+fromBytes(format: AudioFormat, data: ByteArray)
+fromChunks(format: AudioFormat, chunks: List<ByteArray>, duration: Duration? = null)
+fromAudioFlow(audioFlow: AudioFlow, duration: Duration? = null)
+
+// Container files (space.kodio.core.io.files)
+fromBytes(bytes: ByteArray, fileFormat: AudioFileFormat = Wav)
+fromSource(source: Source, fileFormat: AudioFileFormat = Wav)
+fromFile(path: Path, fileSystem: FileSystem = SystemFileSystem)
 ```
 
 ## AudioQuality {id="audio-quality"}
@@ -91,30 +101,43 @@ AudioQuality.Lossless   // 96kHz, Stereo, 24-bit
 
 ```kotlin
 AudioError.PermissionDenied
-AudioError.DeviceNotFound
-AudioError.FormatNotSupported
-AudioError.DeviceError
+AudioError.DeviceNotFound(deviceId?)
+AudioError.FormatNotSupported(format?)
+AudioError.DeviceError(errorMessage, errorCause?)
 AudioError.NotInitialized
 AudioError.AlreadyRecording
 AudioError.AlreadyPlaying
 AudioError.NoRecordingData
-AudioError.Unknown
+AudioError.DeviceSelectionUnsupported(kind)
+AudioError.Unknown(originalCause)
 ```
 
 ## Compose {id="compose"}
 
 ```kotlin
-val recorderState = rememberRecorderState(quality?, device?)
-val playerState = rememberPlayerState(recording?, device?)
+rememberRecorderState(quality?, device?, liveWaveformGain?, onRecordingComplete?)
+rememberPlayerState(device?, onPlaybackComplete?)
+rememberPlayerState(recording, device?, onPlaybackComplete?)
 
-AudioWaveform(amplitudes, barColor?, brush?)
+AudioWaveform(amplitudes, modifier?, style?, colors?, progress?, onProgressChange?, animate?, animationSpec?)
 ```
 
 ## Material 3 {id="material3"}
 
 ```kotlin
-RecordAudioButton(isRecording, isProcessing, onClick)
-PlayAudioButton(isPlaying, isPaused, isReady, isFinished, onClick)
-AudioPermissionButton(onClick)
+RecordAudioButton(modifier?, state?, showWaveform?)
+PlayAudioButton(recording, modifier?, state?, showWaveform?)
+AudioPermissionButton(state, modifier?)
 ErrorDialog(error, onDismiss)
+```
+
+## Transcription {id="transcription"}
+
+```kotlin
+OpenAIWhisperEngine(apiKey, model?, httpClient?, chunkDurationSeconds?, endpointUrl?, additionalHeaders?)
+audioFlow.transcribe(engine, config = TranscriptionConfig.Default)
+recorder.transcribe(engine, config = TranscriptionConfig.Default)
+
+TranscriptionConfig(language = "en-US")
+TranscriptionConfig.Default
 ```

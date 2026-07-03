@@ -103,7 +103,7 @@ fun VoiceRecorder() {
         
         // Record button
         Button(onClick = { recorderState.toggle() }) {
-            Text(if (recorderState.isRecording) "⏹ Stop" else "🎙 Record")
+            Text(if (recorderState.isRecording) "Stop" else "Record")
         }
     }
 }

@@ -3,9 +3,9 @@
 <vars>
     <!-- Version numbers -->
     <var name="kodio-version" value="0.1.5"/>
-    <var name="kotlin-version" value="2.2.20"/>
-    <var name="compose-version" value="1.9.0"/>
-    <var name="coroutines-version" value="1.10.2"/>
+    <var name="kotlin-version" value="2.4.0"/>
+    <var name="compose-version" value="1.11.1"/>
+    <var name="coroutines-version" value="1.11.0"/>
     
     <!-- Maven coordinates -->
     <var name="maven-group" value="space.kodio"/>
@@ -13,6 +13,7 @@
     <var name="compose-artifact" value="compose"/>
     <var name="compose-material3-artifact" value="compose-material3"/>
     <var name="transcription-artifact" value="transcription"/>
+    <var name="ktor-artifact" value="ktor"/>
     
     <!-- Links -->
     <var name="github-repo" value="https://github.com/dosier/kodio"/>

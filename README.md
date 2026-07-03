@@ -1,5 +1,5 @@
 [![Maven Central](https://img.shields.io/maven-central/v/space.kodio/core?style=flat&logo=apachemaven&logoColor=white&label=Maven%20Central)](https://central.sonatype.com/artifact/space.kodio/core)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.2.20-7F52FF?style=flat&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.0-7F52FF?style=flat&logo=kotlin&logoColor=white)](https://kotlinlang.org)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=flat)](LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-4285F4?style=flat&logo=gitbook&logoColor=white)](https://dosier.github.io/kodio/)
 
@@ -27,6 +27,7 @@
 - **Permission Handling**: Built-in permission management
 - **File I/O**: Save and load WAV files
 - **Transcription**: Speech-to-text via OpenAI Whisper API
+- **Ktor Extension**: WebSocket streaming of `AudioFlow`
 
 ## Quick Start
 
@@ -61,8 +62,15 @@ dependencies {
     
     // Optional: Audio transcription (OpenAI Whisper)
     implementation("space.kodio.extensions:transcription:0.1.5")
+    
+    // Optional: Ktor WebSocket streaming of AudioFlow
+    implementation("space.kodio.extensions:ktor:0.1.5")
 }
 ```
+
+## Platform Notes
+
+The JVM target runs on Linux, macOS, and Windows via JavaSound. On macOS, an optional native CoreAudio path is available. On Windows, only the JavaSound path is supported; native macOS libraries are not bundled for Windows hosts.
 
 ## Logging
 
@@ -114,6 +122,7 @@ See the [Logging](https://dosier.github.io/kodio/logging.html) docs page for ful
 - [Recording](https://dosier.github.io/kodio/recording.html)
 - [Playback](https://dosier.github.io/kodio/playback.html)
 - [Compose Integration](https://dosier.github.io/kodio/recorder-state.html)
+- [Ktor Extension](https://dosier.github.io/kodio/ktor-extension.html)
 - [Logging](https://dosier.github.io/kodio/logging.html)
 
 ## License

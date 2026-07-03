@@ -38,8 +38,11 @@ Attempted to start playback when audio is already playing.
 <def title="NoRecordingData">
 Called <code>getRecording()</code> before any audio was recorded.
 </def>
+<def title="DeviceSelectionUnsupported">
+The current platform cannot pin a specific input or output device. Common on web when a non-null <code>device</code> is passed.
+</def>
 <def title="Unknown">
-Unexpected error. Check the <code>cause</code> property for details.
+Unexpected error. Check the <code>originalCause</code> property for details.
 </def>
 </deflist>
 
@@ -65,6 +68,9 @@ try {
         }
         is AudioError.AlreadyRecording -> {
             // Ignore or stop current recording
+        }
+        is AudioError.DeviceSelectionUnsupported -> {
+            showError("Device selection is not supported on this platform")
         }
         else -> {
             showError(e.message ?: "Recording failed")
@@ -155,6 +161,7 @@ fun RecorderWithPermissionFlow() {
 | `AlreadyPlaying` | Concurrent playback | Stop current playback first |
 | `FormatNotSupported` | Invalid format | Use supported format or preset |
 | `NoRecordingData` | Empty recording | Record before calling `getRecording()` |
+| `DeviceSelectionUnsupported` | Platform cannot select device | Omit the device parameter or catch and retry with default |
 | `DeviceError` | Hardware failure | Retry or report to user |
 | `Unknown` | Unexpected error | Log and report |
 

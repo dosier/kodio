@@ -1,6 +1,6 @@
 # Kodio Documentation
 
-This module contains the Kodio library documentation built with [JetBrains Writerside](https://www.jetbrains.com/writerside/).
+This directory contains the Kodio library documentation built with [JetBrains Writerside](https://www.jetbrains.com/writerside/).
 
 ## Structure
 
@@ -8,20 +8,23 @@ This module contains the Kodio library documentation built with [JetBrains Write
 kodio-docs/
 ├── writerside.cfg        # Main Writerside configuration
 ├── k.tree                # Table of contents / navigation
-├── v.list                # Variables (versions, etc.)
-├── c.list                # Categories
+├── v.list                # Variables (versions, URLs)
+├── c.list                # Custom elements
+├── labels.list           # Reusable labels
 ├── redirection-rules.xml # URL redirects
+├── build.gradle.kts      # Placeholder Gradle file (docs are IDE/CI built)
 ├── cfg/
 │   └── buildprofiles.xml # Build configuration
-├── topics/               # Documentation content
+├── topics/               # All documentation pages (flat directory)
 │   ├── Getting-Started.md
 │   ├── Quick-Start.md
 │   ├── Installation.md
 │   ├── Platform-Setup.md
-│   ├── core/            # Core API docs
-│   ├── compose/         # Compose integration docs
-│   └── advanced/        # Advanced topics
-└── images/              # Documentation images
+│   ├── Recording.md
+│   ├── Playback.md
+│   ├── ...               # See k.tree for the full list
+│   └── Release-Process.md
+└── images/               # Documentation images (e.g. kodio-architecture.svg)
 ```
 
 ## Local Development
@@ -35,7 +38,7 @@ kodio-docs/
 
 1. Open the Kodio project in IntelliJ IDEA
 2. The Writerside tool window should appear automatically
-3. Edit topics in `topics/` directory
+3. Edit topics in `topics/`
 4. Use the live preview to see changes
 
 ### Build Locally
@@ -50,20 +53,20 @@ docker run --rm -v $(pwd)/kodio-docs:/docs jetbrains/writerside-builder:243.2256
 
 ## Deployment
 
-Documentation is automatically deployed to GitHub Pages when changes are pushed to `main`.
+Documentation is automatically deployed to GitHub Pages when changes are pushed to `master`.
 
 The workflow is defined in `.github/workflows/docs.yml`.
 
 ### Manual Deployment
 
-1. Push changes to the `main` branch
+1. Push changes to the `master` branch
 2. The GitHub Action will build and deploy automatically
-3. View at your GitHub Pages URL
+3. View at [dosier.github.io/kodio](https://dosier.github.io/kodio/)
 
 ## Adding New Topics
 
 <procedure>
-1. Create a new `.md` file in the appropriate `topics/` subdirectory
+1. Create a new `.md` file in `topics/`
 2. Add the topic to `k.tree` in the correct location
 3. Use Writerside semantic markup for rich content
 </procedure>
@@ -141,7 +144,7 @@ Use them in topics: `The current version is %kodio-version%.`
 
 ## Versioning
 
-When releasing a new version:
+When releasing a new version, follow [RELEASE_CHECKLIST.md](../RELEASE_CHECKLIST.md) at the repo root. In particular:
 
 1. Update `%kodio-version%` in `v.list`
 2. Update `cfg/buildprofiles.xml` if needed

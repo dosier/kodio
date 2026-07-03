@@ -24,9 +24,9 @@ fun AudioPlayer(recording: AudioRecording) {
     ) {
         Text(
             when {
-                playerState.isPlaying -> "⏸ Pause"
-                playerState.isFinished -> "🔄 Replay"
-                else -> "▶️ Play"
+                playerState.isPlaying -> "Pause"
+                playerState.isFinished -> "Replay"
+                else -> "Play"
             }
         )
     }
@@ -81,7 +81,7 @@ fun RecordAndPlay() {
     Column {
         // Record button
         Button(onClick = { recorderState.toggle() }) {
-            Text(if (recorderState.isRecording) "⏹ Stop" else "🎙 Record")
+            Text(if (recorderState.isRecording) "Stop" else "Record")
         }
 
         // Play button (only when recording available)
@@ -90,7 +90,7 @@ fun RecordAndPlay() {
                 onClick = { playerState.toggle() },
                 enabled = playerState.isReady
             ) {
-                Text(if (playerState.isPlaying) "⏸ Pause" else "▶️ Play")
+                Text(if (playerState.isPlaying) "Pause" else "Play")
             }
         }
     }
@@ -132,11 +132,11 @@ fun CompletePlayer(recording: AudioRecording) {
         // Status indicator
         Text(
             text = when {
-                !playerState.isReady -> "⏳ Loading..."
-                playerState.isPlaying -> "🔊 Playing"
-                playerState.isPaused -> "⏸️ Paused"
-                playerState.isFinished -> "✅ Finished"
-                else -> "⏹️ Ready"
+                !playerState.isReady -> "Loading..."
+                playerState.isPlaying -> "Playing"
+                playerState.isPaused -> "Paused"
+                playerState.isFinished -> "Finished"
+                else -> "Ready"
             },
             style = MaterialTheme.typography.bodyLarge
         )
@@ -150,7 +150,7 @@ fun CompletePlayer(recording: AudioRecording) {
                 onClick = { playerState.toggle() },
                 enabled = playerState.isReady
             ) {
-                Text(if (playerState.isPlaying) "⏸" else "▶️")
+                Text(if (playerState.isPlaying) "Pause" else "Play")
             }
 
             // Stop
@@ -158,7 +158,7 @@ fun CompletePlayer(recording: AudioRecording) {
                 onClick = { playerState.stop() },
                 enabled = playerState.isPlaying || playerState.isPaused
             ) {
-                Text("⏹")
+                Text("Stop")
             }
         }
 
@@ -166,7 +166,7 @@ fun CompletePlayer(recording: AudioRecording) {
         playerState.error?.let { error ->
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "⚠️ ${error.message}",
+                text = error.message ?: "Playback error",
                 color = MaterialTheme.colorScheme.error
             )
         }

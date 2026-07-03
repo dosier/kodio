@@ -4,10 +4,10 @@
 <primary-label ref="material3"/>
 
 <tldr>
-<p><b>Pre-built UI</b>: Material 3 buttons, dialogs, and indicators for audio recording and playback.</p>
+<p><b>Pre-built UI</b>: Material 3 buttons and dialogs for audio recording and playback, driven by <code>RecorderState</code> and <code>PlayerState</code>.</p>
 </tldr>
 
-The `compose-material3` module provides ready-to-use Material 3 components for `RecorderState` and `PlayerState`.
+The `compose-material3` module provides ready-to-use Material 3 components that wrap `RecorderState` and `PlayerState` from the `compose` module.
 
 ## Add the dependency {id="dependency"}
 
@@ -28,63 +28,64 @@ implementation("space.kodio.extensions:compose-material3:%kodio-version%")
 </tab>
 </tabs>
 
+You also need the `compose` module for `rememberRecorderState()` and `rememberPlayerState()`.
+
 ## RecordAudioButton {id="record-button"}
 
-A styled recording button that shows the current state with appropriate icons and colors:
+A recording button with optional live waveform, permission handling, and error dialog:
 
 ```kotlin
 val recorderState = rememberRecorderState()
 
 RecordAudioButton(
-    isRecording = recorderState.isRecording,
-    isProcessing = recorderState.isProcessing,
-    onClick = { recorderState.toggle() }
+    state = recorderState,
+    showWaveform = true,
 )
 ```
 
-The button automatically displays:
-- **Microphone icon** when idle
-- **Stop icon** while recording
-- **Loading indicator** while processing
+When `state.needsPermission` is true, the button shows `AudioPermissionButton` instead of the record toggle. When `state.error` is set, an `ErrorDialog` is shown automatically.
+
+The toggle button shows:
+- Microphone icon when idle
+- Stop icon while recording
+- Loading indicator while processing
 
 ## PlayAudioButton {id="play-button"}
 
-A playback button that adapts to the player's current state:
+A playback button for a specific `AudioRecording`:
 
 ```kotlin
 val playerState = rememberPlayerState(recording)
 
 PlayAudioButton(
-    isPlaying = playerState.isPlaying,
-    isPaused = playerState.isPaused,
-    isReady = playerState.isReady,
-    isFinished = playerState.isFinished,
-    onClick = { playerState.toggle() }
+    recording = recording,
+    state = playerState,
 )
 ```
 
 The button shows:
-- **Play icon** when ready or paused
-- **Pause icon** while playing
-- **Replay icon** when finished
+- Play icon when ready or stopped
+- Stop icon while playing (acts as pause toggle via `state.toggle()`)
+- Loading indicator while loading
+- A restart button when playing, paused, or finished
+
+Errors are shown via `ErrorDialog` when `state.error` is set.
 
 ## AudioPermissionButton {id="permission-button"}
 
-A button for requesting microphone permission with appropriate messaging:
+An icon button that reflects microphone permission state and requests access when needed:
 
 ```kotlin
 val recorderState = rememberRecorderState()
 
-if (recorderState.needsPermission) {
-    AudioPermissionButton(
-        onClick = { recorderState.requestPermission() }
-    )
-}
+AudioPermissionButton(state = recorderState)
 ```
+
+This is used internally by `RecordAudioButton` when permission is required. You can also use it standalone in custom layouts.
 
 ## ErrorDialog {id="error-dialog"}
 
-A Material 3 dialog for displaying audio errors:
+A Material 3 dialog for displaying an `AudioError`:
 
 ```kotlin
 recorderState.error?.let { error ->
@@ -95,69 +96,29 @@ recorderState.error?.let { error ->
 }
 ```
 
-The dialog automatically formats error messages based on the error type:
-- **PermissionDenied**: Suggests enabling microphone access
-- **DeviceNotFound**: Indicates no microphone available
-- **NotInitialized**: Reminds to call `Kodio.initialize()` on Android
+`RecordAudioButton` and `PlayAudioButton` show this dialog automatically when their state has an error.
 
 ## Complete example {id="complete"}
 
-Full recording UI using all Material 3 components:
+Full recording UI using shared state holders:
 
 ```kotlin
 @Composable
 fun MaterialAudioUI() {
     val recorderState = rememberRecorderState()
-    val playerState = rememberPlayerState()
-
-    // Load recording into player when available
-    LaunchedEffect(recorderState.recording) {
-        recorderState.recording?.let { playerState.load(it) }
-    }
+    val recording = recorderState.recording
 
     Column(
         modifier = Modifier.fillMaxWidth().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Permission request
-        if (recorderState.needsPermission) {
-            AudioPermissionButton(
-                onClick = { recorderState.requestPermission() }
-            )
-        } else {
-            // Waveform during recording
-            if (recorderState.isRecording) {
-                AudioWaveform(
-                    amplitudes = recorderState.liveAmplitudes,
-                    modifier = Modifier.fillMaxWidth().height(80.dp)
-                )
-            }
+        RecordAudioButton(state = recorderState)
 
-            // Record button
-            RecordAudioButton(
-                isRecording = recorderState.isRecording,
-                isProcessing = recorderState.isProcessing,
-                onClick = { recorderState.toggle() }
-            )
-
-            // Play button (when recording available)
-            if (recorderState.hasRecording) {
-                PlayAudioButton(
-                    isPlaying = playerState.isPlaying,
-                    isPaused = playerState.isPaused,
-                    isReady = playerState.isReady,
-                    isFinished = playerState.isFinished,
-                    onClick = { playerState.toggle() }
-                )
-            }
-        }
-
-        // Error handling
-        recorderState.error?.let { error ->
-            ErrorDialog(
-                error = error,
-                onDismiss = { recorderState.clearError() }
+        if (recording != null) {
+            PlayAudioButton(
+                recording = recording,
+                state = rememberPlayerState(recording),
             )
         }
     }
@@ -166,12 +127,12 @@ fun MaterialAudioUI() {
 
 ## Component reference {id="reference"}
 
-| Component | Purpose | Required Props |
-|-----------|---------|----------------|
-| `RecordAudioButton` | Recording toggle | `isRecording`, `onClick` |
-| `PlayAudioButton` | Playback toggle | `isPlaying`, `isReady`, `onClick` |
-| `AudioPermissionButton` | Permission request | `onClick` |
-| `ErrorDialog` | Error display | `error`, `onDismiss` |
+| Component | Signature | Purpose |
+|-----------|-----------|---------|
+| `RecordAudioButton` | `(modifier?, state?, showWaveform?)` | Recording toggle with optional waveform and permission flow |
+| `PlayAudioButton` | `(recording, modifier?, state?, showWaveform?)` | Playback controls for one recording |
+| `AudioPermissionButton` | `(state, modifier?)` | Permission request button |
+| `ErrorDialog` | `(error, onDismiss)` | Display an `AudioError` |
 
 <seealso style="cards">
     <category ref="compose">

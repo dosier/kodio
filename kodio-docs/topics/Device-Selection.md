@@ -1,44 +1,53 @@
+[//]: # (title: Device Selection)
 
+<show-structure for="chapter" depth="2"/>
+<primary-label ref="advanced"/>
 
-**Choose devices**: Select specific microphones or speakers for recording and playback.
+<tldr>
+<p><b>Choose devices</b>: Select specific microphones or speakers for recording and playback.</p>
+</tldr>
 
 Kodio allows you to enumerate audio devices and direct recording or playback to specific hardware.
 
 ## List available devices {id="list-devices"}
 
-Query the system for available audio devices:
+`Kodio.listInputDevices()` and `Kodio.listOutputDevices()` are suspend functions. Call them from a coroutine:
 
 ```kotlin
-// Input devices (microphones)
-val inputs = Kodio.listInputDevices()
-inputs.forEach { device ->
-    println("🎤 ${device.name} (${device.id})")
-}
+suspend fun listDevices() {
+    // Input devices (microphones)
+    val inputs = Kodio.listInputDevices()
+    inputs.forEach { device ->
+        println("Input: ${device.name} (${device.id})")
+    }
 
-// Output devices (speakers, headphones)
-val outputs = Kodio.listOutputDevices()
-outputs.forEach { device ->
-    println("🔊 ${device.name} (${device.id})")
+    // Output devices (speakers, headphones)
+    val outputs = Kodio.listOutputDevices()
+    outputs.forEach { device ->
+        println("Output: ${device.name} (${device.id})")
+    }
 }
 ```
 
 Each device has:
 
 - `id`: Unique identifier
-- `name`: Human-readable name (e.g., "Built-in Microphone", "AirPods Pro")
+- `name`: Human-readable name (for example "Built-in Microphone", "AirPods Pro")
 
 ## Record from a specific device {id="record-device"}
 
 Use an external microphone or other input device:
 
 ```kotlin
-val inputs = Kodio.listInputDevices()
-val externalMic = inputs.find { it.name.contains("USB") }
+suspend fun recordFromDevice() {
+    val inputs = Kodio.listInputDevices()
+    val externalMic = inputs.find { it.name.contains("USB") }
 
-val recording = Kodio.record(
-    duration = 5.seconds,
-    device = externalMic  // null uses system default
-)
+    val recording = Kodio.record(
+        duration = 5.seconds,
+        device = externalMic  // null uses system default
+    )
+}
 ```
 
 ## Play to a specific device {id="play-device"}
@@ -46,23 +55,28 @@ val recording = Kodio.record(
 Route audio to headphones, speakers, or other output devices:
 
 ```kotlin
-val outputs = Kodio.listOutputDevices()
-val headphones = outputs.find { it.name.contains("Headphones") }
+suspend fun playToDevice(recording: AudioRecording) {
+    val outputs = Kodio.listOutputDevices()
+    val headphones = outputs.find { it.name.contains("Headphones") }
 
-Kodio.play(recording, device = headphones)
+    Kodio.play(recording, device = headphones)
+}
 ```
 
 ## In Compose {id="compose"}
 
-Pass the device to `rememberRecorderState`:
+Load devices in a coroutine and pass the selected device to `rememberRecorderState`:
 
 ```kotlin
 @Composable
 fun DeviceSelector() {
-    var selectedDevice by remember { mutableStateOf<AudioDevice?>(null) }
-    val devices = remember { Kodio.listInputDevices() }
-    
-    // Device picker
+    var selectedDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
+    var devices by remember { mutableStateOf<List<AudioDevice.Input>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        devices = Kodio.listInputDevices()
+    }
+
     DropdownMenu(/* ... */) {
         devices.forEach { device ->
             DropdownMenuItem(
@@ -71,12 +85,8 @@ fun DeviceSelector() {
             )
         }
     }
-    
-    // Recorder with selected device
-    val recorderState = rememberRecorderState(
-        device = selectedDevice
-    )
-    
+
+    val recorderState = rememberRecorderState(device = selectedDevice)
     // ...
 }
 ```
@@ -84,7 +94,6 @@ fun DeviceSelector() {
 ## Platform support {id="platforms"}
 
 Device selection support varies by platform:
-
 
 | Platform   | Input selection | Output selection | Notes                                                                                                          |
 | ---------- | --------------- | ---------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -94,6 +103,7 @@ Device selection support varies by platform:
 | Android    | Limited         | Limited          | Honoured via `AudioRecord.preferredDevice` / `AudioTrack.preferredDevice`; final routing decided by the system |
 | Web        | Not supported   | Not supported    | Throws `AudioError.DeviceSelectionUnsupported` when a non-null device is passed                                |
 
+On web, output device selection via `setSinkId` is not implemented. Passing a non-null output device yields `AudioError.DeviceSelectionUnsupported`.
 
 > Pass `null` for the device parameter to use the system default. This works on every platform.
 
@@ -114,11 +124,15 @@ try {
     showError("Microphone not found. Using default.")
     val recording = Kodio.record(duration = 5.seconds)
 } catch (e: AudioError.DeviceSelectionUnsupported) {
-    // Running on a platform that cannot pin a specific device (e.g. browser).
-    // Retry without specifying a device.
+    // Platform cannot pin a specific device (for example browser output selection).
     showError("Device selection isn't supported here. Using default.")
     val recording = Kodio.record(duration = 5.seconds)
 }
 ```
 
-[Recording](Recording.md) [Playback](Playback.md)
+<seealso style="cards">
+    <category ref="core-api">
+        <a href="Recording.md" summary="Recording API">Recording</a>
+        <a href="Playback.md" summary="Playback API">Playback</a>
+    </category>
+</seealso>
