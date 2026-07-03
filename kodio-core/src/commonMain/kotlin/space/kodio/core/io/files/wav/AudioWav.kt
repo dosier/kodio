@@ -95,11 +95,15 @@ internal fun readWav(from: Source): AudioSource {
     if (riffId != "RIFF")
         throw AudioFileReadError.InvalidFile("Not a RIFF file (got '$riffId').")
 
-    from.readIntLe() // file size minus 8 — not needed for parsing
+    try {
+        from.readIntLe() // file size minus 8 — not needed for parsing
 
-    val waveId = from.readString(4)
-    if (waveId != "WAVE")
-        throw AudioFileReadError.InvalidFile("Not a WAVE file (got '$waveId').")
+        val waveId = from.readString(4)
+        if (waveId != "WAVE")
+            throw AudioFileReadError.InvalidFile("Not a WAVE file (got '$waveId').")
+    } catch (_: Exception) {
+        throw AudioFileReadError.InvalidFile("Cannot read RIFF header: file is too short or unreadable.")
+    }
 
     // --- Chunk-scanning loop ---
     var audioFormatCode = -1
