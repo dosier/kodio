@@ -10,39 +10,6 @@ import kotlin.test.assertTrue
 
 class AudioAuTest {
 
-    private fun fmtInt(
-        rate: Int,
-        channels: Channels,
-        depth: IntBitDepth,
-        signed: Boolean = true,
-    ) = AudioFormat(
-        sampleRate = rate,
-        channels = channels,
-        encoding = SampleEncoding.PcmInt(
-            bitDepth = depth,
-            endianness = Endianness.Little,
-            layout = SampleLayout.Interleaved,
-            signed = signed,
-            packed = true
-        )
-    )
-
-    private fun fmtFloat(
-        rate: Int,
-        channels: Channels,
-        precision: FloatPrecision,
-    ) = AudioFormat(
-        sampleRate = rate,
-        channels = channels,
-        encoding = SampleEncoding.PcmFloat(
-            precision = precision,
-            layout = SampleLayout.Interleaved
-        )
-    )
-
-    private fun rampBytes(size: Int): ByteArray =
-        ByteArray(size) { i -> (i % 251).toByte() }
-
     private fun encodeAu(format: AudioFormat, pcmData: ByteArray): ByteArray {
         val buf = Buffer()
         writeAu(AudioSource.of(format, *pcmData), buf)

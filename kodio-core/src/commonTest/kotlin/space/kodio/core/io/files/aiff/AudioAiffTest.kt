@@ -10,26 +10,6 @@ import kotlin.test.assertTrue
 
 class AudioAiffTest {
 
-    private fun fmtInt(
-        rate: Int,
-        channels: Channels,
-        depth: IntBitDepth,
-        signed: Boolean = true,
-    ) = AudioFormat(
-        sampleRate = rate,
-        channels = channels,
-        encoding = SampleEncoding.PcmInt(
-            bitDepth = depth,
-            endianness = Endianness.Little,
-            layout = SampleLayout.Interleaved,
-            signed = signed,
-            packed = true
-        )
-    )
-
-    private fun rampBytes(size: Int): ByteArray =
-        ByteArray(size) { i -> (i % 251).toByte() }
-
     private fun encodeAiff(format: AudioFormat, pcmData: ByteArray): ByteArray {
         val buf = Buffer()
         writeAiff(AudioSource.of(format, *pcmData), buf)

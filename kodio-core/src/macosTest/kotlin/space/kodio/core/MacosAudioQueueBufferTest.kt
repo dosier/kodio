@@ -50,36 +50,6 @@ class MacosAudioQueueBufferTest {
         return false
     }
 
-    // ==================== Buffer Configuration Tests ====================
-
-    @Test
-    fun `buffer duration is 50ms providing adequate headroom`() {
-        // 50ms buffers provide adequate headroom for processing
-        // With 48kHz mono 16-bit: 50ms = 2400 samples = 4800 bytes per buffer
-        // At 20 callbacks/second, this is manageable even with FFI overhead
-        
-        val currentBufferDurationMs = 50 // Updated default
-        val minimumRecommendedMs = 50
-        
-        assertTrue(
-            currentBufferDurationMs >= minimumRecommendedMs,
-            "Buffer duration ($currentBufferDurationMs ms) should be at least $minimumRecommendedMs ms."
-        )
-    }
-
-    @Test
-    fun `buffer count is 5 providing good resilience`() {
-        // 5 buffers = ~250ms total buffering at 50ms each
-        // This provides good resilience to processing delays
-        val currentBufferCount = 5
-        val minimumRecommendedCount = 5
-        
-        assertTrue(
-            currentBufferCount >= minimumRecommendedCount,
-            "Buffer count ($currentBufferCount) should be at least $minimumRecommendedCount."
-        )
-    }
-
     // ==================== Audio Continuity Tests ====================
 
     @Test
