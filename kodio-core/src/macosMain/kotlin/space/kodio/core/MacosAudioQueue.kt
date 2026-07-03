@@ -36,7 +36,6 @@ sealed class MacosAudioQueue<S : Any>(
         suspend fun streamTo(dst: SendChannel<ByteArray>) {
             val state = stateRef.get()
             state.channel.consumeEach { audioData ->
-//                println("received audio data: size = ${audioData.size} -> non-zero bytes = ${audioData.filter { it != 0.toByte() }.toByteArray().contentToString()}")
                 dst.send(audioData)
             }
         }
@@ -221,20 +220,6 @@ sealed class MacosAudioQueue<S : Any>(
                 )
             }
         }
-
-//    internal inline fun <reified V : CVariable, reified T> addPropertyListener(
-//        property: MacosAudioQueueProperty<V, T>,
-//        crossinline onChange: (T) -> Unit
-//    ): Unit = runAndCheckOsStatus {
-//        AudioQueueAddPropertyListener(
-//            inAQ = aqRef,
-//            inID = property.id,
-//            inProc = staticCFunction { inUserData, inAQ, inID ->
-//                onChange(getPropertyValue(property))
-//            },
-//            inUserData = null
-//        )
-//    }
 
     companion object Companion {
 

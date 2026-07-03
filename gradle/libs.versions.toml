@@ -9,7 +9,6 @@ androidx-lifecycle = "2.10.0"
 composeMultiplatform = "1.11.1"
 filekitCore = "0.14.2"
 filekitDialogsCompose = "0.14.2"
-junit = "4.13.2"
 kotlin = "2.4.0"
 kotlinBrowser = "2026.4.1"
 kotlinx-coroutines = "1.11.0"
@@ -29,7 +28,6 @@ filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "file
 kotlin-browser-v202575 = { module = "org.jetbrains.kotlin-wrappers:kotlin-browser", version.ref = "kotlinBrowser" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
-junit = { module = "junit:junit", version.ref = "junit" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx-core" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
 androidx-lifecycle-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel", version.ref = "androidx-lifecycle" }
@@ -43,6 +41,8 @@ kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serializa
 bignum = { module = "com.ionspin.kotlin:bignum", version = "0.3.10" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor3" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor3" }
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor3" }
+ktor-client-js = { module = "io.ktor:ktor-client-js", version.ref = "ktor3" }
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor3" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor3" }
 ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor3" }
@@ -58,6 +58,8 @@ androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.lib
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlinAllopen = { id = "org.jetbrains.kotlin.plugin.allopen", version.ref = "kotlin" }
 kotlinJsPlainObjects = { id = "org.jetbrains.kotlin.plugin.js-plain-objects", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlinxBenchmark = { id = "org.jetbrains.kotlinx.benchmark", version.ref = "kotlinxBenchmarkRuntime" }
 vanniktech-mavenPublish = { id = "com.vanniktech.maven.publish", version = "0.36.0" }

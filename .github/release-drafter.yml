@@ -88,10 +88,11 @@ template: |
   Add to your `build.gradle.kts`:
 
   ```kotlin
-  implementation("space.kodio:kodio-core:$RESOLVED_VERSION")
+  implementation("space.kodio:core:$RESOLVED_VERSION")
   
   // Optional extensions
-  implementation("space.kodio:kodio-compose:$RESOLVED_VERSION")
-  implementation("space.kodio:kodio-compose-material3:$RESOLVED_VERSION")
-  implementation("space.kodio:kodio-transcription:$RESOLVED_VERSION")
+  implementation("space.kodio.extensions:compose:$RESOLVED_VERSION")
+  implementation("space.kodio.extensions:compose-material3:$RESOLVED_VERSION")
+  implementation("space.kodio.extensions:ktor:$RESOLVED_VERSION")
+  implementation("space.kodio.extensions:transcription:$RESOLVED_VERSION")
   ```

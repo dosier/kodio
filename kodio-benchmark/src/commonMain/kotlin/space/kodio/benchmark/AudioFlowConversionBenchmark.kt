@@ -16,10 +16,7 @@ class AudioFlowConversionBenchmark {
 
     @Setup
     fun prepare() {
-        inFlow = audioFlowOf(
-            format = DefaultRecordingInt16,
-            bytes = create16BitData(List(10000) { it.toShort() })
-        )
+        inFlow = audioFlowOf(DefaultRecordingInt16, *create16BitData(List(10000) { it.toShort() }))
     }
 
     @TearDown

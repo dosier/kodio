@@ -73,7 +73,7 @@ kotlin {
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)
-                implementation("io.ktor:ktor-client-mock:${libs.versions.ktor3.get()}")
+                implementation(libs.ktor.client.mock)
             }
         }
         jvmMain {
@@ -95,13 +95,13 @@ kotlin {
         }
         appleMain {
             dependencies {
-                implementation("io.ktor:ktor-client-darwin:${libs.versions.ktor3.get()}")
+                implementation(libs.ktor.client.darwin)
             }
         }
         @Suppress("unused")
         val webMain by getting {
             dependencies {
-                implementation("io.ktor:ktor-client-js:${libs.versions.ktor3.get()}")
+                implementation(libs.ktor.client.js)
             }
         }
     }

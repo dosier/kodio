@@ -141,10 +141,10 @@ kotlin {
         }
         val iosMain by getting
         iosMain.dependencies {
-            implementation("io.ktor:ktor-client-darwin:${libs.versions.ktor3.get()}")
+            implementation(libs.ktor.client.darwin)
         }
         webMain.dependencies {
-            implementation("io.ktor:ktor-client-js:${libs.versions.ktor3.get()}")
+            implementation(libs.ktor.client.js)
         }
     }
 }

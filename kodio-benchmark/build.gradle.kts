@@ -4,12 +4,12 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    id("org.jetbrains.kotlinx.benchmark") version "0.4.14"
-    kotlin("plugin.allopen") version "2.0.20"
+    alias(libs.plugins.kotlinxBenchmark)
+    alias(libs.plugins.kotlinAllopen)
 }
 
 group = "space.kodio"
-version = "0.1.0"
+version = property("kodio.version").toString()
 
 kotlin {
     jvm()
