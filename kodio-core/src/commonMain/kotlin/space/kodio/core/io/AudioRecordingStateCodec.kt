@@ -10,12 +10,27 @@ private const val STOPPED_FLAG = 3.toByte()
 private const val ERROR_FLAG = 4.toByte()
 private const val PAUSED_FLAG = 5.toByte()
 
+/**
+ * Serializes this recording session state to a binary blob.
+ *
+ * Decoding with [ByteArray.decodeAsAudioRecordingState] on the same bytes
+ * yields an equivalent state. For [AudioRecordingSession.State.Error], only
+ * the error message is preserved; the original exception type and stack trace
+ * are not round-tripped.
+ */
 fun AudioRecordingSession.State.encodeToByteArray(): ByteArray {
     val buffer = Buffer()
     buffer.writeAudioRecordingState(this)
     return buffer.readByteArray()
 }
 
+/**
+ * Deserializes a recording session state written by
+ * [AudioRecordingSession.State.encodeToByteArray].
+ *
+ * [AudioRecordingSession.State.Error] is reconstructed from the stored message
+ * only; the original throwable is not restored.
+ */
 fun ByteArray.decodeAsAudioRecordingState(): AudioRecordingSession.State {
     val buffer = Buffer()
     buffer.write(this)

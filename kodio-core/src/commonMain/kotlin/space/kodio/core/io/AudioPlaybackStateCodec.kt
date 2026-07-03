@@ -11,12 +11,27 @@ private const val PAUSED_FLAG = 4.toByte()
 private const val FINISHED_FLAG = 5.toByte()
 private const val ERROR_FLAG = 6.toByte()
 
+/**
+ * Serializes this playback session state to a binary blob.
+ *
+ * Decoding with [ByteArray.decodeAsAudioPlaybackState] on the same bytes
+ * yields an equivalent state. For [AudioPlaybackSession.State.Error], only
+ * the error message is preserved; the original exception type and stack trace
+ * are not round-tripped.
+ */
 fun AudioPlaybackSession.State.encodeToByteArray(): ByteArray {
     val buffer = Buffer()
     buffer.writeAudioPlaybackState(this)
     return buffer.readByteArray()
 }
 
+/**
+ * Deserializes a playback session state written by
+ * [AudioPlaybackSession.State.encodeToByteArray].
+ *
+ * [AudioPlaybackSession.State.Error] is reconstructed from the stored message
+ * only; the original throwable is not restored.
+ */
 fun ByteArray.decodeAsAudioPlaybackState(): AudioPlaybackSession.State {
     val buffer = Buffer()
     buffer.write(this)

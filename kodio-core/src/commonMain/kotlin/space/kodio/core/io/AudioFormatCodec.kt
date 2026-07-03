@@ -13,12 +13,21 @@ import space.kodio.core.SampleLayout
 private const val PCM_FLOAT_ENCODING_FLAG = 1.toByte()
 private const val PCM_INT_ENCODING_FLAG = 2.toByte()
 
+/**
+ * Serializes this format to a binary blob suitable for wire transfer or storage.
+ *
+ * Decoding with [ByteArray.decodeAsAudioFormat] on the same bytes yields an
+ * equal [AudioFormat].
+ */
 fun AudioFormat.encodeToByteArray(): ByteArray {
     val buffer = Buffer()
     buffer.writeAudioFormat(this)
     return buffer.readByteArray()
 }
 
+/**
+ * Deserializes a binary [AudioFormat] written by [AudioFormat.encodeToByteArray].
+ */
 fun ByteArray.decodeAsAudioFormat(): AudioFormat {
     val buffer = Buffer()
     buffer.write(this)

@@ -64,12 +64,27 @@ data class AudioFormat(
 }
 
 /** Sensible defaults you can swap depending on your pipeline */
+
+/**
+ * Default recording format: 48 kHz, mono, signed 16-bit little-endian
+ * interleaved PCM.
+ *
+ * Used as the common fallback and as the platform default on Android and
+ * Apple (via [DefaultAndroidRecordingAudioFormat] and
+ * [DefaultAppleRecordingAudioFormat]).
+ */
 val DefaultRecordingInt16 = AudioFormat(
     sampleRate = 48000,
     channels = Channels.Mono,
     encoding = SampleEncoding.PcmInt(IntBitDepth.Sixteen, Endianness.Little, SampleLayout.Interleaved, signed = true)
 )
 
+/**
+ * Default float recording format: 48 kHz, mono, 32-bit float interleaved PCM.
+ *
+ * Used as the platform default for web recording
+ * ([DefaultWebRecordingAudioFormat]).
+ */
 val DefaultRecordingFloat32 = AudioFormat(
     sampleRate = 48000,
     channels = Channels.Mono,
