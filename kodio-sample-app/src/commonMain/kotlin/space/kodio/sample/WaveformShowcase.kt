@@ -54,6 +54,7 @@ import space.kodio.compose.RecorderState
 import space.kodio.compose.WaveformAlignment
 import space.kodio.compose.WaveformColors
 import space.kodio.compose.WaveformStyle
+import space.kodio.compose.material3.component.RecordAudioButton
 import space.kodio.compose.rememberRecorderState
 import kotlin.math.sin
 import kotlin.random.Random
@@ -285,6 +286,16 @@ private fun LiveRecordingTab() {
                     isRecording = recorderState.isRecording
                 )
             }
+        }
+
+        item {
+            Text(
+                "Material 3 recorder",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+            Spacer(Modifier.height(8.dp))
+            RecordAudioButton()
         }
 
         item { Spacer(Modifier.height(32.dp)) }

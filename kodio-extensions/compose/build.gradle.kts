@@ -55,7 +55,6 @@ kotlin {
             dependencies {
                 // Project Libraries
                 implementation(projects.kodio.kodioCore)
-                implementation(libs.bignum)
                 // Compose Libraries
                 implementation(compose.ui)
                 implementation(compose.foundation)

@@ -13,11 +13,17 @@ import kotlin.math.sqrt
 
 private val logger = kodioLogger("RecorderState")
 
+private const val MAX_LIVE_AMPLITUDES = 100
+private const val INT16_MAX_MAGNITUDE = 32768.0
+private const val UINT8_MIDPOINT = 128
+private const val UINT8_MIDPOINT_D = 128.0
+private const val DEFAULT_LIVE_WAVEFORM_GAIN = 4f
+
 /**
  * State holder for audio recording in Compose.
  * 
  * Provides a simplified, reactive API for recording audio that integrates
- * seamlessly with Compose's state management.
+ * with Compose's state management.
  * 
  * ## Example Usage
  * ```kotlin
@@ -442,7 +448,7 @@ class RecorderState internal constructor(
                 audioFlow.collect { chunk ->
                     val rawAmplitude = calculateAmplitude(chunk, format)
                     val amplitude = mapLiveWaveformAmplitude(rawAmplitude)
-                    _liveAmplitudes.value = (_liveAmplitudes.value + amplitude).takeLast(100)
+                    _liveAmplitudes.value = (_liveAmplitudes.value + amplitude).takeLast(MAX_LIVE_AMPLITUDES)
                 }
             } catch (e: Exception) {
                 // Collection cancelled or failed - ignore (expected during stop)
@@ -490,7 +496,7 @@ class RecorderState internal constructor(
             val high = chunk[i + 1].toInt()  // Keep sign for high byte
             val sample = (high shl 8) or low  // Signed 16-bit value
             
-            val normalized = sample / 32768.0
+            val normalized = sample / INT16_MAX_MAGNITUDE
             sum += normalized * normalized
             count++
             i += 2
@@ -506,8 +512,8 @@ class RecorderState internal constructor(
         var sum = 0.0
         for (byte in chunk) {
             // 8-bit PCM is typically unsigned, centered at 128
-            val sample = (byte.toInt() and 0xFF) - 128
-            val normalized = sample / 128.0
+            val sample = (byte.toInt() and 0xFF) - UINT8_MIDPOINT
+            val normalized = sample / UINT8_MIDPOINT_D
             sum += normalized * normalized
         }
         return if (chunk.isNotEmpty()) kotlin.math.sqrt(sum / chunk.size).toFloat() else 0f
@@ -534,7 +540,7 @@ class RecorderState internal constructor(
 fun rememberRecorderState(
     quality: AudioQuality = AudioQuality.Default,
     device: AudioDevice.Input? = null,
-    liveWaveformGain: Float = 4f,
+    liveWaveformGain: Float = DEFAULT_LIVE_WAVEFORM_GAIN,
     onRecordingComplete: ((AudioRecording) -> Unit)? = null
 ): RecorderState {
     val scope = rememberCoroutineScope()

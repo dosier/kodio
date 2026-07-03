@@ -1,71 +1,58 @@
 package space.kodio.compose.material3.component
 
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.window.Dialog
-import kotlinx.coroutines.launch
-import space.kodio.compose.KodioIcons
-import space.kodio.core.SystemAudioSystem
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import space.kodio.compose.RecorderState
+import space.kodio.compose.material3.icons.Mic
 import space.kodio.core.security.AudioPermissionManager
 
+/**
+ * Material 3 icon button that reflects microphone permission state and requests access when needed.
+ */
 @Composable
-fun AudioPermissionButton(
-    permissionState: AudioPermissionManager.State,
-    icons: KodioIcons,
-) {
-    val scope = rememberCoroutineScope()
-    var showPermissionDialog by remember { mutableStateOf(false) }
-    AnimatedContent(permissionState) { permissionState ->
-        IconButton(
-            onClick = {
-                when (permissionState) {
-                    AudioPermissionManager.State.Unknown -> {
-                        scope.launch {
-                            SystemAudioSystem.permissionManager.requestPermission()
-                            when(SystemAudioSystem.permissionManager.refreshState()) {
-                                AudioPermissionManager.State.Denied -> showPermissionDialog = true
-                                else -> Unit
-                            }
-                        }
-                    }
-                    else -> Unit
-                }
-            },
-            enabled = permissionState != AudioPermissionManager.State.Requesting
-        ) {
+fun AudioPermissionButton(state: RecorderState, modifier: Modifier = Modifier) {
+    val permissionState = state.permissionState
+
+    FilledIconButton(
+        onClick = {
             when (permissionState) {
-                AudioPermissionManager.State.Unknown -> {
-                    Icon(icons.micIcon, "?")
-                }
-                AudioPermissionManager.State.Requesting -> {
-                    CircularProgressIndicator()
-                }
-                AudioPermissionManager.State.Granted -> {
-                    Icon(icons.checkIcon, "granted")
-                }
-                AudioPermissionManager.State.Denied -> {
-                    Icon(icons.warningIcon, "denied")
-                }
+                AudioPermissionManager.State.Unknown,
+                AudioPermissionManager.State.Denied -> state.requestPermission()
+                else -> Unit
             }
-        }
-    }
-    if (showPermissionDialog) {
-        Dialog(onDismissRequest = { showPermissionDialog = false }) {
-            Text("Missing microphone permissions")
-            HorizontalDivider()
-            TextButton(onClick = SystemAudioSystem.permissionManager::requestRedirectToSettings) {
-                Text("Open settings")
+        },
+        modifier = modifier,
+        enabled = permissionState != AudioPermissionManager.State.Requesting,
+    ) {
+        when (permissionState) {
+            AudioPermissionManager.State.Unknown -> {
+                Icon(
+                    imageVector = Icons.Filled.Mic,
+                    contentDescription = "Grant microphone permission",
+                )
+            }
+            AudioPermissionManager.State.Requesting -> {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+            }
+            AudioPermissionManager.State.Granted -> {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Microphone permission granted",
+                )
+            }
+            AudioPermissionManager.State.Denied -> {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = "Microphone permission denied",
+                )
             }
         }
     }
