@@ -46,6 +46,13 @@ internal class NativeMacosAudioPlaybackSession(
     private var completionJob: Job? = null
     private val completionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    /**
+     * Streaming playback (feeding audio incrementally) is deferred. The native
+     * library only exposes a whole-buffer [NativeMacosLib.macos_playback_session_load]
+     * entry point, so streaming would require a new native enqueue export and
+     * rebuilding kodio-native, which is out of scope. This method therefore
+     * collects the full recording into a single buffer by design.
+     */
     override suspend fun load(audioFlow: AudioFlow) {
         _audioFlowHolder.value = audioFlow
 

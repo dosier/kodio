@@ -79,3 +79,5 @@ private fun newJsFloat32Array(length: Int): Float32Array<ArrayBuffer> =
 
 actual fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode =
     AudioWorkletNode(context, name.toJsString().unsafeCast<AudioWorkletProcessorName>())
+
+internal actual fun createWorkletFlushMessage(): JsAny = "flush".toJsString()

@@ -168,8 +168,7 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             platformFlow.collect { chunk ->
                 emitCount++
                 if (emitCount <= 3 || emitCount % 50 == 0) {
-                    val nonZero = chunk.count { it != 0.toByte() }
-                    logger.debug { "Emitting chunk #$emitCount to hotSource: size=${chunk.size}, nonZeroBytes=$nonZero" }
+                    logger.debug { "Emitting chunk #$emitCount to hotSource: size=${chunk.size}" }
                 }
                 recordedChunks.add(chunk)
                 hotSource.emit(chunk)
@@ -201,9 +200,6 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             logger.debug { "Recorded ${captured.size} chunks" }
 
             if (captured.isNotEmpty() && format != null) {
-                val totalNonZero = captured.sumOf { chunk -> chunk.count { it != 0.toByte() } }
-                logger.debug { "Total non-zero bytes in recording: $totalNonZero" }
-                
                 // 3. Create a new COLD, replayable flow from the captured data.
                 val coldFlow = AudioFlow(format, captured.asFlow())
 

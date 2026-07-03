@@ -89,24 +89,19 @@ class JvmAudioRecordingSession(
 
         val buffer = ByteArray(line.bufferSize / 5)
         var chunkCount = 0
-        var totalNonZeroBytes = 0L
 
         while (currentCoroutineContext().isActive && line.isOpen) {
             val bytesRead = line.read(buffer, 0, buffer.size)
             if (bytesRead > 0) {
                 val chunk = buffer.copyOf(bytesRead)
-                val nonZeroCount = chunk.count { it != 0.toByte() }
-                totalNonZeroBytes += nonZeroCount
                 chunkCount++
-
                 if (chunkCount <= 3 || chunkCount % 50 == 0) {
-                    logger.debug { "Chunk #$chunkCount: bytesRead=$bytesRead, nonZeroBytes=$nonZeroCount, first16=${chunk.take(16).map { it.toInt() and 0xFF }}" }
+                    logger.debug { "Chunk #$chunkCount: bytesRead=$bytesRead" }
                 }
-
                 channel.send(chunk)
             }
         }
-        logger.debug { "Recording loop ended: $chunkCount chunks, $totalNonZeroBytes total non-zero bytes" }
+        logger.debug { "Recording loop ended: $chunkCount chunks" }
     }
 
     /**

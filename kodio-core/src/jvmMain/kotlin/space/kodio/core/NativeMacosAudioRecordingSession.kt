@@ -92,7 +92,7 @@ internal class NativeMacosAudioRecordingSession(
 
             val dseg = data.reinterpret(len.toLong())
             val bytes = ByteArray(len)
-            dseg.asByteBuffer().get(bytes)
+            MemorySegment.copy(dseg, ValueLayout.JAVA_BYTE, 0L, bytes, 0, len)
 
             sess.recordedChunks.add(bytes)
             // recordedChunks is the source of truth for the finished recording; tryEmit is for live consumers only.

@@ -36,6 +36,7 @@ expect fun createAudioContextOptions(latencyHint: AudioContextLatencyCategory, s
 expect fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStreamConstraints
 expect fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints
 expect fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode
+internal expect fun createWorkletFlushMessage(): JsAny
 
 fun <T : JsAny?> JsArray<T>.toList(): List<T> =
     this.toArray().toList()

@@ -66,3 +66,5 @@ internal actual fun FloatArray.toJsFloat32Array(): Float32Array<ArrayBuffer> {
 @Suppress("UNCHECKED_CAST_TO_EXTERNAL_INTERFACE")
 actual fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode =
     AudioWorkletNode(context, name.unsafeCast<AudioWorkletProcessorName>())
+
+internal actual fun createWorkletFlushMessage(): JsAny = "flush"

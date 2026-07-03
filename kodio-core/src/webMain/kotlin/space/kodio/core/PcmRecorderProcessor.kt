@@ -12,6 +12,27 @@ internal const val AUDIO_PROCESSOR_CODE = """
  */
 class PcmRecorderProcessor extends AudioWorkletProcessor {
 
+    constructor() {
+        super();
+        this.batchSize = 2048;
+        this.batch = new Float32Array(this.batchSize);
+        this.offset = 0;
+        this.port.onmessage = (e) => {
+            if (e.data === 'flush') {
+                this._flush();
+            }
+        };
+    }
+
+    _flush() {
+        if (this.offset > 0) {
+            const partial = this.batch.slice(0, this.offset);
+            this.port.postMessage(partial, [partial.buffer]);
+            this.batch = new Float32Array(this.batchSize);
+            this.offset = 0;
+        }
+    }
+
     /**
      * The process method is called for every block of audio data.
      * @param {Float32Array[][]} inputs - An array of inputs, each with an array of channels.
@@ -20,37 +41,33 @@ class PcmRecorderProcessor extends AudioWorkletProcessor {
      * @returns {boolean} - Must return true to keep the processor alive.
      */
     process(inputs, outputs, parameters) {
-        // We expect only one input connected to this node.
         const input = inputs[0];
 
-        // If there's no input or the input is empty, do nothing.
         if (!input || input.length === 0) {
             return true;
         }
 
-        // Downmix to mono by averaging channels if necessary.
-        // `input` is an array of channels, where each channel is a Float32Array.
         const channelCount = input.length;
         const sampleCount = input[0].length;
-        let monoPcmData = input[0]; // Default to left channel if mono
 
-        if (channelCount > 1) {
-            // If stereo or more, average the first two channels (Left & Right).
-            const rightChannel = input[1];
-            monoPcmData = new Float32Array(sampleCount);
-            for (let i = 0; i < sampleCount; i++) {
-                monoPcmData[i] = (input[0][i] + rightChannel[i]) * 0.5;
+        for (let i = 0; i < sampleCount; i++) {
+            let sample;
+            if (channelCount > 1) {
+                sample = (input[0][i] + input[1][i]) * 0.5;
+            } else {
+                sample = input[0][i];
+            }
+            this.batch[this.offset++] = sample;
+            if (this.offset === this.batchSize) {
+                this.port.postMessage(this.batch, [this.batch.buffer]);
+                this.batch = new Float32Array(this.batchSize);
+                this.offset = 0;
             }
         }
 
-        // Post the raw PCM data (as a Float32Array) back to the .main thread.
-        // We send a transferable object for performance.
-        this.port.postMessage(monoPcmData, [monoPcmData.buffer]);
-
-        return true; // Keep the processor running
+        return true;
     }
 }
 
-// Register the processor with a name that we will use in our Kotlin code.
 registerProcessor('pcm-recorder-processor', PcmRecorderProcessor);
 """

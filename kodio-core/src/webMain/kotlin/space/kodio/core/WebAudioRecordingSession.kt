@@ -2,6 +2,7 @@ package space.kodio.core
 
 import js.typedarrays.Float32Array
 import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import web.audio.*
 import web.events.EventHandler
@@ -77,14 +78,7 @@ class WebAudioRecordingSession(
                 val pcmData = (event as MessageEvent).data as Float32Array<*>
                 chunkCount++
                 if (chunkCount <= 5 || chunkCount % 200 == 0) {
-                    var min = Float.MAX_VALUE
-                    var max = Float.MIN_VALUE
-                    for (i in 0 until pcmData.length) {
-                        val v = pcmData[i].toString().toFloat()
-                        if (v < min) min = v
-                        if (v > max) max = v
-                    }
-                    logger.debug { "Chunk #$chunkCount: samples=${pcmData.length}, range=[$min, $max]" }
+                    logger.debug { "Chunk #$chunkCount: samples=${pcmData.length}" }
                 }
                 val byteData = pcmData.encodeAs16BitPcmByteArray()
                 val sendResult = channel.trySend(byteData)
@@ -103,10 +97,17 @@ class WebAudioRecordingSession(
 
     override fun cleanup() {
         mediaStreamSource?.disconnect()
-        audioWorkletNode?.disconnect()
-        audioWorkletNode?.port?.close() // Close the message port
-        mediaStream?.getTracks()?.toList()?.forEach { it.stop() }
-        scope.launch { audioContext?.close() }
+        val node = audioWorkletNode
+        val stream = mediaStream
+        val context = audioContext
+        node?.port?.postMessage(createWorkletFlushMessage())
+        scope.launch {
+            delay(50)
+            node?.disconnect()
+            node?.port?.close()
+            stream?.getTracks()?.toList()?.forEach { it.stop() }
+            context?.close()
+        }
         audioContext = null
         mediaStream = null
         mediaStreamSource = null
