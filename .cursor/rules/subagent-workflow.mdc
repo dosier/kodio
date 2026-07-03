@@ -46,11 +46,15 @@ Sub-agents must end their response with a structured report:
 
 ## Auto-Commit Policy
 
-Unless the user explicitly opts out, the orchestrator must commit all relevant changes at the end of each session (or logical unit of work). Delegate this to a `shell` sub-agent with `fast` model.
+Auto-commit by default. Do not ask for permission to commit; only ask when genuinely unsure (for example, the changes mix unrelated concerns that cannot be cleanly separated, or it is unclear whether work-in-progress should be captured yet). Never push unless explicitly asked.
 
-Commit sub-agent prompt must include:
-1. Run `git status` and `git diff --staged` and `git diff` and `git log --oneline -5` to assess the current state and recent commit style.
-2. Stage only files related to the current task (`git add <paths>`). Never stage secrets, `local.properties`, or unrelated changes.
-3. Write a concise commit message (1-2 sentences) focusing on **why**, not what. Match the repo's existing commit style.
+Prefer small, targeted commits over one large session commit:
+- Commit after each completed logical unit of work (a phase, a feature, a fix, a docs pass), not at the end of the session.
+- One concern per commit. If staged changes span multiple concerns, split them into separate commits by path.
+
+Commit procedure (delegate to a `shell` sub-agent with `fast` model, or run directly when the file-to-commit mapping requires orchestrator context):
+1. Run `git status`, `git diff --staged`, `git diff`, and `git log --oneline -5` to assess the current state and recent commit style.
+2. Stage only files related to the unit being committed (`git add <paths>`). Never stage secrets, `local.properties`, or unrelated changes.
+3. Write a concise commit message (1-2 sentences) focusing on **why**, not what. Match the repo's existing commit style (conventional commits: `feat`, `fix`, `refactor`, `chore`, `docs`, `test`, with module scope).
 4. Commit using a HEREDOC for the message. Do not amend or force-push.
 5. Report back: commit hash, message used, files committed, and `git status` after commit.
