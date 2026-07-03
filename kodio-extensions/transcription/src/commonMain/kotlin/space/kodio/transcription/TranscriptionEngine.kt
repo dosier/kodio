@@ -62,13 +62,3 @@ interface TranscriptionEngine {
      */
     fun release()
 }
-
-/**
- * Exception thrown when transcription operations fail.
- */
-class TranscriptionException(
-    message: String,
-    val code: String? = null,
-    cause: Throwable? = null
-) : Exception(message, cause)
-

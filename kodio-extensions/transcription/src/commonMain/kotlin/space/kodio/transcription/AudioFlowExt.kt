@@ -16,7 +16,7 @@ import space.kodio.core.Recorder
  * 
  * ## Example
  * ```kotlin
- * val engine = DeepgramEngine(apiKey = "...")
+ * val engine = OpenAIWhisperEngine(apiKey = "...")
  * 
  * audioFlow.transcribe(engine)
  *     .collect { result ->
@@ -46,7 +46,7 @@ fun AudioFlow.transcribe(
  * ## Example
  * ```kotlin
  * val recorder = Kodio.recorder()
- * val engine = DeepgramEngine(apiKey = "...")
+ * val engine = OpenAIWhisperEngine(apiKey = "...")
  * 
  * recorder.start()
  * 

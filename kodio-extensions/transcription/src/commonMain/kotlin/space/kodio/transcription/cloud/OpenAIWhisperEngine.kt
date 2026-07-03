@@ -11,6 +11,8 @@ import kotlinx.io.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import space.kodio.core.*
+import space.kodio.core.io.files.AudioFileFormat
+import space.kodio.core.io.files.writeToSink
 import space.kodio.core.logging.kodioLogger
 import space.kodio.transcription.*
 import kotlin.time.Duration.Companion.seconds
@@ -25,8 +27,8 @@ private const val WHISPER_COST_PER_MINUTE = 0.006
  * OpenAI Whisper API transcription engine.
  *
  * Note: This is NOT true real-time streaming. OpenAI's Whisper API processes
- * complete audio files, so this engine buffers audio and sends it in chunks.
- * For true real-time streaming, use [DeepgramEngine] or [AssemblyAIEngine].
+ * complete audio files, so this engine buffers audio and sends it in chunks
+ * rather than doing true low-latency streaming.
  *
  * This engine is best suited for:
  * - Post-recording transcription
@@ -108,9 +110,9 @@ class OpenAIWhisperEngine(
         audioFlow: AudioFlow,
         config: TranscriptionConfig
     ): Flow<TranscriptionResult> = flow {
-        logger.info { "=== OpenAI Whisper Transcription Starting ===" }
-        logger.info { "API Key present: ${apiKey.isNotBlank()}, Key prefix: ${apiKey.take(10)}..." }
-        logger.info { "Model: $model, Chunk duration: ${chunkDurationSeconds}s" }
+        logger.debug { "=== OpenAI Whisper Transcription Starting ===" }
+        logger.debug { "API key present: ${apiKey.isNotBlank()}" }
+        logger.debug { "Model: $model, Chunk duration: ${chunkDurationSeconds}s" }
         
         if (!isAvailable) {
             logger.error { "OpenAI Whisper engine is not available: no API key and no custom endpointUrl set" }
@@ -126,8 +128,8 @@ class OpenAIWhisperEngine(
         val bytesPerSecond = format.sampleRate * format.bytesPerFrame
         val chunkSize = bytesPerSecond * chunkDurationSeconds
         
-        logger.info { "Audio format: sampleRate=${format.sampleRate}, channels=${format.channels}, encoding=${format.encoding}" }
-        logger.info { "Bytes per second: $bytesPerSecond, Chunk size target: $chunkSize bytes (${chunkDurationSeconds}s)" }
+        logger.debug { "Audio format: sampleRate=${format.sampleRate}, channels=${format.channels}, encoding=${format.encoding}" }
+        logger.debug { "Bytes per second: $bytesPerSecond, Chunk size target: $chunkSize bytes (${chunkDurationSeconds}s)" }
         
         var buffer = Buffer()
         var chunkIndex = 0
@@ -137,7 +139,7 @@ class OpenAIWhisperEngine(
         var totalCost = 0.0
         var abortUnrecoverable = false
         
-        logger.info { "Starting to collect audio flow..." }
+        logger.debug { "Starting to collect audio flow..." }
         
         audioFlow.collect { audioChunk ->
             if (abortUnrecoverable) return@collect
@@ -154,20 +156,20 @@ class OpenAIWhisperEngine(
             // entire decoded PCM as one chunk for file inputs); a single emission must
             // be fully chunked here, not just the first chunkSize bytes.
             while (buffer.size >= chunkSize && !abortUnrecoverable) {
-                logger.info { ">>> Buffer full! Preparing chunk $chunkIndex for transcription..." }
+                logger.debug { ">>> Buffer full! Preparing chunk $chunkIndex for transcription..." }
                 val chunkData = buffer.readByteArray(chunkSize.toInt())
                 
                 // Create WAV data for this chunk
                 val wavData = createWavData(format, chunkData)
-                logger.info { "Created WAV data: ${wavData.size} bytes (PCM: ${chunkData.size} bytes)" }
+                logger.debug { "Created WAV data: ${wavData.size} bytes (PCM: ${chunkData.size} bytes)" }
                 
                 val (result, usage) = transcribeChunk(wavData, config, chunkIndex)
                 if (usage != null) {
                     totalSecondsTranscribed += usage.seconds
                     totalCost += usage.cost
-                    logger.info { "Chunk $chunkIndex: ${usage.seconds}s transcribed, cost: \$${formatCost(usage.cost)}" }
+                    logger.debug { "Chunk $chunkIndex: ${usage.seconds}s transcribed, cost: \$${formatCost(usage.cost)}" }
                 }
-                logger.info { "Chunk $chunkIndex result: $result" }
+                logger.debug { "Chunk $chunkIndex result: $result" }
                 if (result != null) {
                     emit(result)
                     if (result is TranscriptionResult.Error && !result.isRecoverable) {
@@ -187,22 +189,22 @@ class OpenAIWhisperEngine(
             return@flow
         }
         
-        logger.info { "Audio flow collection ended. Total chunks received: $audioChunkCount, Total bytes: $totalBytesReceived" }
-        logger.info { "Remaining buffer size: ${buffer.size} bytes" }
+        logger.debug { "Audio flow collection ended. Total chunks received: $audioChunkCount, Total bytes: $totalBytesReceived" }
+        logger.debug { "Remaining buffer size: ${buffer.size} bytes" }
         
         // Process remaining audio
         if (buffer.size > 0) {
-            logger.info { "Processing remaining ${buffer.size} bytes as final chunk..." }
+            logger.debug { "Processing remaining ${buffer.size} bytes as final chunk..." }
             val remainingData = buffer.readByteArray()
             val wavData = createWavData(format, remainingData)
-            logger.info { "Created final WAV data: ${wavData.size} bytes" }
+            logger.debug { "Created final WAV data: ${wavData.size} bytes" }
             val (result, usage) = transcribeChunk(wavData, config, chunkIndex)
             if (usage != null) {
                 totalSecondsTranscribed += usage.seconds
                 totalCost += usage.cost
-                logger.info { "Final chunk: ${usage.seconds}s transcribed, cost: \$${formatCost(usage.cost)}" }
+                logger.debug { "Final chunk: ${usage.seconds}s transcribed, cost: \$${formatCost(usage.cost)}" }
             }
-            logger.info { "Final chunk result: $result" }
+            logger.debug { "Final chunk result: $result" }
             if (result != null) {
                 emit(result)
                 if (result is TranscriptionResult.Error && !result.isRecoverable) {
@@ -217,11 +219,11 @@ class OpenAIWhisperEngine(
             logger.warn { "No remaining audio data to process" }
         }
         
-        logger.info { "=== OpenAI Whisper Transcription Complete ===" }
-        logger.info { "📊 USAGE SUMMARY:" }
-        logger.info { "   Total audio transcribed: ${totalSecondsTranscribed}s (${formatMinutes(totalSecondsTranscribed)} minutes)" }
-        logger.info { "   Total cost: \$${formatCost(totalCost)}" }
-        logger.info { "   Chunks processed: $chunkIndex" }
+        logger.debug { "=== OpenAI Whisper Transcription Complete ===" }
+        logger.debug { "Usage summary:" }
+        logger.debug { "   Total audio transcribed: ${totalSecondsTranscribed}s (${formatMinutes(totalSecondsTranscribed)} minutes)" }
+        logger.debug { "   Total cost: \$${formatCost(totalCost)}" }
+        logger.debug { "   Chunks processed: $chunkIndex" }
     }
     
     /** Format cost to 4 decimal places (KMP compatible) */
@@ -241,48 +243,10 @@ class OpenAIWhisperEngine(
         return "$intPart.$decPart"
     }
     
-    /**
-     * Creates WAV data from raw PCM bytes.
-     * Note: Core's writeWav is internal (uses private AudioSource constructor),
-     * so we use a simple inline implementation here.
-     */
-    private fun createWavData(format: AudioFormat, pcmData: ByteArray): ByteArray {
-        val buffer = Buffer()
-        
-        val numChannels = format.channels.count
-        val sampleRate = format.sampleRate
-        
-        val (audioFormatCode, bitsPerSample) = when (val enc = format.encoding) {
-            is SampleEncoding.PcmInt -> 1 to enc.bitDepth.bits
-            is SampleEncoding.PcmFloat -> 3 to when (enc.precision) {
-                FloatPrecision.F32 -> 32
-                FloatPrecision.F64 -> 64
-            }
-        }
-        
-        val bytesPerSample = bitsPerSample / 8
-        val blockAlign = numChannels * bytesPerSample
-        val byteRate = sampleRate * blockAlign
-        val dataSize = pcmData.size
-        val riffSize = 36 + dataSize
-        
-        // RIFF/WAVE header
-        buffer.writeString("RIFF")
-        buffer.writeIntLe(riffSize)
-        buffer.writeString("WAVE")
-        buffer.writeString("fmt ")
-        buffer.writeIntLe(16)
-        buffer.writeShortLe(audioFormatCode.toShort())
-        buffer.writeShortLe(numChannels.toShort())
-        buffer.writeIntLe(sampleRate)
-        buffer.writeIntLe(byteRate)
-        buffer.writeShortLe(blockAlign.toShort())
-        buffer.writeShortLe(bitsPerSample.toShort())
-        buffer.writeString("data")
-        buffer.writeIntLe(dataSize)
-        buffer.write(pcmData)
-        
-        return buffer.readByteArray()
+    private suspend fun createWavData(format: AudioFormat, pcmData: ByteArray): ByteArray {
+        val sink = Buffer()
+        AudioFlow(format, flowOf(pcmData)).writeToSink(AudioFileFormat.Wav, sink)
+        return sink.readByteArray()
     }
     
     /**
@@ -337,7 +301,7 @@ class OpenAIWhisperEngine(
         attempt: Int
     ): Pair<TranscriptionResult?, ChunkUsage?> {
         return try {
-            logger.info {
+            logger.debug {
                 if (attempt > 0) {
                     ">>> Sending chunk $chunkIndex (${wavData.size} bytes) to OpenAI Whisper API... " +
                         "(attempt ${attempt + 1}/$MAX_TRANSCRIBE_ATTEMPTS)"
@@ -377,11 +341,11 @@ class OpenAIWhisperEngine(
             }
 
             val elapsed = timeMark.elapsedNow()
-            logger.info { "<<< API response received in ${elapsed.inWholeMilliseconds}ms, status: ${response.status}" }
+            logger.debug { "<<< API response received in ${elapsed.inWholeMilliseconds}ms, status: ${response.status}" }
 
             if (response.status.isSuccess()) {
                 val responseText = response.bodyAsText()
-                logger.info { "Response body (first 500 chars): ${responseText.take(500)}" }
+                logger.debug { "Response body (first 500 chars): ${responseText.take(500)}" }
                 parseResponseWithUsage(responseText, chunkIndex)
             } else {
                 val errorText = response.bodyAsText()
@@ -395,7 +359,7 @@ class OpenAIWhisperEngine(
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             // Cancellation is expected when user stops - don't log as error
-            logger.info { "Chunk $chunkIndex transcription cancelled (user stopped)" }
+            logger.debug { "Chunk $chunkIndex transcription cancelled (user stopped)" }
             Pair(null, null)
         } catch (e: Exception) {
             logger.error(e) { "Failed to transcribe chunk $chunkIndex: ${e.message}" }

@@ -59,11 +59,8 @@ kotlin {
                 // Coroutines
                 implementation(libs.kotlinx.coroutines.core)
 
-                // Ktor for WebSocket connections to cloud providers
+                // Ktor HTTP client for OpenAI Whisper API calls
                 implementation(libs.ktor.client.core)
-                implementation("io.ktor:ktor-client-websockets:${libs.versions.ktor3.get()}")
-                implementation("io.ktor:ktor-client-content-negotiation:${libs.versions.ktor3.get()}")
-                implementation("io.ktor:ktor-serialization-kotlinx-json:${libs.versions.ktor3.get()}")
 
                 // Serialization for API messages
                 implementation(libs.kotlinx.serialization.json)

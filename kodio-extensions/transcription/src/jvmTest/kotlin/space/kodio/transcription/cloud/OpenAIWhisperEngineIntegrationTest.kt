@@ -31,7 +31,7 @@ import kotlin.test.assertTrue
  *
  * Additionally requires:
  *  - `openai.api.key=sk-...` in `local.properties` at the repo root, AND
- *  - The test WAV at [TEST_WAV_PATH] to exist on disk.
+ *  - `kodio.test.wav.path=/path/to/test.wav` in `local.properties`.
  *
  * **What it covers:** drives the same code path the sample app uses for
  * file transcription (file bytes → [AudioFileReader.read] → engine
@@ -39,21 +39,22 @@ import kotlin.test.assertTrue
  * this test starts failing with `bad_record_mac` / `Broken pipe` / etc.,
  * the JVM HttpClient default in `WhisperHttpClient.jvm.kt` regressed.
  *
- * The HttpClient configuration was empirically chosen — see commit history
+ * The HttpClient configuration was empirically chosen; see commit history
  * around `OkHttp + HTTP/1.1 only` for the comparator data.
  */
 class OpenAIWhisperEngineIntegrationTest {
 
     companion object {
-        private const val TEST_WAV_PATH = "/Users/stan/Downloads/audio1420056308.wav"
         private const val MAX_CHUNKS = 5
         private const val CHUNK_SECONDS = 10
         private const val OPT_IN_ENV = "KODIO_RUN_LIVE_INTEGRATION"
     }
 
-    private fun apiKeyOrSkip(): String {
+    private data class TestConfig(val apiKey: String, val wavPath: String)
+
+    private fun testConfigOrSkip(): TestConfig {
         Assume.assumeTrue(
-            "Live OpenAI integration harness — set $OPT_IN_ENV=true to run.",
+            "Live OpenAI integration harness: set $OPT_IN_ENV=true to run.",
             System.getenv(OPT_IN_ENV) == "true",
         )
         val props = Properties()
@@ -70,12 +71,18 @@ class OpenAIWhisperEngineIntegrationTest {
         propsFile!!.inputStream().use { props.load(it) }
         val apiKey = props.getProperty("openai.api.key")?.trim().orEmpty()
         Assume.assumeTrue("openai.api.key missing in local.properties", apiKey.isNotBlank())
-        Assume.assumeTrue("Test WAV missing at $TEST_WAV_PATH", File(TEST_WAV_PATH).exists())
-        return apiKey
+        val wavPath = props.getProperty("kodio.test.wav.path")?.trim().orEmpty()
+        Assume.assumeTrue(
+            "kodio.test.wav.path missing or blank in local.properties; set it to a WAV file on disk",
+            wavPath.isNotBlank(),
+        )
+        Assume.assumeTrue("Test WAV missing at $wavPath", File(wavPath).exists())
+        return TestConfig(apiKey, wavPath)
     }
 
-    private fun harnessPcmFromWav(): Pair<AudioFormat, ByteArray> {
-        val recording = AudioFileReader.read(File(TEST_WAV_PATH).readBytes(), "audio1420056308.wav")
+    private fun harnessPcmFromWav(wavPath: String): Pair<AudioFormat, ByteArray> {
+        val wavFile = File(wavPath)
+        val recording = AudioFileReader.read(wavFile.readBytes(), wavFile.name)
         val format = recording.format
         val bytesPerSecond = format.sampleRate * format.bytesPerFrame
         val targetPcmBytes = bytesPerSecond * CHUNK_SECONDS * MAX_CHUNKS
@@ -86,21 +93,21 @@ class OpenAIWhisperEngineIntegrationTest {
 
     /**
      * Drives the engine end-to-end against the real OpenAI Whisper API using
-     * the engine's default JVM [io.ktor.client.HttpClient] — i.e. exactly
+     * the engine's default JVM [io.ktor.client.HttpClient], i.e. exactly
      * what the sample app and library consumers get out of the box. Asserts
      * that all chunks transcribe cleanly with no transport errors.
      */
     @Test
     fun liveTranscription_succeedsOnDefaultJvmClient() {
-        val apiKey = apiKeyOrSkip()
+        val config = testConfigOrSkip()
         val engine = OpenAIWhisperEngine(
-            apiKey = apiKey,
+            apiKey = config.apiKey,
             chunkDurationSeconds = CHUNK_SECONDS,
-            // Intentionally NOT passing httpClient — we want to validate
+            // Intentionally NOT passing httpClient; we want to validate
             // the engine's default JVM client (createDefaultWhisperHttpClient).
         )
         try {
-            val (format, pcm) = harnessPcmFromWav()
+            val (format, pcm) = harnessPcmFromWav(config.wavPath)
             val expectedChunks =
                 if (pcm.isEmpty()) 0
                 else (pcm.size + (format.sampleRate * format.bytesPerFrame * CHUNK_SECONDS) - 1) /
