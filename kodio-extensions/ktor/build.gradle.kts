@@ -14,7 +14,7 @@ group = "space.kodio.extensions"
 
 kodioPublishing {
     artifactId = "ktor"
-    description = "Ktor client/server extensions for streaming Kodio AudioFlow over WebSocket and SSE"
+    description = "Ktor client/server extensions for streaming Kodio AudioFlow over WebSocket"
 }
 
 kotlin {

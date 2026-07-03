@@ -86,24 +86,7 @@ public suspend fun HttpClient.receiveAudioFlowFromWebSocket(
     request: HttpRequestBuilder.() -> Unit = {},
 ): AudioFlow {
     val session = webSocketSession(urlString, request)
-    val headerFrame = session.incoming.receive()
-    require(headerFrame is Frame.Binary) {
-        "Expected binary AudioFormat header as first frame, got ${headerFrame.frameType}"
-    }
-    val format = decodeFormatHeader(headerFrame.readBytes())
-
-    val flow = channelFlow {
-        try {
-            for (frame in session.incoming) {
-                if (frame is Frame.Binary) {
-                    send(frame.readBytes())
-                }
-            }
-        } finally {
-            session.close()
-        }
-    }
-    return AudioFlow(format, flow)
+    return session.readAudioFlow(closeOnComplete = true)
 }
 
 /* ====================== Server-side WebSocket helper ====================== */
@@ -116,16 +99,25 @@ public suspend fun HttpClient.receiveAudioFlowFromWebSocket(
  * binary frames are surfaced as chunks. The caller is responsible for the
  * session lifecycle.
  */
-public suspend fun WebSocketSession.receiveAudioFlow(): AudioFlow {
+public suspend fun WebSocketSession.receiveAudioFlow(): AudioFlow =
+    readAudioFlow(closeOnComplete = false)
+
+private suspend fun WebSocketSession.readAudioFlow(closeOnComplete: Boolean): AudioFlow {
     val headerFrame = incoming.receive()
     require(headerFrame is Frame.Binary) {
         "Expected binary AudioFormat header as first frame, got ${headerFrame.frameType}"
     }
     val format = decodeFormatHeader(headerFrame.readBytes())
     val flow = channelFlow {
-        for (frame in incoming) {
-            if (frame is Frame.Binary) {
-                send(frame.readBytes())
+        try {
+            for (frame in incoming) {
+                if (frame is Frame.Binary) {
+                    send(frame.readBytes())
+                }
+            }
+        } finally {
+            if (closeOnComplete) {
+                close()
             }
         }
     }
