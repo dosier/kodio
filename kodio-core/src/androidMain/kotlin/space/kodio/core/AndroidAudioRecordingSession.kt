@@ -8,7 +8,10 @@ import android.media.MediaRecorder
 import android.media.AudioFormat as AndroidAudioFormat
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.isActive
+import space.kodio.core.util.namedLogger
 import kotlin.coroutines.coroutineContext
+
+private val logger = namedLogger("AndroidRecording")
 
 /**
  * Android implementation of [BaseAudioRecordingSession].
@@ -51,7 +54,14 @@ class AndroidAudioRecordingSession(
     private fun tryPrepareWithFormat(fmt: AudioFormat): AudioFormat? {
         val interleavedFmt = fmt.asInterleaved() ?: return null
 
-        val encoding = interleavedFmt.toAndroidEncoding()
+        // toAndroidEncoding throws on bit depths the API level does not support
+        // (e.g. 24-bit below API 31); treat that as "format unsupported" so the
+        // caller can fall back to the default format.
+        val encoding = runCatching { interleavedFmt.toAndroidEncoding() }
+            .getOrElse { e ->
+                logger.warn { "Encoding not supported for format $interleavedFmt: ${e.message}" }
+                return null
+            }
         if (encoding == AndroidAudioFormat.ENCODING_INVALID) return null
 
         val channelMask = interleavedFmt.channels.toAndroidChannelInMask()
@@ -59,22 +69,37 @@ class AndroidAudioRecordingSession(
         if (minBufferSize == AudioRecord.ERROR_BAD_VALUE || minBufferSize == AudioRecord.ERROR)
             return null
 
-        val bufferBytes = minBufferSize.coerceAtLeast(4096) * 2
+        val bpf = interleavedFmt.bytesPerFrame
+        val rawBufferBytes = minBufferSize.coerceAtLeast(4096) * 2
+        val bufferBytes = ((rawBufferBytes + bpf - 1) / bpf) * bpf
 
-        val record = AudioRecord.Builder()
-            .setAudioSource(MediaRecorder.AudioSource.MIC)
-            .setAudioFormat(interleavedFmt.toAndroidInputAudioFormat())
-            .setBufferSizeInBytes(bufferBytes)
-            .build()
+        var record: AudioRecord? = null
+        try {
+            record = AudioRecord.Builder()
+                .setAudioSource(MediaRecorder.AudioSource.MIC)
+                .setAudioFormat(interleavedFmt.toAndroidInputAudioFormat())
+                .setBufferSizeInBytes(bufferBytes)
+                .build()
 
-        if (requestedDevice != null) setPreferredDevice(context, requestedDevice, record)
+            if (record.state != AudioRecord.STATE_INITIALIZED) {
+                logger.warn { "AudioRecord not initialized for format $interleavedFmt (state=${record.state})" }
+                record.release()
+                return null
+            }
 
-        record.startRecording()
-        audioRecord = record
-        androidEncoding = encoding
-        androidChannelMask = channelMask
-        preparedFormat = interleavedFmt
-        return interleavedFmt
+            if (requestedDevice != null) setPreferredDevice(context, requestedDevice, record)
+
+            record.startRecording()
+            audioRecord = record
+            androidEncoding = encoding
+            androidChannelMask = channelMask
+            preparedFormat = interleavedFmt
+            return interleavedFmt
+        } catch (e: Exception) {
+            logger.warn(e) { "Failed to prepare recording with format $interleavedFmt: ${e.message}" }
+            record?.release()
+            return null
+        }
     }
 
     override suspend fun startRecording(channel: SendChannel<ByteArray>) {

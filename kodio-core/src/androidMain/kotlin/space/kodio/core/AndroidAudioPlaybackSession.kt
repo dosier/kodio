@@ -37,7 +37,9 @@ internal class AndroidAudioPlaybackSession(
         if (minBufferSize == AudioRecord.ERROR_BAD_VALUE) error("$format is not supported by the device")
         if (minBufferSize == AudioRecord.ERROR) error("Failed to get min buffer size")
 
-        val playbackBufferSize = minBufferSize * 4 // a bit of headroom
+        val bpf = format.bytesPerFrame
+        val rawPlaybackBufferSize = minBufferSize * 4 // a bit of headroom
+        val playbackBufferSize = ((rawPlaybackBufferSize + bpf - 1) / bpf) * bpf
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()

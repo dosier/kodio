@@ -93,6 +93,7 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             logger.error(e) { "Error in start(): ${e.message}" }
             _state.value = State.Error(e)
             cleanupRecording()
+            throw e
         }
     }
 
