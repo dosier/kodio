@@ -6,13 +6,12 @@ body = """
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group | striptags | trim }}
 {% for commit in commits %}
-- {% if commit.scope %}{{ commit.scope }}: {% endif %}{{ commit.message | trim }}
+- {% if commit.scope %}{{ commit.scope }}: {% endif %}{{ commit.message | split(pat="\n") | first | trim }}
 {% endfor %}
-
-{% endfor %}"""
-footer = """
+{% endfor %}
+{% if previous.version %}
 **Full Changelog**: https://github.com/dosier/kodio/compare/{{ previous.version }}...{{ version }}
-"""
+{% endif %}"""
 trim = true
 render_always = true
 
@@ -20,7 +19,11 @@ render_always = true
 conventional_commits = true
 filter_unconventional = false
 commit_parsers = [
-  { breaking = true, group = "<!-- 0 -->Breaking changes" },
+  { message = "^chore\\(release\\)", skip = true },
+  # Breaking = conventional "!" marker; matched on the raw message so the
+  # parser cannot fail on non-conventional commits (a field-based check
+  # errors and drops them).
+  { message = "^\\w+(\\(.+\\))?!:", group = "<!-- 0 -->Breaking changes" },
   { message = "^feat", group = "<!-- 1 -->Features" },
   { message = "^fix", group = "<!-- 2 -->Bug fixes" },
   { message = "^perf", group = "<!-- 3 -->Performance" },
@@ -28,11 +31,9 @@ commit_parsers = [
   { message = "^docs", group = "<!-- 5 -->Documentation" },
   { message = "^test", group = "<!-- 6 -->Tests" },
   { message = "^build|^ci", group = "<!-- 7 -->Build and CI" },
-  { message = "^chore\\(release\\): prepare for", skip = true },
   { message = "^chore", group = "<!-- 8 -->Maintenance" },
   { message = ".*", group = "<!-- 9 -->Other" },
 ]
 filter_commits = false
-fail_on_unmatched_commit = false
 topo_order_commits = true
 sort_commits = "oldest"
