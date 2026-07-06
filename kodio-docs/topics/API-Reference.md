@@ -4,6 +4,8 @@
 
 Quick reference for all Kodio APIs.
 
+This page is a hand-written quick reference. For the full generated API documentation (all classes, functions, and KDoc comments), see the [KDoc API Reference](%api-docs%).
+
 ## Kodio {id="kodio"}
 
 ```kotlin
@@ -141,3 +143,9 @@ recorder.transcribe(engine, config = TranscriptionConfig.Default)
 TranscriptionConfig(language = "en-US")
 TranscriptionConfig.Default
 ```
+
+<seealso style="cards">
+    <category ref="external">
+        <a href="%api-docs%">KDoc API Reference</a>
+    </category>
+</seealso>

@@ -7,4 +7,5 @@
     <category id="advanced" name="Advanced" order="4"/>
     <category id="migration" name="Migration" order="5"/>
     <category id="reference" name="Reference" order="6"/>
+    <category id="external" name="External Resources" order="7"/>
 </categories>

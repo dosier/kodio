@@ -18,6 +18,7 @@
     <!-- Links -->
     <var name="github-repo" value="https://github.com/dosier/kodio"/>
     <var name="maven-central" value="https://central.sonatype.com/artifact/space.kodio/core"/>
+    <var name="api-docs" value="https://dosier.github.io/kodio/api/"/>
     
     <!-- Sample rates for documentation -->
     <var name="voice-sample-rate" value="16000"/>

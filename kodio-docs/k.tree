@@ -36,5 +36,6 @@
     
     <toc-element topic="Migration.md"/>
     <toc-element topic="API-Reference.md"/>
+    <toc-element toc-title="KDoc API Reference" href="https://dosier.github.io/kodio/api/"/>
     <toc-element topic="Release-Process.md"/>
 </instance-profile>

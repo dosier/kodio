@@ -14,6 +14,7 @@
             <copyright>© 2026 Kodio Contributors</copyright>
             <link href="https://github.com/dosier/kodio">GitHub</link>
             <link href="https://github.com/dosier/kodio/blob/main/LICENSE">License</link>
+            <link href="https://dosier.github.io/kodio/api/">API Reference</link>
         </footer>
     </build-profile>
 </buildprofiles>
