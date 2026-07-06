@@ -128,6 +128,10 @@ See [Platform Setup](Platform-Setup.md) for JVM flags and Gradle configuration.
 
 `AudioRecording.equals()` now compares audio content (byte-for-byte), not just format and size. Two recordings with the same format and size but different samples are no longer equal. `hashCode()` remains coarse (format and size only), so do not use `AudioRecording` as a hash map key when content equality matters.
 
+### Recording start failures {id="0-2-0-recording-start"}
+
+In 0.2.0, `Recorder.start()` throws when the underlying recording session fails to start (for example a hardware error or an unsupported format that cannot be negotiated). Previously, some failures left the session in an error state without propagating to the caller. If you call `Recorder.start()` directly, wrap it in try/catch. In Compose, `RecorderState.start()` catches these exceptions and surfaces them via `RecorderState.error`.
+
 ## 0.0.5 to 0.0.6 {id="0-0-5-to-0-0-6"}
 
 Error types are now classes for proper stack traces:
