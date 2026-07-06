@@ -52,19 +52,19 @@ suspend fun main() {
 ```kotlin
 dependencies {
     // Core library (required)
-    implementation("space.kodio:core:0.1.5")
+    implementation("space.kodio:core:0.2.0")
     
     // Optional: Compose state holders and waveform
-    implementation("space.kodio.extensions:compose:0.1.5")
+    implementation("space.kodio.extensions:compose:0.2.0")
     
     // Optional: Material 3 UI components
-    implementation("space.kodio.extensions:compose-material3:0.1.5")
+    implementation("space.kodio.extensions:compose-material3:0.2.0")
     
     // Optional: Audio transcription (OpenAI Whisper)
-    implementation("space.kodio.extensions:transcription:0.1.5")
+    implementation("space.kodio.extensions:transcription:0.2.0")
     
     // Optional: Ktor WebSocket streaming of AudioFlow
-    implementation("space.kodio.extensions:ktor:0.1.5")
+    implementation("space.kodio.extensions:ktor:0.2.0")
 }
 ```
 
