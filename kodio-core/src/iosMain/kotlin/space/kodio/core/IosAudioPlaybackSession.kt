@@ -17,8 +17,9 @@ class IosAudioPlaybackSession() : AVAudioPlaybackSession() {
 
     override fun configureAudioSession() {
         log.info { "configureAudioSession() - setting playback category" }
-        AVAudioSession.sharedInstance().configureCategoryPlayback()
         val session = AVAudioSession.sharedInstance()
+        session.configureCategoryPlayback()
+        session.activate()
         log.info {
             "Audio session after playback config: category=${session.category}, " +
                 "sampleRate=${session.sampleRate}, " +

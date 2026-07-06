@@ -86,6 +86,9 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
         log.info { "Configuring audio session" }
         configureAudioSession()
 
+        log.info { "Preparing engine" }
+        engine.prepare()
+
         log.info { "Starting engine" }
         runErrorCatching { errorVar ->
             engine.startAndReturnError(errorVar)
@@ -115,7 +118,6 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun playBlocking(audioFlow: AudioFlow) {
         log.info { "playBlocking() called with format: ${audioFlow.format}" }
-        player.play()
         val converter = deinterleaveConverter
         val bufferFormat = if (converter != null) interleavedAVFormat else standardAVFormat
         log.info {
@@ -123,6 +125,9 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
                 "converter=${converter != null}"
         }
         var bufferCount = 0
+        // play() must follow at least one scheduleBuffer; otherwise AVFAudio throws
+        // "player did not see an IO cycle" (NSException, fatal on Kotlin/Native).
+        var playerStarted = false
         val lastCompletable = audioFlow.map { bytes ->
             bufferCount++
             var iosAudioBuffer = bytes.toIosAudioBuffer(bufferFormat)
@@ -135,6 +140,11 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
             val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
             player.scheduleBuffer(iosAudioBuffer) {
                 iosAudioBufferFinishedIndicator.complete(Unit)
+            }
+            if (!playerStarted) {
+                playerStarted = true
+                log.debug { "First buffer scheduled, starting player" }
+                player.play()
             }
             iosAudioBufferFinishedIndicator
         }.lastOrNull()
