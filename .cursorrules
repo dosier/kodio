@@ -70,11 +70,6 @@ This triggers CI, creates a GitHub Release, and publishes all artifacts to Maven
 - Release versions: `v1.0.0`, `v0.2.0`, `v1.2.3`
 - Pre-releases: `v1.0.0-alpha`, `v1.0.0-beta.1`, `v1.0.0-rc.1` (auto-marked as prerelease)
 
-### Release Drafter
-The repository uses release-drafter to auto-draft release notes as PRs are merged.
-- Draft releases accumulate changes until you push a tag
-- PRs are auto-labeled based on branch names (`feature/*`, `fix/*`, etc.)
-
 ### Cleaning Up a Bad Release
 ```bash
 # Delete a release and its tag
@@ -100,7 +95,6 @@ gh release view <tag>
 ### Workflows
 - `.github/workflows/gradle.yml` - CI matrix across platforms
 - `.github/workflows/publish.yml` - Tag-triggered release and publish
-- `.github/workflows/release-drafter.yml` - Auto-draft release notes
 - `.github/workflows/docs.yml` - Build and deploy docs to GitHub Pages
 
 ### CI Matrix Jobs (gradle.yml)

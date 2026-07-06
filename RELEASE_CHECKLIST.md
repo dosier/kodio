@@ -32,8 +32,6 @@ Releases are tag-driven. Pushing a `v*` tag to `master` triggers `.github/workfl
 - [ ] Confirm CI is green on `master`:
       `gh run list --branch master --limit 3`
 - [ ] Run any release-specific manual smoke tests (sample apps, platform checks).
-- [ ] Review the Release Drafter draft in GitHub Releases (optional preview).
-
 ## Version Bump
 
 Update all version references to `X.Y.Z`:
@@ -77,7 +75,7 @@ git push origin vX.Y.Z
 | Job | Runner | What it does |
 |-----|--------|-------------|
 | `test` | matrix (all CI jobs) | Reuses `.github/workflows/gradle.yml` |
-| `create-release` | ubuntu-latest | Creates GitHub Release via `softprops/action-gh-release@v2` |
+| `create-release` | ubuntu-latest | Generates changelog via git-cliff, creates GitHub Release |
 | `publish` | macos-latest | Runs `./gradlew publishToMavenCentral` (macOS needed for Apple targets) |
 
 ```bash
@@ -128,10 +126,7 @@ export ORG_GRADLE_PROJECT_signingInMemoryKey=<base64-gpg-key>
 
 ## Changelog
 
-Two mechanisms exist:
-
-- **Release Drafter** (`.github/release-drafter.yml`): drafts release notes on every push to `master`. PRs are auto-labeled from branch names (`feature/*`, `fix/*`, `chore/*`, `docs/*`).
-- **GitHub auto-generated notes**: the publish workflow uses `generate_release_notes: true` for the actual release.
+Release notes are generated from conventional commit messages by git-cliff during the publish workflow (`cliff.toml`).
 
 ## Workflow Files Reference
 
@@ -139,6 +134,5 @@ Two mechanisms exist:
 |------|---------|
 | `.github/workflows/publish.yml` | Tag-triggered release pipeline |
 | `.github/workflows/gradle.yml` | CI matrix (reusable) |
-| `.github/workflows/release-drafter.yml` | Drafts release notes from PRs |
-| `.github/release-drafter.yml` | Release Drafter categories and template |
+| `cliff.toml` | git-cliff configuration for release notes |
 | `build-logic/src/main/kotlin/kodio-publish-convention.gradle.kts` | Maven publishing convention plugin |

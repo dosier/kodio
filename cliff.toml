@@ -1,0 +1,38 @@
+# git-cliff configuration for conventional commit release notes.
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.scope %}{{ commit.scope }}: {% endif %}{{ commit.message | trim }}
+{% endfor %}
+
+{% endfor %}"""
+footer = """
+**Full Changelog**: https://github.com/dosier/kodio/compare/{{ previous.version }}...{{ version }}
+"""
+trim = true
+render_always = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+commit_parsers = [
+  { breaking = true, group = "<!-- 0 -->Breaking changes" },
+  { message = "^feat", group = "<!-- 1 -->Features" },
+  { message = "^fix", group = "<!-- 2 -->Bug fixes" },
+  { message = "^perf", group = "<!-- 3 -->Performance" },
+  { message = "^refactor", group = "<!-- 4 -->Refactoring" },
+  { message = "^docs", group = "<!-- 5 -->Documentation" },
+  { message = "^test", group = "<!-- 6 -->Tests" },
+  { message = "^build|^ci", group = "<!-- 7 -->Build and CI" },
+  { message = "^chore\\(release\\): prepare for", skip = true },
+  { message = "^chore", group = "<!-- 8 -->Maintenance" },
+  { message = ".*", group = "<!-- 9 -->Other" },
+]
+filter_commits = false
+fail_on_unmatched_commit = false
+topo_order_commits = true
+sort_commits = "oldest"

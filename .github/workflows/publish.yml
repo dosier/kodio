@@ -35,12 +35,21 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Release version: $VERSION"
 
+      - name: Generate changelog
+        uses: orhun/git-cliff-action@v4
+        id: git-cliff
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: CHANGELOG.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: v${{ steps.get_version.outputs.version }}
           tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
+          body_path: ${{ steps.git-cliff.outputs.changelog }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}  # Mark as prerelease if tag contains hyphen (e.g., v1.0.0-beta)
         env:
