@@ -23,6 +23,13 @@ import space.kodio.core.util.namedLogger
 private val logger = namedLogger("NativeMacosRecording")
 
 /**
+ * Bounded replay for the live hot flow. Late subscribers (such as amplitude
+ * collection in UI state holders) need a small replay cache because
+ * extraBufferCapacity slots are not replayed on subscribe.
+ */
+private const val HOT_FLOW_REPLAY = 64
+
+/**
  * Native macOS recording session implementation using Panama FFI.
  *
  * Implements [AudioRecordingSession] directly rather than extending [BaseAudioRecordingSession]
@@ -33,12 +40,16 @@ private val logger = namedLogger("NativeMacosRecording")
  */
 internal class NativeMacosAudioRecordingSession(
     private val nativeMemSeq: MemorySegment,
+    private val initialFormat: AudioFormat,
 ) : AudioRecordingSession {
 
     private val _state = MutableStateFlow<AudioRecordingSession.State>(AudioRecordingSession.State.Idle)
     override val state: StateFlow<AudioRecordingSession.State> = _state.asStateFlow()
 
-    private var _audioShared = MutableSharedFlow<ByteArray>(replay = 0, extraBufferCapacity = 64)
+    private var _audioShared = MutableSharedFlow<ByteArray>(
+        replay = HOT_FLOW_REPLAY,
+        extraBufferCapacity = HOT_FLOW_REPLAY,
+    )
     private val recordedChunks = CopyOnWriteArrayList<ByteArray>()
     private val _audioFlowHolder = MutableStateFlow<AudioFlow?>(null)
     override val audioFlow: StateFlow<AudioFlow?> = _audioFlowHolder.asStateFlow()
@@ -80,6 +91,12 @@ internal class NativeMacosAudioRecordingSession(
 
             val fmt = bytes.decodeAsAudioFormat()
             if (!sess.formatDeferred.isCompleted) sess.formatDeferred.complete(fmt)
+            // Refresh the public AudioFlow if the negotiated format differs from the
+            // provisional one we exposed before native start().
+            val current = sess._audioFlowHolder.value
+            if (current != null && current.format != fmt) {
+                sess._audioFlowHolder.value = AudioFlow(fmt, sess._audioShared.asSharedFlow())
+            }
         }
 
         @JvmStatic
@@ -157,19 +174,20 @@ internal class NativeMacosAudioRecordingSession(
         formatCbStub = NativeMacosLib.linker.upcallStub(formatMh, NativeMacosLib.CB_DESC, arena)
         audioCbStub = NativeMacosLib.linker.upcallStub(audioMh, NativeMacosLib.CB_DESC, arena)
 
+        // Expose the hot flow before native callbacks begin so live consumers can
+        // subscribe immediately (matches BaseAudioRecordingSession ordering).
+        _audioFlowHolder.value = AudioFlow(
+            format = initialFormat,
+            data = _audioShared.asSharedFlow(),
+        )
+
         // Kick off native start; callbacks begin immediately.
         NativeMacosLib.macos_recording_session_start.invokeExact(
             nativeMemSeq, ctxSeg!!, stateCbStub!!, formatCbStub!!, audioCbStub!!
         )
 
-        // Wait briefly for format so we can expose AudioFlow with it
-        val fmt: AudioFormat = withTimeout(3_000) { formatDeferred.await() }
-        if (_audioFlowHolder.value == null) {
-            _audioFlowHolder.value = AudioFlow(
-                format = fmt,
-                data = _audioShared.asSharedFlow()
-            )
-        }
+        // Wait briefly for the negotiated format from the native layer.
+        withTimeout(3_000) { formatDeferred.await() }
     }
 
     override fun stop() {
@@ -236,7 +254,7 @@ internal class NativeMacosAudioRecordingSession(
         _state.value = AudioRecordingSession.State.Idle
         _audioFlowHolder.value = null
         recordedChunks.clear()
-        _audioShared = MutableSharedFlow(replay = 0, extraBufferCapacity = 64)
+        _audioShared = MutableSharedFlow(replay = HOT_FLOW_REPLAY, extraBufferCapacity = HOT_FLOW_REPLAY)
         formatDeferred = CompletableDeferred()
         logger.debug { "reset() completed, state=${_state.value}" }
     }

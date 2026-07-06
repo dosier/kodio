@@ -91,6 +91,7 @@ internal object NativeMacosAudioSystem : SystemAudioSystemImpl() {
             }
             NativeMacosAudioRecordingSession(
                 nativeMemSeq = sessionSeq,
+                initialFormat = requestedFormat ?: DefaultJvmRecordingAudioFormat,
             )
         }
     }
