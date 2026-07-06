@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.kotlinJsPlainObjects)
     alias(libs.plugins.androidKotlinMultiplatformLibrary)
     id("kodio-publish-convention")
+    id("kodio-dokka-convention")
 }
 
 group = "space.kodio"

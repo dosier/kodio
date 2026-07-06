@@ -10,5 +10,6 @@ repositories {
 dependencies {
     // Use explicit dependency since version catalog may not be fully available in build-logic
     implementation("com.vanniktech:gradle-maven-publish-plugin:0.36.0")
+    implementation("org.jetbrains.dokka:org.jetbrains.dokka.gradle.plugin:${libs.versions.dokka.get()}")
 }
 

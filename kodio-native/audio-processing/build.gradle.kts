@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.konan.target.KonanTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    id("kodio-dokka-convention")
 }
 
 kotlin {

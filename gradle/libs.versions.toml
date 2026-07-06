@@ -9,6 +9,7 @@ androidx-lifecycle = "2.10.0"
 composeMultiplatform = "1.11.1"
 filekitCore = "0.14.2"
 filekitDialogsCompose = "0.14.2"
+dokka = "2.2.0"
 kotlin = "2.4.0"
 kotlinBrowser = "2026.4.1"
 kotlinx-coroutines = "1.11.0"
@@ -57,6 +58,7 @@ androidLibrary = { id = "com.android.library", version.ref = "agp" }
 androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinAllopen = { id = "org.jetbrains.kotlin.plugin.allopen", version.ref = "kotlin" }
 kotlinJsPlainObjects = { id = "org.jetbrains.kotlin.plugin.js-plain-objects", version.ref = "kotlin" }

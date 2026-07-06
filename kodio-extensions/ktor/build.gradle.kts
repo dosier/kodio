@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidKotlinMultiplatformLibrary)
     id("kodio-publish-convention")
+    id("kodio-dokka-convention")
 }
 
 group = "space.kodio.extensions"

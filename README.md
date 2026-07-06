@@ -116,6 +116,7 @@ See the [Logging](https://dosier.github.io/kodio/logging.html) docs page for ful
 
 **[dosier.github.io/kodio](https://dosier.github.io/kodio/)**
 
+- [API Reference (KDoc)](https://dosier.github.io/kodio/api/)
 - [Getting Started](https://dosier.github.io/kodio/getting-started.html)
 - [Installation](https://dosier.github.io/kodio/installation.html)
 - [Platform Setup](https://dosier.github.io/kodio/platform-setup.html)

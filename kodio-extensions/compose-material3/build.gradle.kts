@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     id("kodio-publish-convention")
+    id("kodio-dokka-convention")
 }
 
 group = "space.kodio.extensions"
