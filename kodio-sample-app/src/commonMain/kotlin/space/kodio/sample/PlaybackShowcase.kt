@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -50,7 +52,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,6 +69,7 @@ import space.kodio.compose.rememberPlayerState
 import space.kodio.core.AudioDevice
 import space.kodio.core.AudioRecording
 import space.kodio.core.Channels
+import space.kodio.core.Endianness
 import space.kodio.core.FloatPrecision
 import space.kodio.core.Kodio
 import space.kodio.core.SampleEncoding
@@ -76,6 +81,8 @@ import space.kodio.core.io.files.metadata.AudioEncodingInfo
 import space.kodio.core.io.files.metadata.AudioFileMetadata
 import space.kodio.core.io.files.metadata.AudioTags
 import space.kodio.sample.icons.SampleIcons
+import kotlin.math.abs
+import kotlin.math.max
 import kotlin.time.Duration
 
 /** Supported picker extensions for decode + metadata. */
@@ -458,12 +465,20 @@ private fun PlaybackControls(
 ) {
     val playerState = rememberPlayerState(recording, device = device)
     val waveform = remember(recording) { generateStaticWaveform(recording) }
+    val canScrub = playerState.duration > Duration.ZERO && !playerState.isLoading
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         AudioWaveform(
             amplitudes = waveform,
             style = WaveformStyle.Bar(width = 3.dp, spacing = 1.dp),
-            colors = WaveformColors.solidColor(KodAccent),
+            colors = WaveformColors(
+                waveColor = SolidColor(KodAccent.copy(alpha = 0.35f)),
+                progressColor = SolidColor(KodAccent),
+                inactiveColor = SolidColor(KodAccent.copy(alpha = 0.35f)),
+            ),
+            progress = playerState.progress,
+            onProgressChange = if (canScrub) { p -> playerState.seekTo(p) } else null,
+            animate = false,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(120.dp),
@@ -476,7 +491,7 @@ private fun PlaybackControls(
         ) {
             IconButton(
                 onClick = { playerState.stop() },
-                enabled = playerState.isPlaying || playerState.isPaused,
+                enabled = playerState.isPlaying || playerState.isPaused || playerState.progress > 0f,
             ) {
                 Icon(SampleIcons.Stop, contentDescription = "Stop")
             }
@@ -515,11 +530,116 @@ private fun PlaybackControls(
             )
         }
 
+        TimelineScrubber(
+            progress = playerState.progress,
+            position = playerState.position,
+            duration = playerState.duration,
+            enabled = canScrub,
+            onSeek = { playerState.seekTo(it) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
         playerState.error?.let { err ->
             Text(
                 text = err.message ?: "Playback error",
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimelineScrubber(
+    progress: Float,
+    position: Duration,
+    duration: Duration,
+    enabled: Boolean,
+    onSeek: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    val track = MaterialTheme.colorScheme.outlineVariant
+    val clamped = progress.coerceIn(0f, 1f)
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .then(
+                    if (enabled) {
+                        Modifier.pointerInput(duration) {
+                            detectTapGestures { offset ->
+                                val width = size.width.coerceAtLeast(1)
+                                onSeek((offset.x / width).coerceIn(0f, 1f))
+                            }
+                        }.pointerInput(duration) {
+                            detectHorizontalDragGestures { change, _ ->
+                                change.consume()
+                                val width = size.width.coerceAtLeast(1)
+                                onSeek((change.position.x / width).coerceIn(0f, 1f))
+                            }
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val trackHeight = 4.dp.toPx()
+                val trackTop = (size.height - trackHeight) / 2f
+                val radius = CornerRadius(trackHeight / 2f, trackHeight / 2f)
+                val playheadX = size.width * clamped
+
+                drawRoundRect(
+                    color = track,
+                    topLeft = Offset(0f, trackTop),
+                    size = Size(size.width, trackHeight),
+                    cornerRadius = radius,
+                )
+                if (playheadX > 0f) {
+                    drawRoundRect(
+                        color = accent,
+                        topLeft = Offset(0f, trackTop),
+                        size = Size(playheadX, trackHeight),
+                        cornerRadius = radius,
+                    )
+                }
+
+                val cursorWidth = 2.dp.toPx()
+                val cursorHeight = 16.dp.toPx()
+                drawRoundRect(
+                    color = accent,
+                    topLeft = Offset(
+                        (playheadX - cursorWidth / 2f).coerceIn(0f, size.width - cursorWidth),
+                        (size.height - cursorHeight) / 2f,
+                    ),
+                    size = Size(cursorWidth, cursorHeight),
+                    cornerRadius = CornerRadius(cursorWidth / 2f, cursorWidth / 2f),
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = formatPlaybackTime(position),
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = formatPlaybackTime(duration),
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -746,46 +866,126 @@ private fun encodingLabel(encoding: AudioEncodingInfo): String = when (encoding)
     is AudioEncodingInfo.Compressed.Mp3 -> "MP3"
 }
 
-private fun generateStaticWaveform(recording: AudioRecording): List<Float> {
+/**
+ * Builds a static peak waveform for [recording].
+ *
+ * Must honor [SampleEncoding] (bit depth, signedness, endianness, float).
+ * The previous LE-int16-only path looked fine for decoded MP3 (always PCM16 LE)
+ * but collapsed 24/32-bit and float PCM (common in WAV/AIFF/AU) to near-silence.
+ */
+private fun generateStaticWaveform(recording: AudioRecording, barCount: Int = 96): List<Float> {
     val rawBytes = recording.toByteArray()
     if (rawBytes.isEmpty()) return emptyList()
 
-    val barCount = 96
-    val bytesPerSample = recording.format.bytesPerSample
-    val totalSamples = rawBytes.size / bytesPerSample.coerceAtLeast(1)
-    if (totalSamples == 0) return List(barCount) { 0f }
+    val format = recording.format
+    val bytesPerSample = format.bytesPerSample.coerceAtLeast(1)
+    val channelCount = format.channels.count.coerceAtLeast(1)
+    val bytesPerFrame = format.bytesPerFrame.coerceAtLeast(bytesPerSample)
+    val totalFrames = rawBytes.size / bytesPerFrame
+    if (totalFrames == 0) return List(barCount) { 0f }
 
-    val samplesPerBar = (totalSamples / barCount).coerceAtLeast(1)
+    val framesPerBar = (totalFrames / barCount).coerceAtLeast(1)
     val amplitudes = ArrayList<Float>(barCount)
 
     for (bar in 0 until barCount) {
-        val startSample = bar * samplesPerBar
-        var maxAmp = 0f
+        val startFrame = bar * framesPerBar
+        val endFrame = (startFrame + framesPerBar).coerceAtMost(totalFrames)
+        var peak = 0f
 
-        for (s in startSample until (startSample + samplesPerBar).coerceAtMost(totalSamples)) {
-            val byteOffset = s * bytesPerSample
-            if (byteOffset + 1 >= rawBytes.size) break
-
-            val sample = when (bytesPerSample) {
-                1 -> (rawBytes[byteOffset].toInt() and 0xFF) - 128
-                2 -> (rawBytes[byteOffset].toInt() and 0xFF) or
-                    (rawBytes[byteOffset + 1].toInt() shl 8)
-                else -> (rawBytes[byteOffset].toInt() and 0xFF) or
-                    (rawBytes[byteOffset + 1].toInt() shl 8)
+        for (frame in startFrame until endFrame) {
+            val frameOffset = frame * bytesPerFrame
+            for (ch in 0 until channelCount) {
+                val sampleOffset = frameOffset + ch * bytesPerSample
+                peak = max(peak, absSample(rawBytes, sampleOffset, format.encoding))
             }
-
-            val normalized = kotlin.math.abs(sample.toFloat()) / when (bytesPerSample) {
-                1 -> 128f
-                2 -> 32768f
-                else -> 32768f
-            }
-            if (normalized > maxAmp) maxAmp = normalized
         }
 
-        amplitudes.add(maxAmp.coerceIn(0.02f, 1f))
+        amplitudes.add(peak.coerceIn(0.02f, 1f))
     }
 
     return amplitudes
+}
+
+private fun absSample(bytes: ByteArray, offset: Int, encoding: SampleEncoding): Float {
+    return when (encoding) {
+        is SampleEncoding.PcmInt -> {
+            val bits = encoding.bitDepth.bits
+            val bps = bits / 8
+            if (offset < 0 || offset + bps > bytes.size) return 0f
+            val raw = readPcmIntBits(bytes, offset, bps, encoding.endianness)
+            val centered = if (encoding.signed) {
+                signExtend(raw, bits)
+            } else {
+                raw - (1L shl (bits - 1))
+            }
+            val divisor = (1L shl (bits - 1)).toFloat()
+            abs(centered.toFloat() / divisor).coerceIn(0f, 1f)
+        }
+        is SampleEncoding.PcmFloat -> when (encoding.precision) {
+            FloatPrecision.F32 -> {
+                if (offset + 4 > bytes.size) return 0f
+                abs(Float.fromBits(readInt32Le(bytes, offset))).coerceIn(0f, 1f)
+            }
+            FloatPrecision.F64 -> {
+                if (offset + 8 > bytes.size) return 0f
+                abs(Double.fromBits(readInt64Le(bytes, offset)).toFloat()).coerceIn(0f, 1f)
+            }
+        }
+    }
+}
+
+private fun readPcmIntBits(bytes: ByteArray, offset: Int, bps: Int, endianness: Endianness): Long {
+    var value = 0L
+    when (endianness) {
+        Endianness.Little -> {
+            for (i in 0 until bps) {
+                value = value or ((bytes[offset + i].toLong() and 0xFF) shl (8 * i))
+            }
+        }
+        Endianness.Big -> {
+            for (i in 0 until bps) {
+                value = (value shl 8) or (bytes[offset + i].toLong() and 0xFF)
+            }
+        }
+    }
+    return value
+}
+
+private fun signExtend(value: Long, bits: Int): Long {
+    val signBit = 1L shl (bits - 1)
+    return if (value and signBit != 0L) {
+        value or (-1L shl bits)
+    } else {
+        value
+    }
+}
+
+private fun readInt32Le(bytes: ByteArray, offset: Int): Int =
+    (bytes[offset].toInt() and 0xFF) or
+        ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
+        ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
+        ((bytes[offset + 3].toInt() and 0xFF) shl 24)
+
+private fun readInt64Le(bytes: ByteArray, offset: Int): Long {
+    var value = 0L
+    for (i in 0 until 8) {
+        value = value or ((bytes[offset + i].toLong() and 0xFF) shl (8 * i))
+    }
+    return value
+}
+
+private fun formatPlaybackTime(duration: Duration): String {
+    if (duration <= Duration.ZERO) return "0:00"
+    val totalMs = duration.inWholeMilliseconds.coerceAtLeast(0)
+    val totalSeconds = totalMs / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    val tenths = (totalMs % 1000) / 100
+    return if (minutes >= 10) {
+        "$minutes:${seconds.toString().padStart(2, '0')}"
+    } else {
+        "$minutes:${seconds.toString().padStart(2, '0')}.$tenths"
+    }
 }
 
 private fun formatSampleRate(rate: Int): String = when {
