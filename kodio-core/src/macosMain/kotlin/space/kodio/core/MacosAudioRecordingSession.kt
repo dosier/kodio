@@ -85,6 +85,8 @@ class MacosAudioRecordingSession(
 
     override fun cleanup() {
         // Idempotent: stop()/reset() may call cleanup() and awaitClose may call it again.
+        // MacosAudioQueue.dispose follows Apple's recording cleanup: clear mIsRunning,
+        // AudioQueueStop(true) to release the mic promptly, then AudioQueueDispose(true).
         audioQueue?.dispose(inImmediate = true)
         audioQueue = null
     }

@@ -15,19 +15,22 @@ import kotlin.test.assertTrue
 class AudioQueueBufferLogicTest {
 
     /**
-     * Simulates the CURRENT (fixed) implementation from MacosAudioQueue.createInput().
-     * 
+     * Simulates MacosAudioQueue.createInput() callback logic, including Apple's
+     * `mIsRunning` guard (Recording Audio Listing 2-5): do not enqueue when stopped.
+     *
      * Returns true if buffer would be re-enqueued, false otherwise.
      */
     private fun callbackLogic(
         audioData: ByteArray,
-        channel: Channel<ByteArray>
+        channel: Channel<ByteArray>,
+        running: Boolean = true
     ): Boolean {
+        // Apple Listing 2-5: if (mIsRunning == 0) return; before enqueue
+        if (!running) return false
+
         var bufferReEnqueued = false
-        
-        // This is the ACTUAL logic from MacosAudioQueue.kt (fixed version)
+
         if (audioData.isEmpty()) {
-            println("Input callback called but audioData is empty, re-enqueuing")
             bufferReEnqueued = true // Buffer must be re-enqueued to prevent starvation
         } else {
             val result = channel.trySend(audioData)
@@ -35,7 +38,7 @@ class AudioQueueBufferLogicTest {
                 bufferReEnqueued = true
             }
         }
-        
+
         return bufferReEnqueued
     }
 
@@ -147,6 +150,31 @@ class AudioQueueBufferLogicTest {
         val received = channel.tryReceive()
         assertFalse(received.isSuccess, "Data was lost due to backpressure (expected)")
         
+        channel.close()
+    }
+
+    /**
+     * Apple Recording Audio Listing 2-5: when mIsRunning is clear, the callback
+     * must return without calling AudioQueueEnqueueBuffer (avoids
+     * kAudioQueueErr_EnqueueDuringReset during Stop/Dispose).
+     */
+    @Test
+    fun `stopped queue does not re-enqueue buffers`() = runTest {
+        val channel = Channel<ByteArray>(Channel.UNLIMITED)
+
+        assertFalse(
+            callbackLogic(ByteArray(4800), channel, running = false),
+            "Must not enqueue after stop/dispose clears running"
+        )
+        assertFalse(
+            callbackLogic(ByteArray(0), channel, running = false),
+            "Must not enqueue empty buffers after stop either"
+        )
+        assertFalse(
+            channel.tryReceive().isSuccess,
+            "Stopped callback must not push audio into the channel"
+        )
+
         channel.close()
     }
 }

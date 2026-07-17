@@ -8,12 +8,23 @@ import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.onFailure
 import platform.AudioToolbox.*
 import platform.CoreAudioTypes.AudioStreamBasicDescription
+import platform.darwin.OSStatus
 import platform.darwin.UInt32Var
+import platform.darwin.noErr
 import platform.posix.memcpy
 import space.kodio.core.util.namedLogger
+import kotlin.concurrent.Volatile
 import kotlin.math.max
 
 private val logger = namedLogger("AudioQueue")
+
+/**
+ * Apple documents that enqueue is forbidden while [AudioQueueReset], [AudioQueueStop],
+ * or [AudioQueueDispose] is in progress ([kAudioQueueErr_EnqueueDuringReset]).
+ *
+ * @see <a href="https://developer.apple.com/documentation/audiotoolbox/kaudioqueueerr_enqueueduringreset">kAudioQueueErr_EnqueueDuringReset</a>
+ */
+private const val AUDIO_QUEUE_ERR_ENQUEUE_DURING_RESET: OSStatus = -66632
 
 @OptIn(ExperimentalForeignApi::class)
 sealed class MacosAudioQueue<S : Any>(
@@ -28,8 +39,13 @@ sealed class MacosAudioQueue<S : Any>(
         stateRef: StableRef<State>
     ) : MacosAudioQueue<ReadOnly.State>(aqRef, asbd, stateRef) {
 
+        /**
+         * Callback-visible state. [running] mirrors Apple's `mIsRunning` flag from the
+         * Audio Queue Services Programming Guide (Recording Audio, Listing 2-5 / 2-14):
+         * the input callback must return without enqueueing when the flag is clear.
+         */
         class State(
-            val running: Boolean,
+            @Volatile var running: Boolean,
             val channel: Channel<ByteArray>
         )
 
@@ -38,6 +54,12 @@ sealed class MacosAudioQueue<S : Any>(
             state.channel.consumeEach { audioData ->
                 dst.send(audioData)
             }
+        }
+
+        override fun markNotRunning() {
+            val state = stateRef.get()
+            state.running = false
+            state.channel.close()
         }
     }
 
@@ -48,7 +70,7 @@ sealed class MacosAudioQueue<S : Any>(
     ) : MacosAudioQueue<Writable.State>(aqRef, asbd, stateRef) {
 
         class State(
-            val running: Boolean,
+            @Volatile var running: Boolean,
             val availableBuffers: Channel<AudioQueueBufferRef>
         )
 
@@ -132,7 +154,20 @@ sealed class MacosAudioQueue<S : Any>(
             
             logger.debug { "Writable.streamFromWithPriming completed: $chunkCount chunks, $totalBytes bytes, $buffersEnqueued buffers" }
         }
+
+        override fun markNotRunning() {
+            val state = stateRef.get()
+            state.running = false
+            state.availableBuffers.close()
+        }
     }
+
+    /**
+     * Clears the callback-visible running flag (Apple's `mIsRunning`) and closes
+     * channels so producers/consumers unwind. Must be called before stop/dispose
+     * so [AudioQueueInputCallback] does not enqueue during reset.
+     */
+    protected abstract fun markNotRunning()
 
     /**
      * Begins playing or recordings audio.
@@ -155,14 +190,28 @@ sealed class MacosAudioQueue<S : Any>(
     /**
      * Stops playing or recording audio.
      *
+     * Per Apple Audio Queue Services Reference: [AudioQueueStop] also resets the
+     * queue. With [inImmediate] `true`, stopping is synchronous; with `false`,
+     * callbacks may continue until queued buffers finish.
+     *
+     * For immediate stop we clear the running flag first so in-flight callbacks
+     * skip enqueue (see Recording Audio Listing 2-5 / 2-14).
+     *
      * @param inImmediate If you pass `true`, stopping occurs immediately (that is, synchronously).
      *                    If you pass `false`, the function returns immediately,
      *                    but the audio queue does not stop until its queued buffers are played or recorded
      *                    (that is, the stop occurs asynchronously).
      *                    Audio queue callbacks are invoked as necessary until the queue actually stops.
      */
-    fun stop(inImmediate: Boolean = true): Unit =
+    fun stop(inImmediate: Boolean = true) {
+        if (inImmediate) {
+            markNotRunning()
+        }
         runAndCheckOsStatus { AudioQueueStop(aqRef, inImmediate) }
+        if (!inImmediate) {
+            markNotRunning()
+        }
+    }
 
     /**
      * Resets the [aqRef].
@@ -171,7 +220,8 @@ sealed class MacosAudioQueue<S : Any>(
         runAndCheckOsStatus { AudioQueueReset(aqRef) }
 
     /**
-     * Disposes the [aqRef].
+     * Stops and disposes the [aqRef], matching Apple's recording cleanup sequence:
+     * clear running → [AudioQueueStop]`(true)` → [AudioQueueDispose]`(true)`.
      *
      * Disposing of an audio queue also disposes of its resources, including its buffers.
      * After you call this function, you can no longer interact with the audio queue.
@@ -180,11 +230,24 @@ sealed class MacosAudioQueue<S : Any>(
      * @param inImmediate If you pass `true`, the audio queue is disposed of immediately (that is, synchronously).
      *                    If you pass false, disposal does not take place until all enqueued buffers
      *                    are processed (that is, asynchronously).
+     *
+     * @see <a href="https://developer.apple.com/library/archive/documentation/MusicAudio/Conceptual/AudioQueueProgrammingGuide/AQRecord/RecordingAudio.html">Recording Audio</a>
      */
     fun dispose(inImmediate: Boolean = true) {
-        runAndCheckOsStatus { AudioQueueDispose(aqRef, inImmediate) }
-        stateRef.dispose()
-        nativeHeap.free(asbd)
+        // 1) Stop accepting callback work before touching the queue (Apple mIsRunning).
+        markNotRunning()
+        // 2) Synchronous stop+reset so hardware/mic is released promptly.
+        runCatching {
+            runAndCheckOsStatus { AudioQueueStop(aqRef, true) }
+        }.onFailure { logger.warn(it) { "AudioQueueStop during dispose failed" } }
+        // 3) Dispose queue + buffers.
+        runCatching {
+            runAndCheckOsStatus { AudioQueueDispose(aqRef, inImmediate) }
+        }.onFailure { logger.warn(it) { "AudioQueueDispose failed" } }
+        runCatching { stateRef.dispose() }
+            .onFailure { logger.warn(it) { "StableRef.dispose failed" } }
+        runCatching { nativeHeap.free(asbd) }
+            .onFailure { logger.warn(it) { "ASBD free failed" } }
     }
 
     internal inline fun <reified V : CVariable, reified T> getPropertyValue(property: MacosAudioQueueProperty<V, T>): T =
@@ -234,6 +297,9 @@ sealed class MacosAudioQueue<S : Any>(
             has filled an audio queue buffer with fresh audio data.
             Typically, your callback writes the data to a file or other buffer
             and then re-enqueues the audio queue buffer to receive more data.
+
+            Apple Recording Audio Listing 2-5: check mIsRunning before enqueue;
+            never throw across this AudioToolbox callback boundary (K/N aborts).
              */
             val inputCallBack: AudioQueueInputCallback =
                 staticCFunction { inUserData,
@@ -242,24 +308,34 @@ sealed class MacosAudioQueue<S : Any>(
                                   inStartTime,
                                   inNumberPacketDescriptions,
                                   inPacketDescriptions ->
-                    if (inAQ == null || inUserData == null || inBuffer == null)
-                        logAb("Input callback called but inAQ/userData/buffer null")
-                    else {
+                    try {
+                        if (inAQ == null || inUserData == null || inBuffer == null) {
+                            logAb("Input callback called but inAQ/userData/buffer null")
+                            return@staticCFunction
+                        }
                         val state = inUserData.asStableRef<ReadOnly.State>().get()
-                        if (!state.running)
-                            logAb("Input callback called but state is not running")
-                        else {
-                            val audioData = inBuffer.pointed.readFully()
-                            if (audioData.isEmpty()) {
-                                logAb("Input callback called but audioData is empty, re-enqueuing")
-                                inAQ.enqueueBuffer(inBuffer)
-                            } else {
-                                val result = state.channel.trySend(audioData)
-                                    .onFailure { logger.warn { "Input callback trySend failed: $it" } }
-                               if (!result.isClosed)
-                                   inAQ.enqueueBuffer(inBuffer)
+                        // Listing 2-5: if (mIsRunning == 0) return; before enqueue
+                        if (!state.running) {
+                            logAb("Input callback after stop; skipping enqueue")
+                            return@staticCFunction
+                        }
+                        val audioData = inBuffer.pointed.readFully()
+                        if (audioData.isEmpty()) {
+                            logAb("Input callback called but audioData is empty, re-enqueuing")
+                            if (state.running) {
+                                inAQ.tryEnqueueBuffer(inBuffer)
+                            }
+                        } else {
+                            val result = state.channel.trySend(audioData)
+                                .onFailure { logger.warn { "Input callback trySend failed: $it" } }
+                            // Re-check running: stop/dispose may have raced after trySend.
+                            if (state.running && !result.isClosed) {
+                                inAQ.tryEnqueueBuffer(inBuffer)
                             }
                         }
+                    } catch (t: Throwable) {
+                        // Uncaught Kotlin exceptions in K/N AudioToolbox callbacks abort the process.
+                        logAb("Input callback swallowed exception: ${t.message}")
                     }
                 }
 
@@ -299,23 +375,26 @@ sealed class MacosAudioQueue<S : Any>(
             bufferDurationSec: Double
         ): Writable {
             logger.debug { "createOutput called: format=$format, bufferCount=$bufferCount, bufferDuration=${bufferDurationSec}s" }
-            var callbackCount = 0
             val outputCallBack: AudioQueueOutputCallback =
                 staticCFunction { inUserData,
                                   inAQ,
                                   inBuffer ->
-                    if (inUserData == null || inBuffer == null)
-                        logAb("Output callback called but userData/buffer null")
-                    else {
-                        val state = inUserData.asStableRef<Writable.State>().get()
-                        if (!state.running)
-                            logAb("Output callback called but state is not running")
-                        else {
-                            logAb("[AudioQueue] Output callback: buffer played, returning to pool")
-                            state.availableBuffers
-                                .trySend(inBuffer)
-                                .onFailure { logAb("Output callback failed to send buffer: $it") }
+                    try {
+                        if (inUserData == null || inBuffer == null) {
+                            logAb("Output callback called but userData/buffer null")
+                            return@staticCFunction
                         }
+                        val state = inUserData.asStableRef<Writable.State>().get()
+                        if (!state.running) {
+                            logAb("Output callback called but state is not running")
+                            return@staticCFunction
+                        }
+                        logAb("[AudioQueue] Output callback: buffer played, returning to pool")
+                        state.availableBuffers
+                            .trySend(inBuffer)
+                            .onFailure { logAb("Output callback failed to send buffer: $it") }
+                    } catch (t: Throwable) {
+                        logAb("Output callback swallowed exception: ${t.message}")
                     }
                 }
             val state = Writable.State(running = true, availableBuffers = Channel(bufferCount))
@@ -455,6 +534,28 @@ private fun AudioQueueRef.enqueueBuffer(bufferRef: AudioQueueBufferRef) {
             inPacketDescs = null
         )
     }
+}
+
+/**
+ * Callback-safe enqueue: soft-fails [AUDIO_QUEUE_ERR_ENQUEUE_DURING_RESET] instead of throwing.
+ * Apple forbids enqueue during Reset/Stop/Dispose; racing InputBufferComplete callbacks hit this.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun AudioQueueRef.tryEnqueueBuffer(bufferRef: AudioQueueBufferRef): Boolean {
+    val status = AudioQueueEnqueueBuffer(
+        inAQ = this@tryEnqueueBuffer,
+        inBuffer = bufferRef,
+        inNumPacketDescs = 0u,
+        inPacketDescs = null
+    )
+    if (status.toUInt() == noErr) return true
+    if (status == AUDIO_QUEUE_ERR_ENQUEUE_DURING_RESET) {
+        logAb("enqueue skipped during reset/stop/dispose (OSStatus=$status)")
+        return false
+    }
+    // Unexpected errors: log only — never throw from the AQ callback path.
+    logAb("enqueue failed with OSStatus=$status (soft-fail in callback)")
+    return false
 }
 
 // Helpers
