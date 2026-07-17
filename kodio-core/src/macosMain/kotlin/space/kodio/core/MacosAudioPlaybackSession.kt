@@ -1,73 +1,65 @@
 package space.kodio.core
 
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.flow.map
 import space.kodio.core.MacosAudioQueueProperty.CurrentDevice
+import space.kodio.core.transport.AudioSink
+import space.kodio.core.transport.TransportController
 import space.kodio.core.util.namedLogger
+import kotlin.time.Duration
 
 private val logger = namedLogger("PlaybackSession")
 
 /**
- * Mac OS implementation for [AudioPlaybackSession] using Core Audio AudioQueue (output).
+ * macOS AudioQueue playback fed by [PlaybackBuffer] transport.
+ *
+ * Seek uses seek-quiesce + [AudioQueueStop]`(true)` (not channel-closing
+ * [MacosAudioQueue.markNotRunning], and not [AudioQueueFlush] which is EOS drain).
  */
 @ExperimentalForeignApi
 class MacosAudioPlaybackSession(
     private val requestedDevice: AudioDevice.Output? = null,
-    private val bufferDurationSec: Double = 0.05, // ≈50ms buffer
-    private val bufferCount: Int = 5              // 5 buffers for smoother playback
+    private val bufferDurationSec: Double = 0.05,
+    private val bufferCount: Int = 5
 ) : BaseAudioPlaybackSession() {
 
     private lateinit var audioQueue: MacosAudioQueue.Writable
-    private var paused = false
     private var outputFormat: AudioFormat? = null
+    private var queueStarted: Boolean = false
+
+    override fun useTransportPlayback(): Boolean = true
 
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
         logger.debug { "preparePlayback called with format: $format" }
 
         if (::audioQueue.isInitialized) {
             audioQueue.dispose(inImmediate = true)
+            queueStarted = false
         }
 
         val playbackFormat = toDevicePlaybackFormat(format)
         outputFormat = playbackFormat
-        logger.debug { "Output format: $outputFormat" }
-        
+
         audioQueue = MacosAudioQueue.createOutput(
             format = playbackFormat,
             bufferCount = bufferCount,
             bufferDurationSec = bufferDurationSec
         )
-        logger.debug { "AudioQueue created successfully" }
-        
+
         if (requestedDevice != null) {
-            logger.debug { "Setting device: ${requestedDevice.name} (${requestedDevice.id})" }
             audioQueue.setPropertyValue(CurrentDevice, requestedDevice.id)
         }
 
-        if (isDeviceFriendly(format)) {
-            // For well-supported formats, return the INPUT format to skip
-            // the slow BigDecimal-based convertAudio(); playBlocking handles
-            // fast mono-to-stereo duplication when needed.
-            return format
-        }
-        // For formats CoreAudio AudioQueue may not handle reliably
-        // (24-bit packed int, unsigned, big-endian, etc.), return the
-        // normalized Float32 format so BaseAudioPlaybackSession.play()
-        // runs convertAudio() to produce device-compatible bytes.
+        // Always return the device format so Base convertAudio matches the queue
+        // (including mono→stereo). Transport feeds converted PCM only.
         return playbackFormat
     }
 
-    /**
-     * Float32 and signed-16-bit-LE are the two formats CoreAudio
-     * AudioQueue handles without issue. Everything else gets
-     * normalized to Float32 stereo.
-     */
     private fun isDeviceFriendly(format: AudioFormat): Boolean = when (val enc = format.encoding) {
         is SampleEncoding.PcmFloat -> true
         is SampleEncoding.PcmInt ->
             enc.bitDepth == IntBitDepth.Sixteen &&
-            enc.signed &&
-            enc.endianness == Endianness.Little
+                enc.signed &&
+                enc.endianness == Endianness.Little
     }
 
     private fun toDevicePlaybackFormat(format: AudioFormat): AudioFormat {
@@ -82,60 +74,86 @@ class MacosAudioPlaybackSession(
         )
     }
 
+    override fun createAudioSink(format: AudioFormat): AudioSink = AudioQueueSink()
+
     override suspend fun playBlocking(audioFlow: AudioFlow) {
-        logger.debug { "playBlocking: input=${audioFlow.format}, output=$outputFormat" }
-        
-        // Fast mono-to-stereo conversion (bypasses slow BigDecimal convertAudio)
-        val stereoOutputFormat = outputFormat?.takeIf { it.channels == Channels.Stereo }
-        val playbackFlow = if (audioFlow.format.channels == Channels.Mono && stereoOutputFormat != null) {
-            logger.debug { "Doing fast mono-to-stereo conversion" }
-            val bytesPerSample = audioFlow.format.bytesPerSample
-            AudioFlow(
-                format = stereoOutputFormat,
-                data = audioFlow.map { chunk ->
-                    // Duplicate each sample for left and right channels
-                    val stereo = ByteArray(chunk.size * 2)
-                    var src = 0
-                    var dst = 0
-                    while (src < chunk.size) {
-                        // Copy sample to left channel
-                        repeat(bytesPerSample) { b ->
-                            stereo[dst + b] = chunk[src + b]
-                        }
-                        // Copy same sample to right channel
-                        repeat(bytesPerSample) { b ->
-                            stereo[dst + bytesPerSample + b] = chunk[src + b]
-                        }
-                        src += bytesPerSample
-                        dst += bytesPerSample * 2
-                    }
-                    stereo
-                },
-                knownByteCount = audioFlow.knownByteCount?.times(2),
-            )
-        } else {
-            audioFlow
+        error("MacosAudioPlaybackSession uses transport playback")
+    }
+
+    override fun readDeviceMediaPosition(
+        mediaBase: Duration,
+        transport: TransportController,
+    ): Duration = transport.buffer.format.durationOfByteOffset(transport.readCursor)
+
+    override fun onTransportPaused() {
+        if (::audioQueue.isInitialized) {
+            runCatching { audioQueue.pause() }
         }
-        
-        // Stream data to queue - start() will be called after initial buffers are primed
-        logger.debug { "Starting stream (queue will start after priming)" }
-        audioQueue.streamFromWithPriming(playbackFlow, bufferCount)
-        logger.debug { "streamFrom completed" }
     }
 
-    override fun onPause() {
-        if (paused) return
-        audioQueue.pause()
-        paused = true
+    override fun onTransportResumed() {
+        if (::audioQueue.isInitialized) {
+            runCatching { audioQueue.start() }
+            queueStarted = true
+        }
     }
 
-    override fun onResume() {
-        if (!paused) return
-        audioQueue.start()
-        paused = false
+    override fun onTransportStopped() {
+        if (::audioQueue.isInitialized) {
+            runCatching { audioQueue.stop(inImmediate = true) }
+            runCatching { audioQueue.dispose(inImmediate = true) }
+            queueStarted = false
+        }
     }
 
-    override fun onStop() {
-        audioQueue.stop(inImmediate = true)
+    override suspend fun ensureDeviceReadyForTransport(format: AudioFormat): AudioFormat {
+        if (::audioQueue.isInitialized) return outputFormat ?: format
+        return preparePlayback(format)
+    }
+
+    override fun onPause() = onTransportPaused()
+    override fun onResume() = onTransportResumed()
+    override fun onStop() = onTransportStopped()
+
+    private inner class AudioQueueSink : AudioSink {
+        override fun write(
+            data: ByteArray,
+            offset: Int,
+            length: Int,
+            seekEpoch: Long,
+            mediaByteOffset: Long,
+        ) {
+            if (!::audioQueue.isInitialized || length <= 0) return
+            val transport = currentTransport()
+            if (transport != null && transport.seekEpoch != seekEpoch) return
+
+            var written = 0
+            var attempts = 0
+            while (written < length && attempts++ < 32) {
+                val n = audioQueue.tryPrimeBuffer(data, offset + written, length - written)
+                if (n <= 0) break
+                written += n
+            }
+            if (!queueStarted && written > 0) {
+                runCatching {
+                    audioQueue.start()
+                    queueStarted = true
+                }
+            }
+        }
+
+        override fun flush(seekEpoch: Long) {
+            if (!::audioQueue.isInitialized) return
+            // Seek discard: quiesce + Stop(true); keep pool channels open.
+            runCatching { audioQueue.seekDiscardImmediate() }
+            queueStarted = false
+            logger.debug { "AudioQueueSink.flush epoch=$seekEpoch via seekDiscardImmediate" }
+            if (state.value is AudioPlaybackSession.State.Playing) {
+                runCatching {
+                    audioQueue.start()
+                    queueStarted = true
+                }
+            }
+        }
     }
 }

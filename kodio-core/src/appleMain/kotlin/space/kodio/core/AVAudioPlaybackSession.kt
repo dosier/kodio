@@ -2,9 +2,8 @@ package space.kodio.core
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.lastOrNull
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import platform.AVFAudio.AVAudioConverter
 import platform.AVFAudio.AVAudioEngine
 import platform.AVFAudio.AVAudioFormat
@@ -12,100 +11,94 @@ import platform.AVFAudio.AVAudioPCMFormatFloat32
 import platform.AVFAudio.AVAudioPlayerNode
 import space.kodio.core.io.convertSimple
 import space.kodio.core.io.toIosAudioBuffer
+import space.kodio.core.transport.AudioSink
+import space.kodio.core.transport.TransportController
 import space.kodio.core.util.namedLogger
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 private val log = namedLogger("AVAudioPlayback")
 
+/**
+ * Apple AVAudioEngine + AVAudioPlayerNode transport session.
+ *
+ * Seek hops off the completion queue: [AVAudioPlayerNode.stop] must never run
+ * inside a buffer completion handler (documented deadlock). Completions only
+ * enqueue "schedule more" work onto the session [scope].
+ */
 abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
-    
+
     private val engine = AVAudioEngine()
     private val player = AVAudioPlayerNode()
     private lateinit var standardAVFormat: AVAudioFormat
     private lateinit var interleavedAVFormat: AVAudioFormat
     private var deinterleaveConverter: AVAudioConverter? = null
 
+    /** Completions post here; never call [AVAudioPlayerNode.stop] from the handler. */
+    private val scheduleMore = Channel<Unit>(Channel.CONFLATED)
+
+    @Volatile
+    private var completionScheduleEnabled: Boolean = true
+
+    private var playbackFormat: AudioFormat? = null
+
     init {
         engine.attachNode(player)
         log.info { "Attached player node to engine" }
+        scope.launch {
+            for (unit in scheduleMore) {
+                // Drain signal; feed loop / prime owns actual scheduling via sink.write.
+                log.trace { "scheduleMore signal (completion hop)" }
+            }
+        }
     }
 
     abstract fun configureAudioSession()
+
+    override fun useTransportPlayback(): Boolean = true
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
         log.info { "preparePlayback() called with format: $format" }
 
-        val playbackFormat = toNativePlaybackFormat(format)
+        val normalized = toNativePlaybackFormat(format)
         if (engine.isRunning() && ::standardAVFormat.isInitialized &&
-            standardAVFormat.sampleRate == playbackFormat.sampleRate.toDouble() &&
-            standardAVFormat.channelCount == playbackFormat.channels.count.toUInt()
+            standardAVFormat.sampleRate == normalized.sampleRate.toDouble() &&
+            standardAVFormat.channelCount == normalized.channels.count.toUInt()
         ) {
-            log.info {
-                "preparePlayback(): engine already running with matching format, skipping setup"
-            }
-            return playbackFormat
-        }
-        if (playbackFormat != format) {
-            log.info { "Format not natively supported, will convert to: $playbackFormat" }
+            playbackFormat = normalized
+            return normalized
         }
 
-        // Interleaved format matching what the conversion pipeline produces
         interleavedAVFormat = AVAudioFormat(
             commonFormat = AVAudioPCMFormatFloat32,
-            sampleRate = playbackFormat.sampleRate.toDouble(),
-            channels = playbackFormat.channels.count.toUInt(),
+            sampleRate = normalized.sampleRate.toDouble(),
+            channels = normalized.channels.count.toUInt(),
             interleaved = true
         )
-
-        // AVAudioEngine on iOS requires the standard (non-interleaved Float32) format
         standardAVFormat = AVAudioFormat(
-            standardFormatWithSampleRate = playbackFormat.sampleRate.toDouble(),
-            channels = playbackFormat.channels.count.toUInt()
+            standardFormatWithSampleRate = normalized.sampleRate.toDouble(),
+            channels = normalized.channels.count.toUInt()
         )
-        log.info {
-            "Standard AVAudioFormat: sampleRate=${standardAVFormat.sampleRate}, " +
-                "channels=${standardAVFormat.channelCount}, commonFormat=${standardAVFormat.commonFormat}, " +
-                "interleaved=${standardAVFormat.isInterleaved()}, isStandard=${standardAVFormat.isStandard()}"
-        }
-
-        deinterleaveConverter = if (playbackFormat.channels.count > 1) {
-            AVAudioConverter(fromFormat = interleavedAVFormat, toFormat = standardAVFormat).also {
-                log.info { "Created AVAudioConverter for interleaved -> non-interleaved conversion" }
-            }
+        deinterleaveConverter = if (normalized.channels.count > 1) {
+            AVAudioConverter(fromFormat = interleavedAVFormat, toFormat = standardAVFormat)
         } else null
 
-        val mainMixerOutputFormat = engine.mainMixerNode.outputFormatForBus(0u)
-        log.info {
-            "mainMixerNode outputFormatForBus(0): sampleRate=${mainMixerOutputFormat.sampleRate}, " +
-                "channels=${mainMixerOutputFormat.channelCount}, commonFormat=${mainMixerOutputFormat.commonFormat}"
-        }
-
-        log.info { "Connecting player -> mainMixerNode with standard avFormat" }
         engine.connect(player, engine.mainMixerNode, standardAVFormat)
-
-        log.info { "Configuring audio session" }
         configureAudioSession()
-
-        log.info { "Preparing engine" }
         engine.prepare()
-
-        log.info { "Starting engine" }
         runErrorCatching { errorVar ->
             engine.startAndReturnError(errorVar)
         }.onFailure {
             log.error(it) { "Engine failed to start: ${it.message}" }
             throw AVAudioEngineException.FailedToStart(it.message ?: "Unknown error")
         }
-        log.info { "Engine started successfully" }
-        return playbackFormat
+        playbackFormat = normalized
+        completionScheduleEnabled = true
+        return normalized
     }
 
-    /**
-     * Always normalize to interleaved Float32 for the conversion pipeline.
-     * The actual AVAudioEngine connection uses the standard (non-interleaved)
-     * format; an AVAudioConverter handles the deinterleaving per-buffer.
-     */
     private fun toNativePlaybackFormat(format: AudioFormat): AudioFormat {
         val enc = format.encoding
         if (enc is SampleEncoding.PcmFloat && enc.precision == FloatPrecision.F32) return format
@@ -116,67 +109,101 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
         )
     }
 
-    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    override fun createAudioSink(format: AudioFormat): AudioSink = AvAudioSink()
+
     override suspend fun playBlocking(audioFlow: AudioFlow) {
-        log.info { "playBlocking() called with format: ${audioFlow.format}" }
-        val converter = deinterleaveConverter
-        val bufferFormat = if (converter != null) interleavedAVFormat else standardAVFormat
-        log.info {
-            "Scheduling buffers: bufferFormat interleaved=${bufferFormat.isInterleaved()}, " +
-                "converter=${converter != null}"
-        }
-        var bufferCount = 0
-        // play() must follow at least one scheduleBuffer; otherwise AVFAudio throws
-        // "player did not see an IO cycle" (NSException, fatal on Kotlin/Native).
-        var playerStarted = false
-        val lastCompletable = audioFlow.map { bytes ->
-            bufferCount++
-            var iosAudioBuffer = bytes.toIosAudioBuffer(bufferFormat)
-            if (converter != null) {
-                iosAudioBuffer = converter.convertSimple(iosAudioBuffer, standardAVFormat)
-            }
-            if (bufferCount <= 3 || bufferCount % 50 == 0) {
-                log.info { "Scheduling buffer #$bufferCount: ${bytes.size} bytes, ${iosAudioBuffer.frameLength} frames" }
-            }
-            val iosAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
-            player.scheduleBuffer(iosAudioBuffer) {
-                iosAudioBufferFinishedIndicator.complete(Unit)
-            }
-            if (!playerStarted) {
-                playerStarted = true
-                log.debug { "First buffer scheduled, starting player" }
-                player.play()
-            }
-            iosAudioBufferFinishedIndicator
-        }.lastOrNull()
-        log.info { "Awaiting last buffer (total scheduled: $bufferCount)" }
-        lastCompletable?.await()
-        log.info { "playBlocking() finished" }
+        error("AVAudioPlaybackSession uses transport playback")
     }
 
-    /**
-     * Streaming [scheduleBuffer] playback has no safe mid-drain seek without
-     * racing [playBlocking]'s completion await; Compose falls back to a PCM window.
-     */
-    override fun onSeek(position: Duration): SeekResult = SeekResult.Unsupported
-
-    override fun onPause() {
-        log.info { "onPause()" }
-        if (player.isPlaying())
-            player.pause()
+    override fun readDeviceMediaPosition(
+        mediaBase: Duration,
+        transport: TransportController,
+    ): Duration {
+        val nodeTime = player.lastRenderTime ?: return mediaBase
+        val playerTime = player.playerTimeForNodeTime(nodeTime) ?: return mediaBase
+        if (!playerTime.isSampleTimeValid()) return mediaBase
+        val rate = playbackFormat?.sampleRate ?: transport.buffer.format.sampleRate
+        if (rate <= 0) return mediaBase
+        val sampleTime = playerTime.sampleTime
+        if (sampleTime < 0) return mediaBase
+        return mediaBase + (sampleTime.toDouble() / rate).seconds
     }
 
-    override fun onResume() {
-        log.info { "onResume()" }
+    override fun onTransportSeekApplied(position: Duration) {
+        // stop+reschedule is done in sink.flush on the session/API thread.
+        log.debug { "onTransportSeekApplied pos=$position" }
+    }
+
+    override fun onTransportPaused() {
+        if (player.isPlaying()) player.pause()
+    }
+
+    override fun onTransportResumed() {
         player.play()
     }
 
-    override fun onStop() {
-        log.info { "onStop()" }
-        if (player.isPlaying())
-            player.stop()
-        engine.stop()
-        engine.disconnectNodeOutput(player)
-        log.info { "Engine stopped and nodes disconnected" }
+    override fun onTransportStopped() {
+        completionScheduleEnabled = false
+        runCatching {
+            if (player.isPlaying()) player.stop()
+        }
+        runCatching { engine.stop() }
+        runCatching { engine.disconnectNodeOutput(player) }
+    }
+
+    override suspend fun ensureDeviceReadyForTransport(format: AudioFormat): AudioFormat {
+        if (engine.isRunning()) {
+            completionScheduleEnabled = true
+            return playbackFormat ?: format
+        }
+        return preparePlayback(format)
+    }
+
+    override fun onPause() = onTransportPaused()
+    override fun onResume() = onTransportResumed()
+    override fun onStop() = onTransportStopped()
+
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private inner class AvAudioSink : AudioSink {
+        override fun write(
+            data: ByteArray,
+            offset: Int,
+            length: Int,
+            seekEpoch: Long,
+            mediaByteOffset: Long,
+        ) {
+            if (length <= 0) return
+            val transport = currentTransport()
+            if (transport != null && transport.seekEpoch != seekEpoch) return
+
+            val converter = deinterleaveConverter
+            val bufferFormat = if (converter != null) interleavedAVFormat else standardAVFormat
+            val chunk = if (offset == 0 && length == data.size) data else data.copyOfRange(offset, offset + length)
+            var iosAudioBuffer = chunk.toIosAudioBuffer(bufferFormat)
+            if (converter != null) {
+                iosAudioBuffer = converter.convertSimple(iosAudioBuffer, standardAVFormat)
+            }
+
+            // Completion only hops to session queue — never stop() here.
+            player.scheduleBuffer(iosAudioBuffer) {
+                if (completionScheduleEnabled) {
+                    scheduleMore.trySend(Unit)
+                }
+            }
+            if (!player.isPlaying() && state.value is AudioPlaybackSession.State.Playing) {
+                player.play()
+            }
+        }
+
+        override fun flush(seekEpoch: Long) {
+            // Session/API queue only (seekTo caller thread / Base seek path).
+            completionScheduleEnabled = false
+            runCatching { player.stop() } // clears schedule; player time → 0
+            completionScheduleEnabled = true
+            log.debug { "AvAudioSink.flush epoch=$seekEpoch (stop on session queue)" }
+            if (state.value is AudioPlaybackSession.State.Playing) {
+                player.play()
+            }
+        }
     }
 }

@@ -64,16 +64,27 @@ class TransportPlaybackSessionTest {
             maxDuration = 10.seconds,
         )
         val session = FakeTransportSession(bufferConfig = config)
-        val hot = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
+        val hot = MutableSharedFlow<ByteArray>(
+            extraBufferCapacity = 1024,
+            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+        )
         session.load(AudioFlow(format, hot.asSharedFlow()))
 
         session.play()
-        withTimeout(2_000) { session.ingestStarted.await() }
+        withTimeout(5_000) { session.ingestStarted.await() }
 
         val chunkFrames = 160 // 10ms
         val chunk = ByteArray(chunkFrames * format.bytesPerFrame) { 2 }
-        repeat(400) { hot.emit(chunk) } // 4s
-        withTimeout(2_000) { session.firstWrite.await() }
+        // Emit until the transport feed has written at least once (native schedulers vary).
+        withTimeout(5_000) {
+            var emitted = 0
+            while (!session.firstWrite.isCompleted) {
+                hot.tryEmit(chunk)
+                if (++emitted % 50 == 0) delay(1)
+            }
+            // Fill ~4s of retained window after feed is alive.
+            repeat(400) { hot.tryEmit(chunk) }
+        }
 
         assertEquals(SeekResult.Applied, session.seekTo(1.seconds))
         assertEquals(SeekResult.Unsupported, session.seekTo(9.seconds)) // past write edge

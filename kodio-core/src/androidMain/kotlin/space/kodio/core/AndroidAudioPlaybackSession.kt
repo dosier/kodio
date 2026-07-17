@@ -7,10 +7,21 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.AudioFormat as AndroidAudioFormat
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
+import space.kodio.core.transport.AudioSink
+import space.kodio.core.transport.TransportController
+import space.kodio.core.util.namedLogger
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
+private val logger = namedLogger("AndroidPlayback")
+
+/**
+ * Android [AudioTrack] (MODE_STREAM) fed by [PlaybackBuffer] transport.
+ *
+ * Seek requires pause → flush → cursor → play; [AudioTrack.flush] is a no-op while
+ * playing. Position uses unsigned 32-bit head delta from the post-flush baseline
+ * (head resets on flush/stop, unlike JavaSound).
+ */
 internal class AndroidAudioPlaybackSession(
     private val context: Context,
     private val requestedDevice: AudioDevice.Output?
@@ -21,30 +32,33 @@ internal class AndroidAudioPlaybackSession(
     private var androidEncoding: Int = AndroidAudioFormat.ENCODING_INVALID
     private var androidChannelMask: Int = 0
 
-    private val isPaused = MutableStateFlow(false)
+    /** Unsigned 32-bit playback head captured at last seek/flush baseline. */
+    private var headBaseline: Long = 0L
+
+    override fun useTransportPlayback(): Boolean = true
 
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
-        ensureInterleaved(format) // AudioTrack expects interleaved frames
+        ensureInterleaved(format)
 
-        // Derive Android constants
         androidChannelMask = format.channels.toAndroidChannelOutMask()
         androidEncoding = format.toAndroidEncoding()
-
-        if (androidEncoding == AndroidAudioFormat.ENCODING_INVALID)
+        if (androidEncoding == AndroidAudioFormat.ENCODING_INVALID) {
             error("$format is not supported by the device")
+        }
 
-        // Min buffer size
         val minBufferSize = AudioTrack.getMinBufferSize(
-            /* sampleRateInHz = */ format.sampleRate,
-            /* channelConfig  = */ androidChannelMask,
-            /* audioFormat    = */ androidEncoding
+            format.sampleRate,
+            androidChannelMask,
+            androidEncoding,
         )
         if (minBufferSize == AudioRecord.ERROR_BAD_VALUE) error("$format is not supported by the device")
         if (minBufferSize == AudioRecord.ERROR) error("Failed to get min buffer size")
 
         val bpf = format.bytesPerFrame
-        val rawPlaybackBufferSize = minBufferSize * 4 // a bit of headroom
+        val rawPlaybackBufferSize = minBufferSize * 4
         val playbackBufferSize = ((rawPlaybackBufferSize + bpf - 1) / bpf) * bpf
+        releaseTrack()
+
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -64,95 +78,158 @@ internal class AndroidAudioPlaybackSession(
 
         if (requestedDevice != null) setPreferredDevice(context, requestedDevice, track)
 
-        // Keep old behavior: align playback rate to stream sample rate
-        // (For modern apps, PlaybackParams is preferred; this preserves your logic.)
         track.playbackRate = format.sampleRate
         track.setVolume(AudioTrack.getMaxVolume())
+        track.play()
 
-        this.audioTrack = track
-        this.preparedFormat = format
-        this.isPaused.value = false
+        audioTrack = track
+        preparedFormat = format
+        headBaseline = unsignedHead(track)
+        logger.debug { "preparePlayback: AudioTrack opened format=$format" }
         return format
     }
 
-    override suspend fun playBlocking(audioFlow: AudioFlow) {
-        val track = audioTrack ?: return
-        isPaused.value = false
-        track.play()
+    override fun createAudioSink(format: AudioFormat): AudioSink = AndroidTrackSink()
 
-        when (preparedFormat.encoding) {
-            is SampleEncoding.PcmInt -> {
-                // Bytes are already in target PCM-int format; write directly.
-                audioFlow.collect { chunk ->
-                    isPaused.first { !it }
-                    // For 24-bit packed/32-bit, write(byte[]) also works on modern APIs.
-                    track.write(chunk, 0, chunk.size)
-                }
+    override suspend fun playBlocking(audioFlow: AudioFlow) {
+        error("AndroidAudioPlaybackSession uses transport playback")
+    }
+
+    override fun readDeviceMediaPosition(
+        mediaBase: Duration,
+        transport: TransportController,
+    ): Duration {
+        val track = audioTrack ?: return mediaBase
+        val delta = unsignedDelta(unsignedHead(track), headBaseline)
+        val rate = preparedFormat.sampleRate
+        if (rate <= 0) return mediaBase
+        return mediaBase + (delta.toDouble() / rate).seconds
+    }
+
+    override fun onTransportSeekApplied(position: Duration) {
+        // flush already ran via sink; refresh baseline after pause→flush.
+        audioTrack?.let { headBaseline = unsignedHead(it) }
+        logger.debug { "onTransportSeekApplied pos=$position headBaseline=$headBaseline" }
+    }
+
+    override fun onTransportPaused() {
+        audioTrack?.pause()
+    }
+
+    override fun onTransportResumed() {
+        audioTrack?.play()
+    }
+
+    override fun onTransportStopped() {
+        releaseTrack()
+    }
+
+    override suspend fun ensureDeviceReadyForTransport(format: AudioFormat): AudioFormat {
+        val track = audioTrack
+        if (track != null && track.state == AudioTrack.STATE_INITIALIZED) {
+            if (track.playState != AudioTrack.PLAYSTATE_PLAYING &&
+                state.value is AudioPlaybackSession.State.Playing
+            ) {
+                track.play()
             }
-            is SampleEncoding.PcmFloat -> {
-                // Convert LE IEEE-754 bytes to float[] and use float write().
-                // If upstream already produces float[], you can adapt the flow to emit float[] instead.
-                require(androidEncoding == AndroidAudioFormat.ENCODING_PCM_FLOAT)
-                audioFlow.collect { chunk ->
-                    isPaused.first { !it }
-                    val floats = bytesToFloatArrayLE(chunk)
-                    // WRITE_BLOCKING to keep behavior similar to your original
+            return preparedFormat
+        }
+        return preparePlayback(format)
+    }
+
+    override fun onPause() = onTransportPaused()
+    override fun onResume() = onTransportResumed()
+    override fun onStop() = onTransportStopped()
+
+    private fun releaseTrack() {
+        val track = audioTrack ?: return
+        runCatching { track.pause() }
+        runCatching { track.flush() }
+        runCatching { track.stop() }
+        runCatching { track.release() }
+        audioTrack = null
+        headBaseline = 0L
+    }
+
+    private inner class AndroidTrackSink : AudioSink {
+        override fun write(
+            data: ByteArray,
+            offset: Int,
+            length: Int,
+            seekEpoch: Long,
+            mediaByteOffset: Long,
+        ) {
+            val track = audioTrack ?: return
+            when (preparedFormat.encoding) {
+                is SampleEncoding.PcmInt -> {
+                    var written = 0
+                    while (written < length) {
+                        val n = track.write(data, offset + written, length - written)
+                        if (n <= 0) break
+                        written += n
+                    }
+                }
+                is SampleEncoding.PcmFloat -> {
+                    require(androidEncoding == AndroidAudioFormat.ENCODING_PCM_FLOAT)
+                    val floats = bytesToFloatArrayLE(data, offset, length)
                     track.write(floats, 0, floats.size, AudioTrack.WRITE_BLOCKING)
                 }
             }
         }
-    }
 
-    /**
-     * MODE_STREAM [AudioTrack] cannot reposition unread PCM; Compose falls back
-     * to a clipped window reload. Pause is gated in [playBlocking] so pause wins
-     * over in-flight writes.
-     */
-    override fun onSeek(position: Duration): SeekResult = SeekResult.Unsupported
-
-    override fun onPause() {
-        isPaused.value = true
-        audioTrack?.pause()
-    }
-
-    override fun onResume() {
-        isPaused.value = false
-        audioTrack?.play()
-    }
-
-    override fun onStop() {
-        isPaused.value = false
-        audioTrack?.stop()
-        audioTrack?.release()
-        audioTrack = null
+        override fun flush(seekEpoch: Long) {
+            val track = audioTrack ?: return
+            // REQUIRED: flush is a no-op unless paused/stopped (MODE_STREAM).
+            val wasPlaying = track.playState == AudioTrack.PLAYSTATE_PLAYING
+            runCatching { track.pause() }
+            runCatching { track.flush() }
+            headBaseline = unsignedHead(track)
+            if (wasPlaying && state.value is AudioPlaybackSession.State.Playing) {
+                runCatching { track.play() }
+            }
+            logger.debug { "AndroidTrackSink.flush epoch=$seekEpoch wasPlaying=$wasPlaying" }
+        }
     }
 }
 
-/* -------------------- Helpers used above -------------------- */
+/* -------------------- Helpers -------------------- */
+
+internal fun unsignedHead(track: AudioTrack): Long =
+    track.playbackHeadPosition.toLong() and 0xFFFF_FFFFL
+
+/** Unsigned 32-bit wrap-safe delta (now - baseline). */
+internal fun unsignedDelta(now: Long, baseline: Long): Long {
+    val a = now and 0xFFFF_FFFFL
+    val b = baseline and 0xFFFF_FFFFL
+    return (a - b) and 0xFFFF_FFFFL
+}
 
 private fun ensureInterleaved(fmt: AudioFormat) {
     val ok = when (val e = fmt.encoding) {
-        is SampleEncoding.PcmInt   -> e.layout == SampleLayout.Interleaved
+        is SampleEncoding.PcmInt -> e.layout == SampleLayout.Interleaved
         is SampleEncoding.PcmFloat -> e.layout == SampleLayout.Interleaved
     }
     require(ok) { "Android AudioTrack requires interleaved frames." }
 }
 
-
-private fun setPreferredDevice(context: Context, requestedDevice: AudioDevice.Output, audioTrack: AudioTrack) {
+private fun setPreferredDevice(
+    context: Context,
+    requestedDevice: AudioDevice.Output,
+    audioTrack: AudioTrack,
+) {
     val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
     val selectedDevice = devices.firstOrNull { it.id.toString() == requestedDevice.id }
     if (selectedDevice != null) audioTrack.preferredDevice = selectedDevice
 }
 
-/** Convert little-endian IEEE-754 Float32 bytes to a FloatArray. */
-private fun bytesToFloatArrayLE(bytes: ByteArray): FloatArray {
-    require(bytes.size % 4 == 0) { "PCM Float32 byte length must be multiple of 4." }
-    val out = FloatArray(bytes.size / 4)
-    var i = 0
+private fun bytesToFloatArrayLE(bytes: ByteArray, offset: Int, length: Int): FloatArray {
+    require(length % 4 == 0) { "PCM Float32 byte length must be multiple of 4." }
+    val out = FloatArray(length / 4)
+    var i = offset
     var j = 0
-    while (i < bytes.size) {
+    val end = offset + length
+    while (i < end) {
         val b0 = bytes[i].toInt() and 0xFF
         val b1 = bytes[i + 1].toInt() and 0xFF
         val b2 = bytes[i + 2].toInt() and 0xFF

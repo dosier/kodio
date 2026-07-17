@@ -69,10 +69,57 @@ sealed class MacosAudioQueue<S : Any>(
         stateRef: StableRef<State>
     ) : MacosAudioQueue<Writable.State>(aqRef, asbd, stateRef) {
 
+        /**
+         * Callback-visible state.
+         *
+         * [running] is cleared only on stop/dispose ([markNotRunning] closes the pool).
+         * [enqueueEnabled] is the seek-quiesce flag: during seek, callbacks still return
+         * buffers to the open pool but must not refill/enqueue. Seek must NOT clear
+         * [running] or close [availableBuffers] (that starves re-prime after Stop).
+         */
         class State(
             @Volatile var running: Boolean,
+            @Volatile var enqueueEnabled: Boolean = true,
             val availableBuffers: Channel<AudioQueueBufferRef>
         )
+
+        /**
+         * Seek discard path (plan Phase 2): quiesce enqueue → [AudioQueueStop]`(true)`
+         * → re-enable. Does **not** call [markNotRunning] / close the buffer pool.
+         * Prefer this over [AudioQueueFlush] for seek (Flush is EOS decoder drain).
+         */
+        fun seekDiscardImmediate() {
+            val state = stateRef.get()
+            state.enqueueEnabled = false
+            runAndCheckOsStatus { AudioQueueStop(aqRef, true) }
+            // After synchronous Stop, flushed buffers have been returned via callbacks.
+            state.enqueueEnabled = true
+            logger.debug { "Writable.seekDiscardImmediate: quiesce+Stop(true)+re-enable" }
+        }
+
+        /**
+         * Fill one available buffer from [src] and enqueue. Soft-fails DuringReset.
+         * Returns bytes written into the buffer (`0` if no buffer / empty src / disabled).
+         */
+        fun tryPrimeBuffer(src: ByteArray, offset: Int, length: Int): Int {
+            if (length <= 0) return 0
+            val state = stateRef.get()
+            if (!state.running || !state.enqueueEnabled) return 0
+            val result = state.availableBuffers.tryReceive()
+            val bufferRef = result.getOrNull() ?: return 0
+            val buffer = bufferRef.pointed
+            val written = buffer.write(src, offset, length)
+            if (written <= 0) {
+                state.availableBuffers.trySend(bufferRef)
+                return 0
+            }
+            if (!aqRef.tryEnqueueBuffer(bufferRef)) {
+                // Soft-fail DuringReset: return buffer to pool.
+                state.availableBuffers.trySend(bufferRef)
+                return 0
+            }
+            return written
+        }
 
         suspend fun streamFrom(src: AudioFlow, maxWriteAttempts: Int = 10) {
             var chunkCount = 0
@@ -386,18 +433,25 @@ sealed class MacosAudioQueue<S : Any>(
                         }
                         val state = inUserData.asStableRef<Writable.State>().get()
                         if (!state.running) {
-                            logAb("Output callback called but state is not running")
+                            // stop/dispose: drop everything (pool may be closed).
+                            logAb("Output callback after stop/dispose; dropping buffer")
                             return@staticCFunction
                         }
+                        // Seek-quiesce and normal play: always return buffer to the open pool.
                         logAb("[AudioQueue] Output callback: buffer played, returning to pool")
                         state.availableBuffers
                             .trySend(inBuffer)
                             .onFailure { logAb("Output callback failed to send buffer: $it") }
+                        // Do not refill here — transport feed / streamFrom owns enqueue.
                     } catch (t: Throwable) {
                         logAb("Output callback swallowed exception: ${t.message}")
                     }
                 }
-            val state = Writable.State(running = true, availableBuffers = Channel(bufferCount))
+            val state = Writable.State(
+                running = true,
+                enqueueEnabled = true,
+                availableBuffers = Channel(bufferCount),
+            )
             val stateRef = StableRef.create(state)
             val aqRefVar: AudioQueueRefVar = nativeHeap.alloc()
             val asbd: AudioStreamBasicDescription = nativeHeap.allocASBD(format)

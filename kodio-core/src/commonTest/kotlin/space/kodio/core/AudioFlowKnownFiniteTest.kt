@@ -1,14 +1,18 @@
 package space.kodio.core
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import space.kodio.core.io.audioFlowOf
 import space.kodio.core.io.convertAudio
+import kotlin.concurrent.Volatile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -144,14 +148,16 @@ class SeekGatingSessionTest {
     }
 
     @Test
-    fun play_streamsHotFlowWithoutFullCollect() = runTest {
+    fun play_streamsHotFlowWithoutFullCollect() = runBlocking {
         val session = GatingSeekSession()
         val hot = MutableSharedFlow<ByteArray>(extraBufferCapacity = 8)
         session.load(AudioFlow(format, hot.asSharedFlow()))
 
         session.play()
-        // Streaming path starts collecting before upstream completes.
-        withTimeout(2_000) { session.playBlockingStarted.await() }
+        // playBlocking runs on Dispatchers.Default — use real time, not runTest virtual clock.
+        withContext(Dispatchers.Default.limitedParallelism(1)) {
+            withTimeout(2_000) { session.playBlockingStarted.await() }
+        }
         hot.emit(ByteArray(8) { 1 })
         hot.emit(ByteArray(8) { 2 })
 

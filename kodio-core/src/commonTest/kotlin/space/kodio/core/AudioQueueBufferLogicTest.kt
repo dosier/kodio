@@ -15,6 +15,37 @@ import kotlin.test.assertTrue
 class AudioQueueBufferLogicTest {
 
     /**
+     * Seek must keep the buffer pool open (return buffers during quiesce) and must
+     * not reuse stop/dispose's channel-closing teardown.
+     */
+    @Test
+    fun seekQuiesce_returnsBuffersToPool_withoutClosing() = runTest {
+        val pool = Channel<Int>(capacity = 5)
+        repeat(5) { pool.trySend(it) }
+
+        var enqueueEnabled = true
+        var running = true
+
+        fun onOutputCallback(bufferId: Int) {
+            if (!running) return // stop/dispose: drop
+            // seek-quiesce and play: always return to open pool
+            pool.trySend(bufferId)
+        }
+
+        // Simulate seek: quiesce → stop callbacks return buffers → re-enable
+        enqueueEnabled = false
+        onOutputCallback(10)
+        onOutputCallback(11)
+        enqueueEnabled = true
+
+        assertTrue(pool.tryReceive().isSuccess)
+        assertFalse(pool.isClosedForSend)
+        assertTrue(enqueueEnabled)
+        // stop/dispose would close — seek must not
+        assertTrue(running)
+    }
+
+    /**
      * Simulates MacosAudioQueue.createInput() callback logic, including Apple's
      * `mIsRunning` guard (Recording Audio Listing 2-5): do not enqueue when stopped.
      *
