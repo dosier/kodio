@@ -63,7 +63,8 @@ private val logger = kodioLogger("PlayerState")
 class PlayerState internal constructor(
     private val scope: CoroutineScope,
     private val device: AudioDevice.Output?,
-    private val getOnPlaybackComplete: () -> (() -> Unit)?
+    private val getOnPlaybackComplete: () -> (() -> Unit)?,
+    private val playerFactory: (suspend () -> Player)? = null,
 ) {
     private var _player: Player? = null
     private var _isPlaying = mutableStateOf(false)
@@ -84,16 +85,23 @@ class PlayerState internal constructor(
     /**
      * Remembers that playback was active when a scrub/seek began so rapid
      * intermediate seeks (which stop the player) still resume afterward.
+     *
+     * Exposed to Compose via [isPlaying] so transport UI keeps showing the
+     * pause icon while the session briefly passes through Idle/Ready.
      */
-    private var resumeAfterSeek: Boolean = false
+    private val _resumeAfterSeek = mutableStateOf(false)
 
     // Mutex for thread-safe state transitions
     private val stateMutex = Mutex()
 
     /**
-     * Whether the player is currently playing.
+     * Whether the player is currently playing, or seeking with intent to resume.
+     *
+     * While scrubbing during playback the underlying session is stopped and
+     * reloaded; this stays `true` for that window so UI does not flicker to Play.
      */
-    val isPlaying: Boolean by _isPlaying
+    val isPlaying: Boolean
+        get() = _isPlaying.value || _resumeAfterSeek.value
 
     /**
      * Whether the player is paused.
@@ -251,7 +259,17 @@ class PlayerState internal constructor(
      * Pauses playback.
      */
     fun pause() {
-        resumeAfterSeek = false
+        val wasPlayingOrSeeking = isPlaying
+        _resumeAfterSeek.value = false
+        seekJob?.cancel()
+        seekJob = null
+        stopProgressTicker()
+        // Optimistic UI update: mid-seek the session may already be Idle/Ready,
+        // so [Player.pause] alone would not clear the derived [isPlaying] flag.
+        _isPlaying.value = false
+        if (wasPlayingOrSeeking) {
+            _isPaused.value = true
+        }
         _player?.pause()
     }
 
@@ -259,7 +277,7 @@ class PlayerState internal constructor(
      * Stops playback and resets to the beginning of the full recording.
      */
     fun stop() {
-        resumeAfterSeek = false
+        _resumeAfterSeek.value = false
         seekJob?.cancel()
         seekJob = null
         stopProgressTicker()
@@ -277,7 +295,7 @@ class PlayerState internal constructor(
      * Stops playback and resets to the beginning (suspend version).
      */
     suspend fun stopAsync() {
-        resumeAfterSeek = false
+        _resumeAfterSeek.value = false
         seekJob?.cancel()
         seekJob = null
         stopProgressTicker()
@@ -311,8 +329,8 @@ class PlayerState internal constructor(
      * play-through-seek intent from the first press.
      */
     fun seekTo(progress: Float) {
-        if (_isPlaying.value) {
-            resumeAfterSeek = true
+        if (isPlaying) {
+            _resumeAfterSeek.value = true
         }
         seekJob?.cancel()
         seekJob = scope.launch {
@@ -327,16 +345,18 @@ class PlayerState internal constructor(
         val source = sourceRecording ?: return
         val player = _player ?: return
         val clamped = progress.coerceIn(0f, 1f)
-        if (_isPlaying.value) {
-            resumeAfterSeek = true
+        if (isPlaying) {
+            _resumeAfterSeek.value = true
         }
-        val shouldResume = resumeAfterSeek
+        val shouldResume = _resumeAfterSeek.value
 
         stopProgressTicker()
 
         try {
             stateMutex.withLock {
                 player.stop()
+                // Session leaves Playing; keep [isPlaying] true via [_resumeAfterSeek]
+                // so transport UI does not flicker while the seek window reloads.
                 _isPlaying.value = false
                 _isPaused.value = false
                 _isFinished.value = false
@@ -344,9 +364,10 @@ class PlayerState internal constructor(
             }
 
             if (clamped >= 1f) {
-                resumeAfterSeek = false
+                _resumeAfterSeek.value = false
                 player.load(source)
                 _isReady.value = true
+                _isPlaying.value = false
                 _isFinished.value = true
                 _progress.floatValue = 1f
                 return
@@ -357,11 +378,15 @@ class PlayerState internal constructor(
 
             if (shouldResume) {
                 player.start()
+            } else {
+                _resumeAfterSeek.value = false
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logger.error(e) { "Error seeking: ${e.message}" }
+            _resumeAfterSeek.value = false
+            _isPlaying.value = false
             _error.value = AudioError.from(e)
         }
     }
@@ -383,7 +408,7 @@ class PlayerState internal constructor(
         val player = _player ?: return null
 
         return when {
-            _isPlaying.value -> {
+            isPlaying -> {
                 pause()
                 false
             }
@@ -420,7 +445,7 @@ class PlayerState internal constructor(
      */
     suspend fun resetAsync() {
         stateMutex.withLock {
-            resumeAfterSeek = false
+            _resumeAfterSeek.value = false
             seekJob?.cancel()
             seekJob = null
             stopProgressTicker()
@@ -444,7 +469,7 @@ class PlayerState internal constructor(
      * Cleans up resources. Called automatically when the composable leaves composition.
      */
     internal fun release() {
-        resumeAfterSeek = false
+        _resumeAfterSeek.value = false
         seekJob?.cancel()
         seekJob = null
         stopProgressTicker()
@@ -456,7 +481,7 @@ class PlayerState internal constructor(
     }
 
     private suspend fun createPlayer(): Player {
-        return Kodio.player(device)
+        return playerFactory?.invoke() ?: Kodio.player(device)
     }
 
     private suspend fun loadPlaybackWindow(progress: Float) {
@@ -498,19 +523,25 @@ class PlayerState internal constructor(
             player.stateFlow.collectLatest { state ->
                 when (state) {
                     is AudioPlaybackSession.State.Playing -> {
+                        _resumeAfterSeek.value = false
                         _isPlaying.value = true
                         _isPaused.value = false
                         _isFinished.value = false
                         startProgressTicker()
                     }
                     is AudioPlaybackSession.State.Paused -> {
+                        if (_resumeAfterSeek.value) {
+                            // Ignore transient non-playing states while a
+                            // play-through seek reloads the PCM window.
+                            return@collectLatest
+                        }
                         _isPlaying.value = false
                         _isPaused.value = true
                         _isFinished.value = false
                         stopProgressTicker()
                     }
                     is AudioPlaybackSession.State.Finished -> {
-                        resumeAfterSeek = false
+                        _resumeAfterSeek.value = false
                         stopProgressTicker()
                         _isPlaying.value = false
                         _isPaused.value = false
@@ -520,6 +551,7 @@ class PlayerState internal constructor(
                         getOnPlaybackComplete()?.invoke()
                     }
                     is AudioPlaybackSession.State.Error -> {
+                        _resumeAfterSeek.value = false
                         stopProgressTicker()
                         _isPlaying.value = false
                         _isPaused.value = false
@@ -527,11 +559,18 @@ class PlayerState internal constructor(
                     }
                     is AudioPlaybackSession.State.Ready -> {
                         _isReady.value = true
-                        _isPlaying.value = false
-                        _isPaused.value = false
+                        if (!_resumeAfterSeek.value) {
+                            _isPlaying.value = false
+                            _isPaused.value = false
+                        }
                     }
                     is AudioPlaybackSession.State.Idle -> {
                         stopProgressTicker()
+                        if (_resumeAfterSeek.value) {
+                            // Keep derived [isPlaying] / ready UI stable across
+                            // the stop→reload gap of a play-through seek.
+                            return@collectLatest
+                        }
                         _isPlaying.value = false
                         _isPaused.value = false
                         _isReady.value = false

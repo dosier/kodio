@@ -29,7 +29,7 @@ import kotlinx.coroutines.flow.first
  * } // auto-released
  * ```
  */
-class Player internal constructor(
+class Player(
     private val session: AudioPlaybackSession
 ) {
     /**
