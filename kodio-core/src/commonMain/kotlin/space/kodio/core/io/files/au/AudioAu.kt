@@ -1,45 +1,23 @@
 package space.kodio.core.io.files.au
 
 import kotlinx.io.*
+import kotlin.time.Duration.Companion.milliseconds
 import space.kodio.core.*
 import space.kodio.core.SampleEncoding.PcmFloat
 import space.kodio.core.SampleEncoding.PcmInt
 import space.kodio.core.io.AudioSource
+import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.AudioFileReadError
 import space.kodio.core.io.files.AudioFileWriteError
+import space.kodio.core.io.files.metadata.AudioEncodingInfo
+import space.kodio.core.io.files.metadata.AudioFileMetadata
+import space.kodio.core.io.files.metadata.AudioTags
+import space.kodio.core.io.readIntBe
+import space.kodio.core.io.swapEndianness
+import space.kodio.core.io.writeIntBe
 
 private const val AU_MAGIC = 0x2E736E64
 private const val AU_DATA_SIZE_UNKNOWN = 0xFFFFFFFFL
-
-private fun Source.readIntBe(): Int {
-    val b0 = readByte().toInt() and 0xFF
-    val b1 = readByte().toInt() and 0xFF
-    val b2 = readByte().toInt() and 0xFF
-    val b3 = readByte().toInt() and 0xFF
-    return (b0 shl 24) or (b1 shl 16) or (b2 shl 8) or b3
-}
-
-private fun Sink.writeIntBe(value: Int) {
-    writeByte(((value ushr 24) and 0xFF).toByte())
-    writeByte(((value ushr 16) and 0xFF).toByte())
-    writeByte(((value ushr 8) and 0xFF).toByte())
-    writeByte((value and 0xFF).toByte())
-}
-
-private fun swapEndianness(data: ByteArray, bytesPerSample: Int): ByteArray {
-    if (bytesPerSample <= 1) return data
-    val result = data.copyOf()
-    var i = 0
-    while (i + bytesPerSample <= result.size) {
-        for (j in 0 until bytesPerSample / 2) {
-            val tmp = result[i + j]
-            result[i + j] = result[i + bytesPerSample - 1 - j]
-            result[i + bytesPerSample - 1 - j] = tmp
-        }
-        i += bytesPerSample
-    }
-    return result
-}
 
 private fun bytesPerSampleForWrite(encoding: SampleEncoding): Int = when (encoding) {
     is PcmInt -> encoding.bitDepth.bits / 8
@@ -86,16 +64,19 @@ internal fun writeAu(from: AudioSource, to: Sink) {
     }
 
     val bps = bytesPerSampleForWrite(format.encoding)
-    val payload = swapEndianness(pcmBytes, bps)
+    val payload = pcmBytes.swapEndianness(bps)
 
     val dataOffset = 24
-    val dataSize = from.byteCount.toInt()
+    val dataSizeField = when {
+        from.byteCount > Int.MAX_VALUE -> AU_DATA_SIZE_UNKNOWN.toInt()
+        else -> from.byteCount.toInt()
+    }
     val encodingCode = auEncodingCode(format.encoding)
 
     with(to) {
         writeIntBe(AU_MAGIC)
         writeIntBe(dataOffset)
-        writeIntBe(dataSize)
+        writeIntBe(dataSizeField)
         writeIntBe(encodingCode)
         writeIntBe(format.sampleRate)
         writeIntBe(format.channels.count)
@@ -104,7 +85,51 @@ internal fun writeAu(from: AudioSource, to: Sink) {
 }
 
 internal fun readAu(from: Source): AudioSource {
-    // --- Header (6 big-endian int32 fields) ---
+    val header = readAuHeader(from)
+    val rawBytes = readAuPayload(from, header)
+    val pcmBytes = rawBytes.swapEndianness(header.bytesPerSample)
+    val format = AudioFormat(
+        sampleRate = header.sampleRate,
+        channels = Channels.fromInt(header.channelCount),
+        encoding = header.encoding,
+    )
+    return AudioSource.of(format, *pcmBytes)
+}
+
+internal fun readAuMetadata(from: Source): AudioFileMetadata {
+    val header = readAuHeader(from)
+    skipAuPayload(from, header)
+    val sampleEncoding = when (header.encoding) {
+        is PcmInt -> AudioEncodingInfo.Pcm(header.encoding)
+        is PcmFloat -> AudioEncodingInfo.Pcm(header.encoding)
+    }
+    val bytesPerFrame = header.channelCount * header.bytesPerSample
+    val duration = if (header.dataSize != AU_DATA_SIZE_UNKNOWN && bytesPerFrame > 0 && header.sampleRate > 0) {
+        val frames = header.dataSize / bytesPerFrame
+        (frames * 1000L / header.sampleRate).milliseconds
+    } else {
+        null
+    }
+    return AudioFileMetadata(
+        container = AudioFileFormat.Au,
+        sampleRate = header.sampleRate,
+        channels = Channels.fromInt(header.channelCount),
+        encoding = sampleEncoding,
+        duration = duration,
+        tags = AudioTags.Empty,
+    )
+}
+
+private data class AuHeader(
+    val dataOffset: Long,
+    val dataSize: Long,
+    val encoding: SampleEncoding,
+    val sampleRate: Int,
+    val channelCount: Int,
+    val bytesPerSample: Int,
+)
+
+private fun readAuHeader(from: Source): AuHeader {
     val magic: Int
     val dataOffset: Long
     val dataSize: Long
@@ -139,61 +164,69 @@ internal fun readAu(from: Source): AudioSource {
         }
     }
 
-    val encoding: SampleEncoding = when (encodingCode) {
-        2 -> PcmInt(
-            bitDepth = IntBitDepth.Eight,
-            endianness = Endianness.Little,
-            layout = SampleLayout.Interleaved,
-            signed = true,
-        )
-        3 -> PcmInt(
-            bitDepth = IntBitDepth.Sixteen,
-            endianness = Endianness.Little,
-            layout = SampleLayout.Interleaved,
-            signed = true,
-        )
-        4 -> PcmInt(
-            bitDepth = IntBitDepth.TwentyFour,
-            endianness = Endianness.Little,
-            layout = SampleLayout.Interleaved,
-            signed = true,
-        )
-        5 -> PcmInt(
-            bitDepth = IntBitDepth.ThirtyTwo,
-            endianness = Endianness.Little,
-            layout = SampleLayout.Interleaved,
-            signed = true,
-        )
-        6 -> PcmFloat(precision = FloatPrecision.F32, layout = SampleLayout.Interleaved)
-        7 -> PcmFloat(precision = FloatPrecision.F64, layout = SampleLayout.Interleaved)
-        else -> throw AudioFileReadError.UnsupportedFormat("Unsupported AU encoding code: $encodingCode")
-    }
+    val encoding = auEncodingFromCode(encodingCode)
+    val bps = bytesPerSampleForWrite(encoding)
 
-    val bps = when (encoding) {
-        is PcmInt -> encoding.bitDepth.bits / 8
-        is PcmFloat -> when (encoding.precision) {
-            FloatPrecision.F32 -> 4
-            FloatPrecision.F64 -> 8
-        }
-    }
+    return AuHeader(
+        dataOffset = dataOffset,
+        dataSize = dataSize,
+        encoding = encoding,
+        sampleRate = sampleRate,
+        channelCount = channelCount,
+        bytesPerSample = bps,
+    )
+}
 
-    val rawBytes: ByteArray = try {
-        if (dataSize == AU_DATA_SIZE_UNKNOWN) {
+private fun auEncodingFromCode(encodingCode: Int): SampleEncoding = when (encodingCode) {
+    2 -> PcmInt(
+        bitDepth = IntBitDepth.Eight,
+        endianness = Endianness.Little,
+        layout = SampleLayout.Interleaved,
+        signed = true,
+    )
+    3 -> PcmInt(
+        bitDepth = IntBitDepth.Sixteen,
+        endianness = Endianness.Little,
+        layout = SampleLayout.Interleaved,
+        signed = true,
+    )
+    4 -> PcmInt(
+        bitDepth = IntBitDepth.TwentyFour,
+        endianness = Endianness.Little,
+        layout = SampleLayout.Interleaved,
+        signed = true,
+    )
+    5 -> PcmInt(
+        bitDepth = IntBitDepth.ThirtyTwo,
+        endianness = Endianness.Little,
+        layout = SampleLayout.Interleaved,
+        signed = true,
+    )
+    6 -> PcmFloat(precision = FloatPrecision.F32, layout = SampleLayout.Interleaved)
+    7 -> PcmFloat(precision = FloatPrecision.F64, layout = SampleLayout.Interleaved)
+    else -> throw AudioFileReadError.UnsupportedFormat("Unsupported AU encoding code: $encodingCode")
+}
+
+private fun readAuPayload(from: Source, header: AuHeader): ByteArray = try {
+    if (header.dataSize == AU_DATA_SIZE_UNKNOWN) {
+        from.readByteArray()
+    } else {
+        val buf = Buffer()
+        from.readTo(buf, header.dataSize)
+        buf.readByteArray()
+    }
+} catch (e: Exception) {
+    throw AudioFileReadError.IO(e)
+}
+
+private fun skipAuPayload(from: Source, header: AuHeader) {
+    try {
+        if (header.dataSize == AU_DATA_SIZE_UNKNOWN) {
             from.readByteArray()
         } else {
-            val buf = Buffer()
-            from.readTo(buf, dataSize)
-            buf.readByteArray()
+            from.skip(header.dataSize)
         }
     } catch (e: Exception) {
         throw AudioFileReadError.IO(e)
     }
-
-    val pcmBytes = swapEndianness(rawBytes, bps)
-    val format = AudioFormat(
-        sampleRate = sampleRate,
-        channels = Channels.fromInt(channelCount),
-        encoding = encoding,
-    )
-    return AudioSource.of(format, *pcmBytes)
 }

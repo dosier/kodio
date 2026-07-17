@@ -5,9 +5,6 @@ import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import space.kodio.core.io.AudioSource
-import space.kodio.core.io.files.aiff.writeAiff
-import space.kodio.core.io.files.au.writeAu
-import space.kodio.core.io.files.wav.writeWav
 
 class AudioFileWriter(
     private val fileFormat: AudioFileFormat,
@@ -16,26 +13,31 @@ class AudioFileWriter(
 ) {
 
     /**
-     * Writes the audio data from an AudioBuffer to a file in the specified format.
+     * Writes the audio data from an [AudioSource] to a file in the specified format.
      *
      * @param audioDataSource The buffer containing the raw audio samples and format info.
-     * @throws Exception if an unsupported format is provided or an I/O error occurs.
-     * In a more robust application, this would return a Result<Unit, AudioWriteError>.
+     * @throws AudioFileWriteError.UnsupportedFormat if the format cannot be encoded.
+     * @throws AudioFileWriteError.IO if a filesystem-level error occurs.
      */
     fun write(audioDataSource: AudioSource) {
-        val audioFileBuffer = Buffer()
-        when (fileFormat) {
-            is AudioFileFormat.Wav -> writeWav(audioDataSource, audioFileBuffer)
-            is AudioFileFormat.Aiff -> writeAiff(audioDataSource, audioFileBuffer)
-            is AudioFileFormat.Au -> writeAu(audioDataSource, audioFileBuffer)
+        if (!AudioFileCodecs.of(fileFormat).canEncode) {
+            throw AudioFileWriteError.UnsupportedFormat("Format $fileFormat does not support encoding.")
         }
-        // --- Write the completed buffer to the actual file on disk ---
+
+        val audioFileBuffer = Buffer()
+        try {
+            AudioFileCodecs.of(fileFormat).encode(audioDataSource, audioFileBuffer)
+        } catch (e: AudioFileWriteError) {
+            throw e
+        } catch (e: Exception) {
+            throw AudioFileWriteError.IO(e)
+        }
+
         try {
             fileSystem.sink(path).use { fileSink ->
                 fileSink.write(audioFileBuffer, audioFileBuffer.size)
             }
         } catch (e: Exception) {
-            // Wrap any file system exception in our custom error type
             throw AudioFileWriteError.IO(e)
         }
     }

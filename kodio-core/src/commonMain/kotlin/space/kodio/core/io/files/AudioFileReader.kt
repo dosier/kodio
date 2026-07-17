@@ -1,20 +1,20 @@
 package space.kodio.core.io.files
 
 import kotlinx.io.Buffer
+import kotlinx.io.Source
 import kotlinx.io.buffered
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readByteArray
 import space.kodio.core.AudioRecording
-import space.kodio.core.io.files.aiff.readAiff
-import space.kodio.core.io.files.au.readAu
-import space.kodio.core.io.files.wav.readWav
+import space.kodio.core.io.files.metadata.AudioFileMetadata
 
 /**
  * Reads an audio file from disk and returns an [AudioRecording].
  *
- * The file format is detected from the file extension (WAV, AIFF, AU/SND).
+ * Format is resolved via magic-byte sniffing with extension fallback
+ * (see [resolveCodec]).
  *
  * @param path The file path to read from.
  * @param fileSystem The file system to use (default: [SystemFileSystem]).
@@ -32,49 +32,74 @@ class AudioFileReader(
      * @throws AudioFileReadError.IO if a filesystem-level error occurs.
      */
     fun read(): AudioRecording {
-        val format = detectFormat(path)
+        validatePathExtension(path)
+        return readBytes(path, fileSystem)
+    }
 
-        val audioSource = try {
-            fileSystem.source(path).buffered().use { source ->
-                when (format) {
-                    is AudioFileFormat.Wav -> readWav(source)
-                    is AudioFileFormat.Aiff -> readAiff(source)
-                    is AudioFileFormat.Au -> readAu(source)
-                }
-            }
-        } catch (e: AudioFileReadError) {
-            throw e
-        } catch (e: Exception) {
-            throw AudioFileReadError.IO(e)
+    fun readMetadata(): AudioFileMetadata {
+        validatePathExtension(path)
+        return readMetadataBytes(path, fileSystem)
+    }
+
+    private fun validatePathExtension(path: Path) {
+        val ext = extensionFromFileName(path.toString()) ?: return
+        if (AudioFileCodecs.fromExtension(ext) == null) {
+            throw AudioFileReadError.UnsupportedFormat("Unsupported file extension: '$ext'")
         }
-
-        val pcmBytes = audioSource.source.readByteArray()
-        return AudioRecording.fromOwnedChunks(
-            format = audioSource.format,
-            chunks = listOf(pcmBytes)
-        )
     }
 
     companion object {
         /**
          * Reads an audio file from an in-memory byte array.
          *
-         * The file format is detected from [fileName]'s extension (WAV, AIFF, AU/SND).
-         * Useful when the bytes come from a non-Path source (uploaded blob, FileKit
-         * PlatformFile.readBytes(), network response, etc.).
+         * Format is auto-detected from magic bytes; [fileName] provides an
+         * extension fallback when magic is inconclusive.
          *
          * @throws AudioFileReadError.InvalidFile if the bytes are not a valid audio file.
          * @throws AudioFileReadError.UnsupportedFormat if the audio encoding is not supported.
          */
-        fun read(bytes: ByteArray, fileName: String): AudioRecording {
-            val format = detectFormatFromFileName(fileName)
+        fun read(bytes: ByteArray, fileName: String? = null): AudioRecording =
+            decodeBytes(bytes, fileName, explicit = null)
+
+        /**
+         * Reads metadata from an in-memory byte array without decoding PCM.
+         */
+        fun readMetadata(bytes: ByteArray, fileName: String? = null): AudioFileMetadata =
+            metadataFromBytes(bytes, fileName, explicit = null)
+
+        internal fun readBytes(path: Path, fileSystem: FileSystem): AudioRecording {
+            return try {
+                fileSystem.source(path).buffered().use { source ->
+                    decodeBytes(source.readByteArray(), path.toString(), explicit = null)
+                }
+            } catch (e: AudioFileReadError) {
+                throw e
+            } catch (e: Exception) {
+                throw AudioFileReadError.IO(e)
+            }
+        }
+
+        internal fun readMetadataBytes(path: Path, fileSystem: FileSystem): AudioFileMetadata {
+            return try {
+                fileSystem.source(path).buffered().use { source ->
+                    metadataFromBytes(source.readByteArray(), path.toString(), explicit = null)
+                }
+            } catch (e: AudioFileReadError) {
+                throw e
+            } catch (e: Exception) {
+                throw AudioFileReadError.IO(e)
+            }
+        }
+
+        internal fun decodeBytes(
+            bytes: ByteArray,
+            fileName: String?,
+            explicit: AudioFileFormat?,
+        ): AudioRecording {
+            val codec = resolveCodec(probePrefix(bytes), fileName, explicit)
             val source = Buffer().apply { write(bytes) }
             val audioSource = try {
-                when (format) {
-                    is AudioFileFormat.Wav -> readWav(source)
-                    is AudioFileFormat.Aiff -> readAiff(source)
-                    is AudioFileFormat.Au -> readAu(source)
-                }
+                codec.decode(source)
             } catch (e: AudioFileReadError) {
                 throw e
             } catch (e: Exception) {
@@ -88,19 +113,32 @@ class AudioFileReader(
             )
         }
 
-        internal fun detectFormat(path: Path): AudioFileFormat =
-            detectFormatFromFileName(path.toString())
-
-        internal fun detectFormatFromFileName(fileName: String): AudioFileFormat {
-            val ext = fileName.substringAfterLast('.', "").lowercase()
-            return when (ext) {
-                "wav", "wave" -> AudioFileFormat.Wav
-                "aiff", "aif" -> AudioFileFormat.Aiff
-                "au", "snd" -> AudioFileFormat.Au
-                else -> throw AudioFileReadError.UnsupportedFormat(
-                    "Unsupported file extension: '$ext'"
-                )
+        internal fun metadataFromBytes(
+            bytes: ByteArray,
+            fileName: String?,
+            explicit: AudioFileFormat?,
+        ): AudioFileMetadata {
+            val codec = resolveCodec(probePrefix(bytes), fileName, explicit)
+            val source = Buffer().apply { write(bytes) }
+            return try {
+                codec.readMetadata(source)
+            } catch (e: AudioFileReadError) {
+                throw e
+            } catch (e: Exception) {
+                throw AudioFileReadError.IO(e)
             }
         }
+
+        internal fun decodeSource(
+            source: Source,
+            fileName: String?,
+            explicit: AudioFileFormat?,
+        ): AudioRecording = decodeBytes(source.readByteArray(), fileName, explicit)
+
+        internal fun metadataFromSource(
+            source: Source,
+            fileName: String?,
+            explicit: AudioFileFormat?,
+        ): AudioFileMetadata = metadataFromBytes(source.readByteArray(), fileName, explicit)
     }
 }

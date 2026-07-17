@@ -21,9 +21,9 @@ class AudioRecordingTest {
     // ==================== Factory Method Tests ====================
 
     @Test
-    fun `fromBytes creates recording with correct data`() {
+    fun `fromPcmBytes creates recording with correct data`() {
         val data = byteArrayOf(1, 2, 3, 4)
-        val recording = AudioRecording.fromBytes(testFormat, data)
+        val recording = AudioRecording.fromPcmBytes(testFormat, data)
 
         assertEquals(testFormat, recording.format)
         assertEquals(4L, recording.sizeInBytes)
@@ -31,9 +31,9 @@ class AudioRecordingTest {
     }
 
     @Test
-    fun `fromBytes creates defensive copy of input`() {
+    fun `fromPcmBytes creates defensive copy of input`() {
         val data = byteArrayOf(1, 2, 3, 4)
-        val recording = AudioRecording.fromBytes(testFormat, data)
+        val recording = AudioRecording.fromPcmBytes(testFormat, data)
 
         // Modify original
         data[0] = 99
@@ -117,7 +117,7 @@ class AudioRecordingTest {
 
     @Test
     fun `hasData returns true when data exists`() {
-        val recording = AudioRecording.fromBytes(testFormat, byteArrayOf(1))
+        val recording = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1))
         assertTrue(recording.hasData)
         assertFalse(recording.isEmpty)
     }
@@ -127,7 +127,7 @@ class AudioRecordingTest {
         val format = AudioQuality.High.format // 48kHz, stereo, 16-bit
         // 4 bytes per frame (2 bytes * 2 channels)
         val data = ByteArray(40) // 10 frames
-        val recording = AudioRecording.fromBytes(format, data)
+        val recording = AudioRecording.fromPcmBytes(format, data)
 
         assertEquals(10L, recording.frameCount)
     }
@@ -138,7 +138,7 @@ class AudioRecordingTest {
         // 2 bytes per frame (mono 16-bit)
         // 44100 frames = 1 second, so 88200 bytes = 1 second
         val data = ByteArray(88200)
-        val recording = AudioRecording.fromBytes(format, data)
+        val recording = AudioRecording.fromPcmBytes(format, data)
 
         // Should be 1 second
         assertEquals(1.seconds, recording.calculatedDuration)
@@ -189,7 +189,7 @@ class AudioRecordingTest {
 
     @Test
     fun `asFlow with defensiveCopy true returns copies`() = runTest {
-        val recording = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3))
+        val recording = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3))
 
         val chunks = recording.asFlow(defensiveCopy = true).toList()
         val chunk1 = chunks[0]
@@ -219,7 +219,7 @@ class AudioRecordingTest {
 
     @Test
     fun `toByteArray returns defensive copy`() {
-        val recording = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3))
+        val recording = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3))
 
         val array1 = recording.toByteArray()
         val array2 = recording.toByteArray()
@@ -236,7 +236,7 @@ class AudioRecordingTest {
 
     @Test
     fun `toString includes relevant info`() {
-        val recording = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val recording = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3, 4))
         val str = recording.toString()
 
         assertTrue(str.contains("AudioRecording"))
@@ -246,9 +246,9 @@ class AudioRecordingTest {
 
     @Test
     fun `equals compares content not just format and size`() {
-        val r1 = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
-        val r2 = AudioRecording.fromBytes(testFormat, byteArrayOf(5, 6, 7, 8))
-        val r3 = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val r1 = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val r2 = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(5, 6, 7, 8))
+        val r3 = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3, 4))
 
         assertFalse(r1 == r2)
         assertEquals(r1, r3)
@@ -256,24 +256,24 @@ class AudioRecordingTest {
 
     @Test
     fun `equals returns false for different formats`() {
-        val r1 = AudioRecording.fromBytes(AudioQuality.Voice.format, byteArrayOf(1, 2))
-        val r2 = AudioRecording.fromBytes(AudioQuality.High.format, byteArrayOf(1, 2))
+        val r1 = AudioRecording.fromPcmBytes(AudioQuality.Voice.format, byteArrayOf(1, 2))
+        val r2 = AudioRecording.fromPcmBytes(AudioQuality.High.format, byteArrayOf(1, 2))
 
         assertFalse(r1 == r2)
     }
 
     @Test
     fun `equals returns false for different sizes`() {
-        val r1 = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2))
-        val r2 = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val r1 = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2))
+        val r2 = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3, 4))
 
         assertFalse(r1 == r2)
     }
 
     @Test
     fun `hashCode is consistent with equals`() {
-        val r1 = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
-        val r2 = AudioRecording.fromBytes(testFormat, byteArrayOf(5, 6, 7, 8))
+        val r1 = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val r2 = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(5, 6, 7, 8))
 
         // Same format + size = equal = same hashCode
         assertEquals(r1.hashCode(), r2.hashCode())
@@ -283,7 +283,7 @@ class AudioRecordingTest {
 
     @Test
     fun `asAudioFlow returns AudioFlow with correct format`() = runTest {
-        val recording = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val recording = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3, 4))
         val audioFlow = recording.asAudioFlow()
 
         assertEquals(testFormat, audioFlow.format)
@@ -312,7 +312,7 @@ class AudioRecordingTest {
 
     @Test
     fun `concat with single recording returns the same data`() = runTest {
-        val first = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val first = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3, 4))
         val result = AudioRecording.concat(first)
 
         assertEquals(testFormat, result.format)
@@ -322,9 +322,9 @@ class AudioRecordingTest {
 
     @Test
     fun `concat appends bytes when formats match`() = runTest {
-        val first = AudioRecording.fromBytes(testFormat, byteArrayOf(1, 2, 3, 4))
-        val second = AudioRecording.fromBytes(testFormat, byteArrayOf(5, 6))
-        val third = AudioRecording.fromBytes(testFormat, byteArrayOf(7, 8, 9))
+        val first = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(1, 2, 3, 4))
+        val second = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(5, 6))
+        val third = AudioRecording.fromPcmBytes(testFormat, byteArrayOf(7, 8, 9))
 
         val result = AudioRecording.concat(first, second, third)
 

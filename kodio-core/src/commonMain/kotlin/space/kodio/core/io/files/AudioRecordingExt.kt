@@ -7,9 +7,6 @@ import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readByteArray
 import space.kodio.core.AudioRecording
-import space.kodio.core.io.files.aiff.readAiff
-import space.kodio.core.io.files.au.readAu
-import space.kodio.core.io.files.wav.readWav
 
 /**
  * Decodes an audio file from raw bytes (e.g. Compose resources via `Res.readBytes()`,
@@ -20,15 +17,20 @@ import space.kodio.core.io.files.wav.readWav
  * ```
  *
  * @param bytes The complete audio file bytes, including headers.
- * @param fileFormat The container format of the data (default: WAV).
+ * @param fileName Optional filename for extension-based format fallback.
  */
 fun AudioRecording.Companion.fromBytes(
     bytes: ByteArray,
-    fileFormat: AudioFileFormat = AudioFileFormat.Wav
-): AudioRecording {
-    val source = Buffer().apply { write(bytes) }
-    return fromSource(source, fileFormat)
-}
+    fileName: String? = null,
+): AudioRecording = AudioFileReader.decodeBytes(bytes, fileName, explicit = null)
+
+/**
+ * Decodes an audio file from raw bytes using an explicit container format.
+ */
+fun AudioRecording.Companion.fromBytes(
+    bytes: ByteArray,
+    fileFormat: AudioFileFormat,
+): AudioRecording = AudioFileReader.decodeBytes(bytes, fileName = null, explicit = fileFormat)
 
 /**
  * Decodes an audio file from a [Source] stream (e.g. Android `ContentResolver`,
@@ -40,27 +42,24 @@ fun AudioRecording.Companion.fromBytes(
  * ```
  *
  * @param source The source to read from. Will be consumed but not closed.
- * @param fileFormat The container format of the data (default: WAV).
+ * @param fileName Optional filename for extension-based format fallback.
  */
 fun AudioRecording.Companion.fromSource(
     source: Source,
-    fileFormat: AudioFileFormat = AudioFileFormat.Wav
-): AudioRecording {
-    val audioSource = when (fileFormat) {
-        is AudioFileFormat.Wav -> readWav(source)
-        is AudioFileFormat.Aiff -> readAiff(source)
-        is AudioFileFormat.Au -> readAu(source)
-    }
-    val pcmBytes = audioSource.source.readByteArray()
-    return AudioRecording.fromOwnedChunks(
-        format = audioSource.format,
-        chunks = listOf(pcmBytes)
-    )
-}
+    fileName: String? = null,
+): AudioRecording = AudioFileReader.decodeSource(source, fileName, explicit = null)
+
+/**
+ * Decodes an audio file from a [Source] using an explicit container format.
+ */
+fun AudioRecording.Companion.fromSource(
+    source: Source,
+    fileFormat: AudioFileFormat,
+): AudioRecording = AudioFileReader.decodeSource(source, fileName = null, explicit = fileFormat)
 
 /**
  * Reads an audio file from the filesystem. The format is auto-detected from
- * the file extension.
+ * magic bytes with extension fallback.
  *
  * ```kotlin
  * val recording = AudioRecording.fromFile(Path("recording.wav"))

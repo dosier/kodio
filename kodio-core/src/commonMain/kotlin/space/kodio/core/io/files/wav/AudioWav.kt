@@ -1,12 +1,17 @@
 package space.kodio.core.io.files.wav
 
 import kotlinx.io.*
+import kotlin.time.Duration.Companion.milliseconds
 import space.kodio.core.*
 import space.kodio.core.SampleEncoding.PcmFloat
 import space.kodio.core.SampleEncoding.PcmInt
 import space.kodio.core.io.AudioSource
+import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.AudioFileReadError
 import space.kodio.core.io.files.AudioFileWriteError
+import space.kodio.core.io.files.metadata.AudioEncodingInfo
+import space.kodio.core.io.files.metadata.AudioFileMetadata
+import space.kodio.core.io.files.metadata.AudioTags
 
 /**
  * Writes a RIFF/WAVE file (PCM-Int or IEEE-Float).
@@ -86,11 +91,54 @@ internal fun writeWav(from: AudioSource, to: Sink) {
  * Tolerates unknown chunks between `fmt ` and `data` (e.g. LIST, INFO, JUNK).
  */
 internal fun readWav(from: Source): AudioSource {
+    val metadata = scanWavHeader(from, loadData = true)
+    return metadata.audioSource
+        ?: throw AudioFileReadError.InvalidFile("No 'data' chunk found in WAV file.")
+}
+
+internal fun readWavMetadata(from: Source): AudioFileMetadata {
+    val metadata = scanWavHeader(from, loadData = false)
+    return metadata.toFileMetadata()
+}
+
+private data class WavScanResult(
+    val audioFormatCode: Int,
+    val numChannels: Int,
+    val sampleRate: Int,
+    val bitsPerSample: Int,
+    val dataSize: Long,
+    val audioSource: AudioSource?,
+) {
+    fun toFileMetadata(): AudioFileMetadata {
+        val encoding = wavEncoding(audioFormatCode, bitsPerSample)
+        val sampleEncoding = when (encoding) {
+            is PcmInt -> AudioEncodingInfo.Pcm(encoding)
+            is PcmFloat -> AudioEncodingInfo.Pcm(encoding)
+        }
+        val blockAlign = numChannels * (bitsPerSample / 8)
+        val byteRate = sampleRate * blockAlign
+        val duration = if (byteRate > 0 && dataSize > 0) {
+            (dataSize * 1000L / byteRate).milliseconds
+        } else {
+            null
+        }
+        return AudioFileMetadata(
+            container = AudioFileFormat.Wav,
+            sampleRate = sampleRate,
+            channels = Channels.fromInt(numChannels),
+            encoding = sampleEncoding,
+            duration = duration,
+            tags = AudioTags.Empty,
+        )
+    }
+}
+
+private fun scanWavHeader(from: Source, loadData: Boolean): WavScanResult {
     // --- RIFF header ---
     val riffId = try {
         from.readString(4)
     } catch (e: Exception) {
-        throw AudioFileReadError.InvalidFile("Cannot read RIFF header: file is too short or unreadable.")
+        throw AudioFileReadError.InvalidFile("Cannot read RIFF header: file is too short or unreadable.", cause = e)
     }
     if (riffId != "RIFF")
         throw AudioFileReadError.InvalidFile("Not a RIFF file (got '$riffId').")
@@ -101,8 +149,8 @@ internal fun readWav(from: Source): AudioSource {
         val waveId = from.readString(4)
         if (waveId != "WAVE")
             throw AudioFileReadError.InvalidFile("Not a WAVE file (got '$waveId').")
-    } catch (_: Exception) {
-        throw AudioFileReadError.InvalidFile("Cannot read RIFF header: file is too short or unreadable.")
+    } catch (e: Exception) {
+        throw AudioFileReadError.InvalidFile("Cannot read RIFF header: file is too short or unreadable.", cause = e)
     }
 
     // --- Chunk-scanning loop ---
@@ -140,37 +188,7 @@ internal fun readWav(from: Source): AudioSource {
                 if (!fmtFound)
                     throw AudioFileReadError.InvalidFile("'data' chunk found before 'fmt ' chunk.")
 
-                val encoding: SampleEncoding = when (audioFormatCode) {
-                    1 -> PcmInt(
-                        bitDepth = when (bitsPerSample) {
-                            8 -> IntBitDepth.Eight
-                            16 -> IntBitDepth.Sixteen
-                            24 -> IntBitDepth.TwentyFour
-                            32 -> IntBitDepth.ThirtyTwo
-                            else -> throw AudioFileReadError.UnsupportedFormat(
-                                "Unsupported PCM bit depth: $bitsPerSample"
-                            )
-                        },
-                        endianness = Endianness.Little,
-                        layout = SampleLayout.Interleaved,
-                        signed = bitsPerSample != 8 // WAV convention: 8-bit is unsigned
-                    )
-
-                    3 -> PcmFloat(
-                        precision = when (bitsPerSample) {
-                            32 -> FloatPrecision.F32
-                            64 -> FloatPrecision.F64
-                            else -> throw AudioFileReadError.UnsupportedFormat(
-                                "Unsupported float precision: $bitsPerSample-bit"
-                            )
-                        },
-                        layout = SampleLayout.Interleaved
-                    )
-
-                    else -> throw AudioFileReadError.UnsupportedFormat(
-                        "Unsupported WAV audio format code: $audioFormatCode"
-                    )
-                }
+                val encoding = wavEncoding(audioFormatCode, bitsPerSample)
 
                 val format = AudioFormat(
                     sampleRate = sampleRate,
@@ -178,9 +196,23 @@ internal fun readWav(from: Source): AudioSource {
                     encoding = encoding
                 )
 
-                val buffer = Buffer()
-                from.readTo(buffer, chunkSize)
-                return AudioSource.of(format, buffer)
+                val audioSource = if (loadData) {
+                    val buffer = Buffer()
+                    from.readTo(buffer, chunkSize)
+                    AudioSource.of(format, buffer)
+                } else {
+                    from.skip(chunkSize)
+                    null
+                }
+
+                return WavScanResult(
+                    audioFormatCode = audioFormatCode,
+                    numChannels = numChannels,
+                    sampleRate = sampleRate,
+                    bitsPerSample = bitsPerSample,
+                    dataSize = chunkSize,
+                    audioSource = audioSource,
+                )
             }
 
             else -> {
@@ -189,4 +221,36 @@ internal fun readWav(from: Source): AudioSource {
             }
         }
     }
+}
+
+private fun wavEncoding(audioFormatCode: Int, bitsPerSample: Int): SampleEncoding = when (audioFormatCode) {
+    1 -> PcmInt(
+        bitDepth = when (bitsPerSample) {
+            8 -> IntBitDepth.Eight
+            16 -> IntBitDepth.Sixteen
+            24 -> IntBitDepth.TwentyFour
+            32 -> IntBitDepth.ThirtyTwo
+            else -> throw AudioFileReadError.UnsupportedFormat(
+                "Unsupported PCM bit depth: $bitsPerSample"
+            )
+        },
+        endianness = Endianness.Little,
+        layout = SampleLayout.Interleaved,
+        signed = bitsPerSample != 8 // WAV convention: 8-bit is unsigned
+    )
+
+    3 -> PcmFloat(
+        precision = when (bitsPerSample) {
+            32 -> FloatPrecision.F32
+            64 -> FloatPrecision.F64
+            else -> throw AudioFileReadError.UnsupportedFormat(
+                "Unsupported float precision: $bitsPerSample-bit"
+            )
+        },
+        layout = SampleLayout.Interleaved
+    )
+
+    else -> throw AudioFileReadError.UnsupportedFormat(
+        "Unsupported WAV audio format code: $audioFormatCode"
+    )
 }

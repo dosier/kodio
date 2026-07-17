@@ -32,7 +32,6 @@ import space.kodio.core.AudioRecording
 import space.kodio.core.Channels
 import space.kodio.core.Kodio
 import space.kodio.core.SampleEncoding
-import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.AudioFileReadError
 import space.kodio.core.io.files.fromBytes
 
@@ -58,12 +57,7 @@ fun PlaybackShowcase() {
         fileName = name
         scope.launch {
             try {
-                val fileFormat = when {
-                    name.endsWith(".aiff", true) || name.endsWith(".aif", true) -> AudioFileFormat.Aiff
-                    name.endsWith(".au", true) || name.endsWith(".snd", true) -> AudioFileFormat.Au
-                    else -> AudioFileFormat.Wav
-                }
-                val rec = AudioRecording.fromBytes(bytes, fileFormat)
+                val rec = AudioRecording.fromBytes(bytes, fileName = name)
                 recording = rec
             } catch (e: AudioFileReadError.InvalidFile) {
                 error = "Invalid audio file: ${e.message}"

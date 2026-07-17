@@ -180,10 +180,10 @@ class AudioRecording private constructor(
         }
 
         /**
-         * Creates an [AudioRecording] from raw byte data.
+         * Creates an [AudioRecording] from raw PCM byte data (no container headers).
          * The data is copied to prevent external mutation.
          */
-        fun fromBytes(format: AudioFormat, data: ByteArray): AudioRecording {
+        fun fromPcmBytes(format: AudioFormat, data: ByteArray): AudioRecording {
             return AudioRecording(
                 format = format,
                 duration = null,

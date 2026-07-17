@@ -73,17 +73,33 @@ class AudioFileReaderBytesTest {
     }
 
     @Test
-    fun `unsupported extension throws UnsupportedFormat`() {
+    fun `magic wins over unsupported extension`() {
+        val recording = AudioFileReader.read(makeWavBytes(), "clip.m4a")
+        assertEquals(pcm16Format, recording.format)
+        assertContentEquals(pcmBytes, recording.toByteArray())
+    }
+
+    @Test
+    fun `magic detects WAV without extension`() {
+        val recording = AudioFileReader.read(makeWavBytes(), "no_extension")
+        assertEquals(pcm16Format, recording.format)
+        assertContentEquals(pcmBytes, recording.toByteArray())
+    }
+
+    @Test
+    fun `unsupported extension with unrecognizable magic throws UnsupportedFormat`() {
+        val garbage = ByteArray(64) { 0x58 }
         val ex = assertFailsWith<AudioFileReadError.UnsupportedFormat> {
-            AudioFileReader.read(makeWavBytes(), "clip.m4a")
+            AudioFileReader.read(garbage, "clip.m4a")
         }
         assertTrue(ex.message!!.contains("m4a", ignoreCase = true), "Error should mention extension: ${ex.message}")
     }
 
     @Test
-    fun `extensionless filename throws UnsupportedFormat`() {
+    fun `unrecognizable magic without extension throws UnsupportedFormat`() {
+        val garbage = ByteArray(64) { 0x58 }
         assertFailsWith<AudioFileReadError.UnsupportedFormat> {
-            AudioFileReader.read(makeWavBytes(), "no_extension")
+            AudioFileReader.read(garbage, "no_extension")
         }
     }
 

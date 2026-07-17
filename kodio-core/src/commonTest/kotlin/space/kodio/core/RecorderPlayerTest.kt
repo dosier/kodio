@@ -262,7 +262,7 @@ class RecorderPlayerTest {
 
         assertFalse(player.isPlaying)
         
-        val recording = AudioRecording.fromBytes(
+        val recording = AudioRecording.fromPcmBytes(
             AudioQuality.Standard.format,
             byteArrayOf(1, 2, 3, 4)
         )
@@ -277,7 +277,7 @@ class RecorderPlayerTest {
         val session = FakePlaybackSession()
         val player = Player(session)
         
-        val recording = AudioRecording.fromBytes(
+        val recording = AudioRecording.fromPcmBytes(
             AudioQuality.Standard.format,
             byteArrayOf(1, 2, 3, 4)
         )
@@ -292,7 +292,7 @@ class RecorderPlayerTest {
         val session = FakePlaybackSession()
         val player = Player(session)
         
-        val recording = AudioRecording.fromBytes(
+        val recording = AudioRecording.fromPcmBytes(
             AudioQuality.Standard.format,
             byteArrayOf(1, 2, 3, 4)
         )
@@ -310,7 +310,7 @@ class RecorderPlayerTest {
         val session = FakePlaybackSession()
         val player = Player(session)
         
-        val recording = AudioRecording.fromBytes(
+        val recording = AudioRecording.fromPcmBytes(
             AudioQuality.Standard.format,
             byteArrayOf(1, 2, 3, 4)
         )
@@ -329,7 +329,7 @@ class RecorderPlayerTest {
         val session = FakePlaybackSession()
         val player = Player(session)
         
-        val recording = AudioRecording.fromBytes(
+        val recording = AudioRecording.fromPcmBytes(
             AudioQuality.Standard.format,
             byteArrayOf(1, 2, 3, 4)
         )
@@ -347,7 +347,7 @@ class RecorderPlayerTest {
         val session = FakePlaybackSession()
         val player = Player(session)
         
-        val recording = AudioRecording.fromBytes(
+        val recording = AudioRecording.fromPcmBytes(
             AudioQuality.Standard.format,
             byteArrayOf(1, 2, 3, 4)
         )
@@ -364,7 +364,7 @@ class RecorderPlayerTest {
         val session = FakePlaybackSession()
         val player = Player(session)
         
-        val recording = AudioRecording.fromBytes(
+        val recording = AudioRecording.fromPcmBytes(
             AudioQuality.Standard.format,
             byteArrayOf(1, 2, 3, 4)
         )
@@ -392,7 +392,7 @@ class RecorderPlayerTest {
         val player = Player(session)
 
         player.use {
-            it.load(AudioRecording.fromBytes(AudioQuality.Standard.format, byteArrayOf(1, 2)))
+            it.load(AudioRecording.fromPcmBytes(AudioQuality.Standard.format, byteArrayOf(1, 2)))
             it.start()
         }
 
@@ -405,7 +405,7 @@ class RecorderPlayerTest {
         val session = FakePlaybackSession()
         val player = Player(session)
         
-        val recording = AudioRecording.fromBytes(
+        val recording = AudioRecording.fromPcmBytes(
             AudioQuality.Standard.format,
             byteArrayOf(1, 2, 3, 4)
         )

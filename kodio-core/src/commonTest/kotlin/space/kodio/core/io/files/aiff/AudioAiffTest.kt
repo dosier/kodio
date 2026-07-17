@@ -60,9 +60,16 @@ class AudioAiffTest {
     }
 
     @Test
-    fun roundTrip16BitMono48000Hz() {
-        val format = fmtInt(48000, Channels.Mono, IntBitDepth.Sixteen)
-        val pcm = rampBytes(48000 * 2)
+    fun roundTripFloat32Mono48000Hz() {
+        val format = fmtFloat(48000, Channels.Mono, FloatPrecision.F32)
+        val pcm = rampBytes(48000 * 4)
+        assertAiffRoundTrip(format, pcm)
+    }
+
+    @Test
+    fun roundTripFloat64Stereo48000Hz() {
+        val format = fmtFloat(48000, Channels.Stereo, FloatPrecision.F64)
+        val pcm = rampBytes(48000 * 2 * 8)
         assertAiffRoundTrip(format, pcm)
     }
 }

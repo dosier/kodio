@@ -84,6 +84,20 @@ class AudioFileReaderTest {
     }
 
     @Test
+    fun `fromBytes auto-detects WAV without explicit format`() {
+        val format = fmtInt(44100, Channels.Mono, IntBitDepth.Sixteen)
+        val pcm = rampBytes(1024)
+        val wavBytes = encodeWav(format, pcm)
+
+        val recording = AudioRecording.fromBytes(wavBytes)
+
+        assertEquals(format.sampleRate, recording.format.sampleRate)
+        assertEquals(format.channels, recording.format.channels)
+        assertEquals(format.encoding, recording.format.encoding)
+        assertTrue(pcm.contentEquals(recording.toByteArray()))
+    }
+
+    @Test
     fun `fromBytes round-trip simulates Compose resource loading`() {
         val format = fmtInt(44100, Channels.Mono, IntBitDepth.Sixteen)
         val pcm = rampBytes(1024)
@@ -113,7 +127,15 @@ class AudioFileReaderTest {
     }
 
     @Test
-    fun `non-RIFF input throws InvalidFile`() {
+    fun `non-RIFF input without format throws UnsupportedFormat`() {
+        val garbage = byteArrayOf(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07)
+        assertFailsWith<AudioFileReadError.UnsupportedFormat> {
+            AudioRecording.fromBytes(garbage)
+        }
+    }
+
+    @Test
+    fun `non-RIFF input with explicit format throws InvalidFile`() {
         val garbage = byteArrayOf(0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07)
         assertFailsWith<AudioFileReadError.InvalidFile> {
             AudioRecording.fromBytes(garbage, AudioFileFormat.Wav)
@@ -162,6 +184,13 @@ class AudioFileReaderTest {
         )
         assertFailsWith<AudioFileReadError.InvalidFile> {
             AudioRecording.fromBytes(truncated, AudioFileFormat.Wav)
+        }
+    }
+
+    @Test
+    fun `empty bytes throw InvalidFile`() {
+        assertFailsWith<AudioFileReadError.InvalidFile> {
+            AudioRecording.fromBytes(ByteArray(0))
         }
     }
 
