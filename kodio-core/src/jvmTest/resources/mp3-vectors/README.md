@@ -5,8 +5,9 @@
 Layer III bitstreams and reference PCM files (`l3-*.bit` / `l3-*.pcm`) are taken from
 [lieff/minimp3](https://github.com/lieff/minimp3) (`vectors/`).
 
-They are used for smoke decode coverage. Full ISO/IEC 11172-4 PSNR > 96 dB
-conformance is not gated yet for the current JavaMP3-based decoder port.
+Hard ISO/IEC 11172-4 style conformance is gated at PSNR > 96 dB for the MPEG-1
+Layer III set (`l3-compl`, `l3-he_*`, `l3-si*`, `l3-sin1k0db`). Nonstandard ID3 /
+VBR-tag vectors are smoke-tested for decode only.
 
 ## LAME fixtures
 

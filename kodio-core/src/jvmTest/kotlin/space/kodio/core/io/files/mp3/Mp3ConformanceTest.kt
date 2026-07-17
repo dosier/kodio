@@ -11,15 +11,15 @@ import space.kodio.core.io.files.metadata.AudioEncodingInfo
 
 /**
  * Real-file MP3 checks using:
- * - ISO/IEC Layer III bitstreams from lieff/minimp3 (smoke decode)
- * - LAME-encoded fixtures with ffmpeg PCM references (structural + PSNR report)
+ * - ISO/IEC Layer III bitstreams from lieff/minimp3 (PSNR > 96 dB)
+ * - LAME-encoded fixtures with ffmpeg PCM references
  *
- * Hard ISO PSNR > 96 dB is not gated yet: the JavaMP3-based port is not fully
- * conformant. Vectors stay in resources so accuracy can be tightened later.
+ * Free-format streams are out of scope for the hard PSNR gate (not in this set).
  */
 class Mp3ConformanceTest {
 
-    private val isoVectors = listOf(
+    /** MPEG-1 Layer III ISO vectors gated at PSNR > 96 dB. */
+    private val isoPsnrVectors = listOf(
         "l3-compl",
         "l3-he_32khz",
         "l3-he_44khz",
@@ -30,15 +30,58 @@ class Mp3ConformanceTest {
         "l3-si_block",
         "l3-si_huff",
         "l3-sin1k0db",
+    )
+
+    /** Nonstandard but supported containers (ID3 tags around a short frame). */
+    private val isoSmokeVectors = listOf(
         "l3-nonstandard-id3v1",
         "l3-nonstandard-id3v2",
         "l3-nonstandard-sin1k0db_lame_vbrtag",
     )
 
     @Test
-    fun isoVectorsDecodeToNonEmptyPcm() {
+    fun isoVectorsMeetPsnr96() {
         val failures = mutableListOf<String>()
-        for (name in isoVectors) {
+        val report = mutableListOf<String>()
+        for (name in isoPsnrVectors) {
+            val bit = loadResource("$name.bit")
+            val ref = loadResource("$name.pcm")
+            val result = try {
+                Mp3Decoder.decode(bit)
+            } catch (e: Exception) {
+                failures += "$name: ${e::class.simpleName}: ${e.message}"
+                continue
+            }
+            if (result.pcm.isEmpty()) {
+                failures += "$name: empty PCM"
+                continue
+            }
+            if (result.sampleRate !in setOf(32000, 44100, 48000)) {
+                failures += "$name: unexpected sampleRate=${result.sampleRate}"
+            }
+            if (result.channels !in 1..2) {
+                failures += "$name: unexpected channels=${result.channels}"
+            }
+            val (psnr, maxDiff, compared, offset) = bestAlignedPsnrS16Le(ref, result.pcm)
+            report += "$name: PSNR=${"%.2f".format(psnr)} maxDiff=$maxDiff compared=$compared offset=$offset"
+            if (compared <= 0) {
+                failures += "$name: no overlapping samples for PSNR"
+            } else if (psnr < 96.0) {
+                failures += "$name: PSNR ${"%.2f".format(psnr)} < 96 dB (maxDiff=$maxDiff)"
+            }
+        }
+        if (failures.isNotEmpty()) {
+            fail(
+                "ISO PSNR failures:\n" + failures.joinToString("\n") +
+                    "\n\nReport:\n" + report.joinToString("\n"),
+            )
+        }
+    }
+
+    @Test
+    fun isoNonstandardVectorsDecodeToNonEmptyPcm() {
+        val failures = mutableListOf<String>()
+        for (name in isoSmokeVectors) {
             val bit = loadResource("$name.bit")
             val result = try {
                 Mp3Decoder.decode(bit)
@@ -55,7 +98,7 @@ class Mp3ConformanceTest {
             }
         }
         if (failures.isNotEmpty()) {
-            fail("ISO vector decode failures:\n" + failures.joinToString("\n"))
+            fail("ISO smoke failures:\n" + failures.joinToString("\n"))
         }
     }
 
@@ -80,16 +123,14 @@ class Mp3ConformanceTest {
         assertEquals(2, vbr.channels)
         assertTrue(vbr.pcm.size >= 1152 * 4)
 
-        // Track accuracy vs ffmpeg reference (informational soft bound).
         val cbrRef = loadResource("lame-tone128-cbr.pcm")
         val (psnr, _, compared, _) = bestAlignedPsnrS16Le(cbrRef, cbr.pcm)
         assertTrue(compared > 0, "no overlapping samples for CBR PSNR")
-        assertTrue(psnr > 0.0, "CBR PSNR should be computable, got $psnr")
+        assertTrue(psnr > 20.0, "CBR PSNR should be reasonable vs ffmpeg, got $psnr")
     }
 
     @Test
     fun stereoVbrMetadataReadableWhenId3Present() {
-        // Re-encode path may strip tags; prefer ID3 fixture from commonTest path via reader.
         val mp3 = loadResource("lame-stereo-vbr.mp3")
         val meta = AudioFileReader.readMetadata(mp3, fileName = "song.mp3")
         assertEquals(AudioFileFormat.Mp3, meta.container)

@@ -1,25 +1,25 @@
 Kodio
 Copyright contributors to Kodio
 
-This product includes software developed for MPEG audio decoding based on
-JavaMP3 (https://github.com/delthas/JavaMP3), licensed under the MIT License:
+This product includes a pure-Kotlin port of minimp3
+(https://github.com/lieff/minimp3) for MPEG audio decoding.
 
-Copyright (c) 2017 delthas
+minimp3 is dedicated to the public domain under CC0 1.0 Universal:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+CC0 1.0 Universal
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Statement of Purpose
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+The laws of most jurisdictions throughout the world automatically confer
+exclusive Copyright and Related Rights upon the creator and subsequent
+owner(s) of an original work of authorship and/or a database.
+
+Certain owners wish to permanently relinquish those rights to a Work for
+the purpose of contributing to a commons of creative, cultural and
+scientific works ("Commons") that the public can reliably and without fear
+of later claims of infringement build upon, modify, incorporate in other
+works, reuse and redistribute as freely as possible in any form whatsoever
+and for any purposes, including without limitation commercial purposes.
+
+For the full CC0 text see:
+https://creativecommons.org/publicdomain/zero/1.0/
