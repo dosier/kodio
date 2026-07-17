@@ -237,47 +237,110 @@ private fun CaptureControls(
     onSelectQuality: (AudioQuality) -> Unit,
     recorderActive: Boolean,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap)) {
-        DeviceSelector(
-            label = "Input device",
-            devices = inputDevices,
-            selected = selectedInputDevice,
-            onSelect = onSelectDevice,
-            enabled = !recorderActive,
-        )
-        QualitySelector(
-            selected = selectedQuality,
-            onSelect = onSelectQuality,
-            enabled = !recorderActive,
-        )
-        RecordingTransport(recorderState)
+    val statusLabel = when {
+        recorderState.needsPermission -> "Needs permission"
+        recorderState.isPaused -> "Paused"
+        recorderState.isRecording -> "Recording"
+        recorderState.error != null -> "Error"
+        else -> "Idle"
     }
-}
+    val statusError = recorderState.error != null
+    val statusActive = recorderState.isRecording || recorderState.isPaused
 
-@Composable
-private fun RecordingTransport(recorderState: RecorderState) {
     SamplePanel {
-        SamplePanelLabel("Capture")
-        Text(
-            text = when {
-                recorderState.needsPermission -> "Microphone permission required"
-                recorderState.isPaused -> "Paused"
-                recorderState.isRecording -> "Recording"
-                recorderState.error != null -> "Error: ${recorderState.error?.message}"
-                else -> "Ready"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            fontFamily = FontFamily.Monospace,
-            color = when {
-                recorderState.error != null -> MaterialTheme.colorScheme.error
-                recorderState.isRecording -> MaterialTheme.colorScheme.primary
-                else -> MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SamplePanelLabel("Capture", modifier = Modifier.weight(1f))
+            SampleStatusPill(
+                text = statusLabel,
+                emphasized = statusActive && !statusError,
+                isError = statusError,
+            )
+            if (!recorderState.needsPermission && recorderState.error == null) {
+                SampleStatusPill(text = selectedQuality.name)
+            }
+        }
+
+        recorderState.error?.message?.let { message ->
+            SampleErrorBanner(message)
+        }
 
         if (recorderState.needsPermission) {
             Button(onClick = { recorderState.requestPermission() }) {
                 Text("Grant permission")
+            }
+        }
+
+        // Device + quality attached to the transport controls (one cluster).
+        Surface(
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f),
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CompactDeviceField(
+                    devices = inputDevices,
+                    selected = selectedInputDevice,
+                    onSelect = onSelectDevice,
+                    enabled = !recorderActive,
+                )
+                CompactQualityRow(
+                    selected = selectedQuality,
+                    onSelect = onSelectQuality,
+                    enabled = !recorderActive,
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    when {
+                        recorderState.isPaused -> Button(
+                            onClick = { recorderState.resume() },
+                            enabled = !recorderState.needsPermission,
+                        ) {
+                            Icon(SampleIcons.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Resume")
+                        }
+                        recorderState.isRecording -> Button(
+                            onClick = { recorderState.pause() },
+                            enabled = !recorderState.needsPermission,
+                        ) {
+                            Icon(SampleIcons.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Pause")
+                        }
+                        else -> Button(
+                            onClick = { recorderState.start() },
+                            enabled = !recorderState.needsPermission,
+                        ) {
+                            Icon(SampleIcons.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Record")
+                        }
+                    }
+
+                    if (recorderState.isRecording || recorderState.isPaused) {
+                        OutlinedButton(
+                            onClick = { recorderState.stop() },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ),
+                        ) {
+                            Icon(SampleIcons.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Stop")
+                        }
+                    }
+                }
             }
         }
 
@@ -288,51 +351,88 @@ private fun RecordingTransport(recorderState: RecorderState) {
                 colors = sampleWaveformColors(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(72.dp),
+                    .height(64.dp),
             )
         }
+    }
+}
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompactDeviceField(
+    devices: List<AudioDevice.Input>,
+    selected: AudioDevice.Input?,
+    onSelect: (AudioDevice.Input?) -> Unit,
+    enabled: Boolean,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { if (enabled) expanded = it },
+    ) {
+        OutlinedTextField(
+            value = selected?.name ?: "System default",
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            label = { Text("Input") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodySmall,
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
         ) {
-            when {
-                recorderState.isPaused -> Button(
-                    onClick = { recorderState.resume() },
-                    enabled = !recorderState.needsPermission,
-                ) {
-                    Icon(SampleIcons.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Resume")
-                }
-                recorderState.isRecording -> Button(
-                    onClick = { recorderState.pause() },
-                    enabled = !recorderState.needsPermission,
-                ) {
-                    Icon(SampleIcons.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Pause")
-                }
-                else -> Button(
-                    onClick = { recorderState.start() },
-                    enabled = !recorderState.needsPermission,
-                ) {
-                    Icon(SampleIcons.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Record")
-                }
+            DropdownMenuItem(
+                text = { Text("System default") },
+                onClick = {
+                    onSelect(null)
+                    expanded = false
+                },
+            )
+            devices.forEach { device ->
+                DropdownMenuItem(
+                    text = { Text(device.name) },
+                    onClick = {
+                        onSelect(device)
+                        expanded = false
+                    },
+                )
             }
+        }
+    }
+}
 
-            if (recorderState.isRecording || recorderState.isPaused) {
-                OutlinedButton(
-                    onClick = { recorderState.stop() },
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error,
+@Composable
+private fun CompactQualityRow(
+    selected: AudioQuality,
+    onSelect: (AudioQuality) -> Unit,
+    enabled: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = "Quality · ${selected.format.label}",
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            AudioQuality.entries.forEachIndexed { index, quality ->
+                SegmentedButton(
+                    selected = quality == selected,
+                    onClick = { onSelect(quality) },
+                    enabled = enabled,
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = AudioQuality.entries.size,
                     ),
                 ) {
-                    Icon(SampleIcons.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Stop")
+                    Text(quality.name, maxLines = 1, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -464,38 +564,6 @@ internal fun <T : AudioDevice> DeviceSelector(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun QualitySelector(
-    selected: AudioQuality,
-    onSelect: (AudioQuality) -> Unit,
-    enabled: Boolean,
-) {
-    SamplePanel {
-        SamplePanelLabel("Quality")
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            AudioQuality.entries.forEachIndexed { index, quality ->
-                SegmentedButton(
-                    selected = quality == selected,
-                    onClick = { onSelect(quality) },
-                    enabled = enabled,
-                    shape = SegmentedButtonDefaults.itemShape(
-                        index = index,
-                        count = AudioQuality.entries.size,
-                    ),
-                ) {
-                    Text(quality.name, maxLines = 1)
-                }
-            }
-        }
-        Text(
-            text = selected.format.label,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

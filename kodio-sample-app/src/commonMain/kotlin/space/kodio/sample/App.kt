@@ -2,29 +2,18 @@ package space.kodio.sample
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -35,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import space.kodio.sample.icons.SampleIcons
@@ -60,6 +48,10 @@ private val SampleDestination.icon: ImageVector
  *
  * Showcases recording, file playback + metadata, format conversion,
  * and OpenAI Whisper transcription under a shared developer-tool theme.
+ *
+ * Uses [NavigationSuiteScaffold] so compact windows get a bottom bar and
+ * medium/expanded windows get a navigation rail with content filling the
+ * remaining space (important on desktop resize).
  */
 @Composable
 @Preview
@@ -67,85 +59,40 @@ fun App() {
     SampleTheme {
         var selectedIndex by remember { mutableIntStateOf(1) }
         var apiKey by remember { mutableStateOf(getOpenAIApiKey()) }
+        val destinations = SampleDestination.entries
 
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            val wide = maxWidth >= SampleDimens.WideBreakpoint
-            val destinations = SampleDestination.entries
-
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.surface,
-                bottomBar = {
-                    if (!wide) {
-                        NavigationBar {
-                            destinations.forEachIndexed { index, dest ->
-                                NavigationBarItem(
-                                    selected = selectedIndex == index,
-                                    onClick = { selectedIndex = index },
-                                    icon = {
-                                        Icon(
-                                            imageVector = dest.icon,
-                                            contentDescription = dest.label,
-                                        )
-                                    },
-                                    label = { Text(dest.label) },
-                                )
-                            }
-                        }
-                    }
-                },
-            ) { paddingValues ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                        .statusBarsPadding(),
-                ) {
-                    if (wide) {
-                        NavigationRail(
-                            modifier = Modifier.fillMaxHeight(),
-                            containerColor = MaterialTheme.colorScheme.surface,
-                        ) {
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                text = "Kodio",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        NavigationSuiteScaffold(
+            containerColor = MaterialTheme.colorScheme.surface,
+            navigationSuiteItems = {
+                destinations.forEachIndexed { index, dest ->
+                    item(
+                        selected = selectedIndex == index,
+                        onClick = { selectedIndex = index },
+                        icon = {
+                            Icon(
+                                imageVector = dest.icon,
+                                contentDescription = dest.label,
                             )
-                            HorizontalDivider(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
-                            destinations.forEachIndexed { index, dest ->
-                                NavigationRailItem(
-                                    selected = selectedIndex == index,
-                                    onClick = { selectedIndex = index },
-                                    icon = {
-                                        Icon(
-                                            imageVector = dest.icon,
-                                            contentDescription = dest.label,
-                                        )
-                                    },
-                                    label = { Text(dest.label) },
-                                )
-                            }
-                        }
-                        VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-
-                    Box(modifier = Modifier.weight(1f).fillMaxSize()) {
-                        when (destinations[selectedIndex]) {
-                            SampleDestination.Recording -> RecordingShowcase()
-                            SampleDestination.Playback -> PlaybackShowcase()
-                            SampleDestination.Conversion -> ConversionShowcase()
-                            SampleDestination.Transcription -> {
-                                if (apiKey.isBlank()) {
-                                    ApiKeyInputScreen(onApiKeySubmit = { apiKey = it })
-                                } else {
-                                    TranscriptionShowcase(apiKey = apiKey)
-                                }
-                            }
+                        },
+                        label = { Text(dest.label) },
+                    )
+                }
+            },
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding(),
+            ) {
+                when (destinations[selectedIndex]) {
+                    SampleDestination.Recording -> RecordingShowcase()
+                    SampleDestination.Playback -> PlaybackShowcase()
+                    SampleDestination.Conversion -> ConversionShowcase()
+                    SampleDestination.Transcription -> {
+                        if (apiKey.isBlank()) {
+                            ApiKeyInputScreen(onApiKeySubmit = { apiKey = it })
+                        } else {
+                            TranscriptionShowcase(apiKey = apiKey)
                         }
                     }
                 }

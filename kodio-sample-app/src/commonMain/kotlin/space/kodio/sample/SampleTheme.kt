@@ -218,3 +218,40 @@ fun SampleStatusText(
         modifier = modifier,
     )
 }
+
+@Composable
+fun SampleStatusPill(
+    text: String,
+    modifier: Modifier = Modifier,
+    emphasized: Boolean = false,
+    isError: Boolean = false,
+) {
+    val background = when {
+        isError -> MaterialTheme.colorScheme.errorContainer
+        emphasized -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val foreground = when {
+        isError -> MaterialTheme.colorScheme.onErrorContainer
+        emphasized -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(
+        modifier = modifier,
+        color = background,
+        shape = RoundedCornerShape(50),
+        border = if (emphasized || isError) {
+            null
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        },
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            fontFamily = FontFamily.Monospace,
+            color = foreground,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+        )
+    }
+}
