@@ -45,6 +45,7 @@ import space.kodio.core.SampleLayout
 import space.kodio.core.io.convertAudio
 import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.AudioFileReadError
+import space.kodio.core.io.files.AudioFileReader
 import space.kodio.core.io.files.fromBytes
 import space.kodio.sample.icons.SampleIcons
 import kotlin.math.abs
@@ -71,21 +72,6 @@ private fun encodingFromSource(enc: SampleEncoding): EncodingChoice = when (enc)
 
 private fun snapSampleRate(rate: Int): Int =
     sampleRateOptions.minBy { abs(it - rate) }
-
-private fun audioFileFormatForName(name: String): AudioFileFormat = when {
-    name.endsWith(".wav", true) || name.endsWith(".wave", true) -> AudioFileFormat.Wav
-    name.endsWith(".aiff", true) || name.endsWith(".aif", true) -> AudioFileFormat.Aiff
-    name.endsWith(".au", true) || name.endsWith(".snd", true) -> AudioFileFormat.Au
-    name.endsWith(".mp3", true) -> AudioFileFormat.Mp3
-    else -> AudioFileFormat.Wav
-}
-
-private fun containerLabel(format: AudioFileFormat): String = when (format) {
-    is AudioFileFormat.Wav -> "WAV"
-    is AudioFileFormat.Aiff -> "AIFF"
-    is AudioFileFormat.Au -> "AU"
-    is AudioFileFormat.Mp3 -> "MP3"
-}
 
 private val encodableFileFormats: List<AudioFileFormat> =
     AudioFileFormat.entries.filter { it !is AudioFileFormat.Mp3 }
@@ -306,18 +292,19 @@ fun ConversionShowcase() {
                                 isPicking = true
                                 scope.launch {
                                     try {
-                                        val file = pickFile(
-                                            listOf("wav", "wave", "aiff", "aif", "au", "snd", "mp3"),
-                                        )
+                                        val file = pickFile(AudioPickerExtensions)
                                         if (file != null) {
                                             isLoadingFile = true
                                             loadError = null
                                             statusError = null
                                             fileName = file.name
                                             val bytes = file.readBytes()
-                                            val fmt = audioFileFormatForName(file.name)
-                                            loadedContainer = fmt
-                                            sourceRecording = AudioRecording.fromBytes(bytes, fmt)
+                                            val metadata = AudioFileReader.readMetadata(bytes, file.name)
+                                            loadedContainer = metadata.container
+                                            sourceRecording = AudioRecording.fromBytes(
+                                                bytes,
+                                                fileName = file.name,
+                                            )
                                         }
                                     } catch (e: AudioFileReadError.InvalidFile) {
                                         loadError = "Invalid audio file: ${e.message}"

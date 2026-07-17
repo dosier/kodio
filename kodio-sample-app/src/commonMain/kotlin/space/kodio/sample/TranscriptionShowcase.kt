@@ -33,10 +33,11 @@ import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import space.kodio.core.AudioFlow
-import space.kodio.core.io.files.AudioFileReadError
-import space.kodio.core.io.files.AudioFileReader
+import space.kodio.core.AudioRecording
 import space.kodio.core.Kodio
 import space.kodio.core.Recorder
+import space.kodio.core.io.files.AudioFileReadError
+import space.kodio.core.io.files.fromBytes
 import space.kodio.core.logging.kodioLogger
 import space.kodio.core.security.AudioPermissionManager
 import space.kodio.sample.icons.SampleIcons
@@ -51,16 +52,17 @@ private fun log(message: String) = logger.info { message }
 private const val WHISPER_PRICE_PER_MINUTE_USD = 0.006
 
 /**
- * Decodes a picked WAV/AIFF/AU file and transcribes it via the same chunked
- * [OpenAIWhisperEngine] used by the live recording tab. Each chunk is uploaded
- * separately so results stream in as the file is processed.
+ * Decodes a picked WAV/AIFF/AU/MP3 file (auto-detect via [AudioRecording.fromBytes])
+ * and transcribes it via the same chunked [OpenAIWhisperEngine] used by the live
+ * recording tab. Each chunk is uploaded separately so results stream in as the
+ * file is processed.
  */
 suspend fun transcribeFile(
     file: PlatformFile,
     engine: OpenAIWhisperEngine,
 ): Flow<TranscriptionResult> {
     val bytes = file.readBytes()
-    val recording = AudioFileReader.read(bytes, file.name)
+    val recording = AudioRecording.fromBytes(bytes, fileName = file.name)
     return recording.asAudioFlow().transcribe(engine)
 }
 
@@ -583,9 +585,7 @@ private fun FileUploadTab(apiKey: String) {
                     isPicking = true
                     scope.launch {
                         try {
-                            val file = pickFile(
-                                listOf("wav", "wave", "aiff", "aif", "au", "snd", "mp3")
-                            )
+                            val file = pickFile(AudioPickerExtensions)
                             if (file != null) {
                                 selectedFileName = file.name
                                 log("File selected: ${file.name}")
