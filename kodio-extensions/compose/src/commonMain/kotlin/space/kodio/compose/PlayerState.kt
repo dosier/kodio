@@ -357,10 +357,11 @@ class PlayerState internal constructor(
      * Seeks within the loaded recording.
      *
      * [progress] is normalized (`0f..1f`) over the full source duration.
-     * Prefers a platform-native [Player.seekTo] when the session supports it;
-     * otherwise falls back to reloading a clipped PCM window via
-     * [AudioRecording.fromPcmBytes]. Rapid scrub updates cancel prior in-flight
-     * seeks but preserve the play-through-seek intent from the first press.
+     * Prefers a platform-native [Player.seekTo] when the session returns
+     * [SeekResult.Applied]; otherwise falls back to reloading a clipped PCM
+     * window via [AudioRecording.fromPcmBytes]. Rapid scrub updates cancel
+     * prior in-flight seeks but preserve the play-through-seek intent from
+     * the first press.
      */
     fun seekTo(progress: Float) {
         if (isPlaying) {
@@ -412,23 +413,28 @@ class PlayerState internal constructor(
             }
 
             // Prefer native session seek; keep Compose window reload as portable fallback.
-            if (player.seekTo(position)) {
-                _progress.floatValue = clamped
-                _isFinished.value = false
-                _isReady.value = true
-                if (shouldResume && (desiredPlaying || _resumeAfterSeek.value)) {
-                    desiredPlaying = true
-                    _resumeAfterSeek.value = false
-                    if (player.isPaused) {
-                        player.resume()
+            when (player.seekTo(position)) {
+                is SeekResult.Applied -> {
+                    _progress.floatValue = clamped
+                    _isFinished.value = false
+                    _isReady.value = true
+                    if (shouldResume && (desiredPlaying || _resumeAfterSeek.value)) {
+                        desiredPlaying = true
+                        _resumeAfterSeek.value = false
+                        if (player.isPaused) {
+                            player.resume()
+                        }
+                        if (desiredPlaying) {
+                            startProgressTicker()
+                        }
+                    } else {
+                        _resumeAfterSeek.value = false
                     }
-                    if (desiredPlaying) {
-                        startProgressTicker()
-                    }
-                } else {
-                    _resumeAfterSeek.value = false
+                    return
                 }
-                return
+                is SeekResult.Unsupported -> {
+                    // Fall through to PCM window reload below.
+                }
             }
 
             stateMutex.withLock {

@@ -59,7 +59,7 @@ class BaseAudioPlaybackSessionRaceTest {
                 data = flowOf(ByteArray(8)),
             )
         )
-        assertEquals(false, session.seekTo(100.milliseconds))
+        assertEquals(SeekResult.Unsupported, session.seekTo(100.milliseconds))
     }
 }
 

@@ -108,7 +108,7 @@ internal class AndroidAudioPlaybackSession(
      * to a clipped window reload. Pause is gated in [playBlocking] so pause wins
      * over in-flight writes.
      */
-    override fun onSeek(position: Duration): Boolean = false
+    override fun onSeek(position: Duration): SeekResult = SeekResult.Unsupported
 
     override fun onPause() {
         isPaused.value = true

@@ -26,3 +26,27 @@ suspend fun AudioFlow.collectAsSource(): AudioSource  {
     }
     return AudioSource.of(format, buffer)
 }
+
+/**
+ * Collects every chunk into a single [ByteArray].
+ *
+ * Prefer this for finite recordings that need random-access seeking. Unbounded
+ * live streams will not complete.
+ */
+suspend fun AudioFlow.collectToByteArray(): ByteArray {
+    var total = 0
+    val chunks = ArrayList<ByteArray>()
+    collect { chunk ->
+        chunks.add(chunk)
+        total += chunk.size
+    }
+    if (chunks.isEmpty()) return ByteArray(0)
+    if (chunks.size == 1) return chunks[0]
+    val out = ByteArray(total)
+    var offset = 0
+    for (chunk in chunks) {
+        chunk.copyInto(out, destinationOffset = offset)
+        offset += chunk.size
+    }
+    return out
+}

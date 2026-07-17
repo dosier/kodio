@@ -32,9 +32,9 @@ import kotlin.time.Duration
  *
  * ## Seek
  *
- * [seekTo] forwards to the session's optional native seek. When it returns `false`,
- * callers (e.g. Compose [space.kodio.compose.PlayerState]) should fall back to
- * reloading a clipped [AudioRecording] window.
+ * [seekTo] forwards to the session's optional native seek. When it returns
+ * [SeekResult.Unsupported], callers (e.g. Compose [space.kodio.compose.PlayerState])
+ * should fall back to reloading a clipped [AudioRecording] window.
  */
 class Player(
     private val session: AudioPlaybackSession
@@ -128,9 +128,10 @@ class Player(
     /**
      * Attempts a platform-native seek to [position].
      *
-     * @return `true` if applied natively; `false` if unsupported (use a PCM window fallback).
+     * @return [SeekResult.Applied] if applied natively; [SeekResult.Unsupported]
+     * if the session cannot seek in-place (use a PCM window fallback).
      */
-    fun seekTo(position: Duration): Boolean = session.seekTo(position)
+    fun seekTo(position: Duration): SeekResult = session.seekTo(position)
 
     /**
      * Toggles between playing and paused states.

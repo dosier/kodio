@@ -13,6 +13,7 @@ import space.kodio.core.AudioPlaybackSession
 import space.kodio.core.AudioQuality
 import space.kodio.core.AudioRecording
 import space.kodio.core.Player
+import space.kodio.core.SeekResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -242,10 +243,10 @@ private class ControllablePlaybackSession(
         _state.value = AudioPlaybackSession.State.Idle
     }
 
-    override fun seekTo(position: Duration): Boolean {
+    override fun seekTo(position: Duration): SeekResult {
         seekCalled = true
-        if (!nativeSeek) return false
+        if (!nativeSeek) return SeekResult.Unsupported
         // Native seek keeps transport state; only updates position at the PlayerState layer.
-        return true
+        return SeekResult.Applied
     }
 }

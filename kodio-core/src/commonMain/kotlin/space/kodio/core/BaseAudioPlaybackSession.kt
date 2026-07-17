@@ -46,13 +46,14 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     protected abstract fun onStop()
 
     /**
-     * Platform hook for native seek. Return `true` if the device was repositioned.
-     * Default is unsupported; [AudioPlaybackSession.seekTo] documents the Compose/Player fallback.
+     * Platform hook for native seek. Return [SeekResult.Applied] if repositioned.
+     * Default is [SeekResult.Unsupported]; [AudioPlaybackSession.seekTo] documents
+     * the Compose/Player fallback.
      */
-    protected open fun onSeek(position: Duration): Boolean = false
+    protected open fun onSeek(position: Duration): SeekResult = SeekResult.Unsupported
 
-    final override fun seekTo(position: Duration): Boolean {
-        if (audioFlow.value == null) return false
+    final override fun seekTo(position: Duration): SeekResult {
+        if (audioFlow.value == null) return SeekResult.Unsupported
         return onSeek(position)
     }
 

@@ -9,14 +9,14 @@ import kotlin.time.Duration
  * ## Seek capability
  *
  * [seekTo] is an optional native transport capability. The default implementation
- * returns `false` (unsupported). Platforms that can reposition playback without
- * reloading audio override it and return `true`.
+ * returns [SeekResult.Unsupported]. Platforms that can reposition playback without
+ * reloading audio override it and return [SeekResult.Applied].
  *
- * When [seekTo] returns `false`, higher layers should fall back to a portable
- * approach (Compose [space.kodio.compose.PlayerState] reloads a clipped PCM window
- * via [AudioRecording.fromPcmBytes]). Keep that fallback out of individual
- * platform sessions so core stays capability-oriented rather than branching on
- * every target.
+ * When [seekTo] returns [SeekResult.Unsupported], higher layers should fall back
+ * to a portable approach (Compose [space.kodio.compose.PlayerState] reloads a
+ * clipped PCM window via [AudioRecording.fromPcmBytes]). Keep that fallback out
+ * of individual platform sessions so core stays capability-oriented rather than
+ * branching on every target.
  */
 interface AudioPlaybackSession {
 
@@ -44,10 +44,11 @@ interface AudioPlaybackSession {
     /**
      * Attempts a platform-native seek to [position] within the currently loaded audio.
      *
-     * @return `true` if the native transport applied the seek; `false` if unsupported.
-     * When `false`, callers should use a fallback (e.g. PCM window reload in Compose).
+     * @return [SeekResult.Applied] if the native transport repositioned playback;
+     * [SeekResult.Unsupported] if this session cannot seek in-place. When unsupported,
+     * callers should use a fallback (e.g. PCM window reload in Compose).
      */
-    fun seekTo(position: Duration): Boolean = false
+    fun seekTo(position: Duration): SeekResult = SeekResult.Unsupported
 
     /**
      * Represents the state of a playback session.

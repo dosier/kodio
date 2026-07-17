@@ -158,7 +158,7 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
      * Streaming [scheduleBuffer] playback has no safe mid-drain seek without
      * racing [playBlocking]'s completion await; Compose falls back to a PCM window.
      */
-    override fun onSeek(position: Duration): Boolean = false
+    override fun onSeek(position: Duration): SeekResult = SeekResult.Unsupported
 
     override fun onPause() {
         log.info { "onPause()" }

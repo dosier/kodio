@@ -16,6 +16,7 @@ import space.kodio.core.io.collectAsSource
 import space.kodio.core.io.convertAudio
 import space.kodio.core.io.encodeToByteArray
 import space.kodio.core.util.namedLogger
+import kotlin.time.Duration
 
 private val logger = namedLogger("NativeMacosPlayback")
 
@@ -30,6 +31,9 @@ private val logger = namedLogger("NativeMacosPlayback")
  * State transitions are managed on the JVM side. A background coroutine on [Dispatchers.IO]
  * awaits the native terminal state via a blocking downcall, avoiding Panama upcalls from
  * Kotlin/Native GCD threads (which cause SIGSEGV due to JVM stack-walking failures).
+ *
+ * Seek reloads a frame-aligned PCM slice into the native buffer (full PCM stays cached
+ * on the JVM side) so scrubbing does not go through Compose [AudioRecording.fromPcmBytes].
  */
 internal class NativeMacosAudioPlaybackSession(
     private val nativeMemSeq: MemorySegment,
@@ -46,6 +50,11 @@ internal class NativeMacosAudioPlaybackSession(
     private var completionJob: Job? = null
     private val completionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    /** Full normalized PCM retained for in-session seek slices. */
+    private var fullPcm: ByteArray? = null
+    private var playbackFormat: AudioFormat? = null
+    private var encodedFormat: ByteArray? = null
+
     /** Mirrors [BaseAudioPlaybackSession] play/pause sequencing. */
     private val wantPlaying = MutableStateFlow(false)
     private val playEpoch = MutableStateFlow(0)
@@ -60,17 +69,27 @@ internal class NativeMacosAudioPlaybackSession(
     override suspend fun load(audioFlow: AudioFlow) {
         _audioFlowHolder.value = audioFlow
 
+        val nativeFlow = normalizeForPlayback(audioFlow)
+        val formatData = nativeFlow.format.encodeToByteArray()
+        val audioSource = nativeFlow.collectAsSource()
+        val audioData = audioSource.source.readByteArray()
+
+        fullPcm = audioData
+        playbackFormat = nativeFlow.format
+        encodedFormat = formatData
+
+        loadNativeBuffer(formatData, audioData)
+        loaded = true
+        _state.value = AudioPlaybackSession.State.Ready
+    }
+
+    private fun loadNativeBuffer(formatData: ByteArray, audioData: ByteArray) {
         closePreviousArena()
         val arena = Arena.ofShared().also { runtimeArena = it }
 
-        val nativeFlow = normalizeForPlayback(audioFlow)
-
-        val formatData = nativeFlow.format.encodeToByteArray()
         val formatDataSeq = arena.allocate(formatData.size.toLong())
         formatDataSeq.asSlice(0, formatData.size.toLong()).copyFrom(MemorySegment.ofArray(formatData))
 
-        val audioSource = nativeFlow.collectAsSource()
-        val audioData = audioSource.source.readByteArray()
         val audioDataSeq = arena.allocate(audioData.size.toLong())
         audioDataSeq.asSlice(0, audioData.size.toLong()).copyFrom(MemorySegment.ofArray(audioData))
 
@@ -81,9 +100,6 @@ internal class NativeMacosAudioPlaybackSession(
             audioData.size,
             audioDataSeq
         )
-
-        loaded = true
-        _state.value = AudioPlaybackSession.State.Ready
     }
 
     private fun normalizeForPlayback(audioFlow: AudioFlow): AudioFlow {
@@ -166,6 +182,69 @@ internal class NativeMacosAudioPlaybackSession(
         NativeMacosLib.macos_playback_session_stop.invokeExact(nativeMemSeq)
         _state.value = AudioPlaybackSession.State.Idle
         loaded = false
+        fullPcm = null
+        playbackFormat = null
+        encodedFormat = null
+        closePreviousArena()
+    }
+
+    /**
+     * Reloads a frame-aligned tail of the cached PCM into the native session.
+     * If transport was playing, restarts native play from the new slice.
+     */
+    override fun seekTo(position: Duration): SeekResult {
+        val pcm = fullPcm ?: return SeekResult.Unsupported
+        val format = playbackFormat ?: return SeekResult.Unsupported
+        val formatData = encodedFormat ?: return SeekResult.Unsupported
+        if (!loaded) return SeekResult.Unsupported
+
+        val offset = pcmSeekByteOffset(position, format, pcm.size)
+        logger.debug { "seekTo(position=$position) -> byteOffset=$offset / ${pcm.size}" }
+
+        val wasPlaying = _state.value is AudioPlaybackSession.State.Playing
+        val wasPaused = _state.value is AudioPlaybackSession.State.Paused
+
+        completionJob?.cancel()
+        completionJob = null
+        playEpoch.value = playEpoch.value + 1
+        NativeMacosLib.macos_playback_session_stop.invokeExact(nativeMemSeq)
+
+        val slice = if (offset <= 0) pcm else if (offset >= pcm.size) ByteArray(0) else {
+            pcm.copyOfRange(offset, pcm.size)
+        }
+        loadNativeBuffer(formatData, slice)
+        loaded = true
+
+        when {
+            wasPlaying -> {
+                wantPlaying.value = true
+                val epoch = playEpoch.value + 1
+                playEpoch.value = epoch
+                _state.value = AudioPlaybackSession.State.Playing
+                NativeMacosLib.macos_playback_session_play.invokeExact(nativeMemSeq)
+                completionJob = completionScope.launch {
+                    val result = NativeMacosLib.macos_playback_session_await_completion
+                        .invokeExact(nativeMemSeq) as Int
+                    ensureActive()
+                    if (!isCurrentPlay(epoch)) return@launch
+                    _state.value = when (result) {
+                        0 -> AudioPlaybackSession.State.Finished
+                        1 -> AudioPlaybackSession.State.Error(RuntimeException("Native playback error"))
+                        else -> AudioPlaybackSession.State.Idle
+                    }
+                    if (result == 0) wantPlaying.value = false
+                }
+            }
+            wasPaused -> {
+                wantPlaying.value = false
+                _state.value = AudioPlaybackSession.State.Paused
+            }
+            else -> {
+                wantPlaying.value = false
+                _state.value = AudioPlaybackSession.State.Ready
+            }
+        }
+        return SeekResult.Applied
     }
 
     private fun isCurrentPlay(epoch: Int): Boolean =
