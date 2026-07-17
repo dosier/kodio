@@ -10,7 +10,7 @@ internal fun readSyncsafeInt(bytes: ByteArray, offset: Int = 0): Int {
 
 internal fun decodeId3Text(data: ByteArray): String {
     if (data.isEmpty()) return ""
-    return when (val encoding = data[0].toInt() and 0xFF) {
+    return when (data[0].toInt() and 0xFF) {
         0 -> decodeLatin1(data, 1)
         3 -> data.decodeToString(1).trimEnd('\u0000')
         1 -> decodeId3Utf16(data, 1, hasBom = true)

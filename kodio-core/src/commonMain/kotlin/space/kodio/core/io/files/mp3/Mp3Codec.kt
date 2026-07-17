@@ -7,7 +7,12 @@ import space.kodio.core.io.files.AudioFileCodec
 import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.AudioFileWriteError
 import space.kodio.core.io.files.metadata.AudioFileMetadata
+import space.kodio.core.io.files.mp3.Mp3Constants.FRAME_HEADER_BYTES
+import space.kodio.core.io.files.mp3.Mp3Constants.MAGIC_PROBE_SCAN_BYTES
 
+/**
+ * MP3 codec entry for [AudioFileCodecs]: decode + metadata only (no encode).
+ */
 internal object Mp3Codec : AudioFileCodec {
     override val format: AudioFileFormat = AudioFileFormat.Mp3
     override val extensions: Set<String> = setOf("mp3")
@@ -22,7 +27,7 @@ internal object Mp3Codec : AudioFileCodec {
             return true
         }
         // Scan prefix for a validated MPEG frame header (not bare 0xFFE sync).
-        val limit = minOf(prefix.size - 4, 64)
+        val limit = minOf(prefix.size - FRAME_HEADER_BYTES, MAGIC_PROBE_SCAN_BYTES)
         for (i in 0..limit) {
             if (Mp3FrameHeader.tryParse(prefix, i) != null) return true
         }

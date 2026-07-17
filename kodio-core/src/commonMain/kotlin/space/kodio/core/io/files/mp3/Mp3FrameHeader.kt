@@ -1,7 +1,22 @@
 package space.kodio.core.io.files.mp3
 
+import space.kodio.core.io.files.mp3.Mp3Constants.CHANNEL_MODE_MONO
+import space.kodio.core.io.files.mp3.Mp3Constants.FIRST_FRAME_SCAN_LIMIT
+import space.kodio.core.io.files.mp3.Mp3Constants.FRAME_HEADER_BYTES
+import space.kodio.core.io.files.mp3.Mp3Constants.MPEG_VERSION_1
+import space.kodio.core.io.files.mp3.Mp3Constants.MPEG_VERSION_2
+import space.kodio.core.io.files.mp3.Mp3Constants.MPEG_VERSION_25
+import space.kodio.core.io.files.mp3.Mp3Constants.SAMPLES_LAYER1
+import space.kodio.core.io.files.mp3.Mp3Constants.SAMPLES_LAYER2
+import space.kodio.core.io.files.mp3.Mp3Constants.SAMPLES_LAYER3_MPEG1
+import space.kodio.core.io.files.mp3.Mp3Constants.SAMPLES_LAYER3_MPEG2
+import space.kodio.core.io.files.mp3.Mp3Constants.SYNC_BYTE
+import space.kodio.core.io.files.mp3.Mp3Constants.SYNC_MASK
+import space.kodio.core.io.files.mp3.id3.skipId3v2Tag
+
 /**
  * Parsed MPEG audio frame header (MPEG-1/2/2.5 Layer I/II/III).
+ * Used for metadata / Xing / magic probe — not the minimp3 hot path.
  */
 internal data class Mp3FrameHeader(
     val mpegVersion: Int, // 1, 2, or 25 (2.5)
@@ -35,17 +50,24 @@ internal data class Mp3FrameHeader(
         private val SAMPLE_RATE_V2 = intArrayOf(22050, 24000, 16000)
         private val SAMPLE_RATE_V25 = intArrayOf(11025, 12000, 8000)
 
+        private const val MIN_FRAME_LENGTH = 24
+        private const val VERSION_BITS_RESERVED = 0b01
+        private const val LAYER_BITS_RESERVED = 0b00
+        private const val BITRATE_FREE = 0x0
+        private const val BITRATE_BAD = 0xF
+        private const val SAMPLE_RATE_RESERVED = 0b11
+
         /**
-         * Tries to parse a frame header starting at [offset] (must point at 0xFF sync byte).
+         * Tries to parse a frame header starting at [offset] (must point at sync byte).
          * Returns null if the header is not a valid MPEG audio frame.
          */
         fun tryParse(bytes: ByteArray, offset: Int = 0): Mp3FrameHeader? {
-            if (offset + 4 > bytes.size) return null
+            if (offset + FRAME_HEADER_BYTES > bytes.size) return null
             val b0 = bytes[offset].toInt() and 0xFF
             val b1 = bytes[offset + 1].toInt() and 0xFF
             val b2 = bytes[offset + 2].toInt() and 0xFF
             val b3 = bytes[offset + 3].toInt() and 0xFF
-            if (b0 != 0xFF || (b1 and 0xE0) != 0xE0) return null
+            if (b0 != SYNC_BYTE || (b1 and SYNC_MASK) != SYNC_MASK) return null
 
             val versionBits = (b1 ushr 3) and 0x3
             val layerBits = (b1 ushr 1) and 0x3
@@ -55,15 +77,15 @@ internal data class Mp3FrameHeader(
             val padding = ((b2 ushr 1) and 0x1) == 1
             val mode = (b3 ushr 6) and 0x3
 
-            if (versionBits == 0b01) return null // reserved
-            if (layerBits == 0b00) return null // reserved
-            if (bitrateIndex == 0x0 || bitrateIndex == 0xF) return null // free / bad
-            if (sampleRateIndex == 0b11) return null // reserved
+            if (versionBits == VERSION_BITS_RESERVED) return null
+            if (layerBits == LAYER_BITS_RESERVED) return null
+            if (bitrateIndex == BITRATE_FREE || bitrateIndex == BITRATE_BAD) return null
+            if (sampleRateIndex == SAMPLE_RATE_RESERVED) return null
 
             val mpegVersion = when (versionBits) {
-                0b11 -> 1
-                0b10 -> 2
-                0b00 -> 25
+                0b11 -> MPEG_VERSION_1
+                0b10 -> MPEG_VERSION_2
+                0b00 -> MPEG_VERSION_25
                 else -> return null
             }
             val layer = when (layerBits) {
@@ -74,15 +96,15 @@ internal data class Mp3FrameHeader(
             }
 
             val sampleRate = when (mpegVersion) {
-                1 -> SAMPLE_RATE_V1[sampleRateIndex]
-                2 -> SAMPLE_RATE_V2[sampleRateIndex]
+                MPEG_VERSION_1 -> SAMPLE_RATE_V1[sampleRateIndex]
+                MPEG_VERSION_2 -> SAMPLE_RATE_V2[sampleRateIndex]
                 else -> SAMPLE_RATE_V25[sampleRateIndex]
             }
 
             val bitrateKbps = when {
-                mpegVersion == 1 && layer == 1 -> BITRATE_V1_L1[bitrateIndex]
-                mpegVersion == 1 && layer == 2 -> BITRATE_V1_L2[bitrateIndex]
-                mpegVersion == 1 && layer == 3 -> BITRATE_V1_L3[bitrateIndex]
+                mpegVersion == MPEG_VERSION_1 && layer == 1 -> BITRATE_V1_L1[bitrateIndex]
+                mpegVersion == MPEG_VERSION_1 && layer == 2 -> BITRATE_V1_L2[bitrateIndex]
+                mpegVersion == MPEG_VERSION_1 && layer == 3 -> BITRATE_V1_L3[bitrateIndex]
                 layer == 1 -> BITRATE_V2_L1[bitrateIndex]
                 else -> BITRATE_V2_L3[bitrateIndex] // Layer II/III MPEG-2/2.5
             }
@@ -90,10 +112,10 @@ internal data class Mp3FrameHeader(
             val bitrate = bitrateKbps * 1000
 
             val samplesPerFrame = when {
-                layer == 1 -> 384
-                layer == 2 -> 1152
-                mpegVersion == 1 -> 1152 // Layer III MPEG-1
-                else -> 576 // Layer III MPEG-2/2.5
+                layer == 1 -> SAMPLES_LAYER1
+                layer == 2 -> SAMPLES_LAYER2
+                mpegVersion == MPEG_VERSION_1 -> SAMPLES_LAYER3_MPEG1
+                else -> SAMPLES_LAYER3_MPEG2
             }
 
             val paddingBytes = if (padding) {
@@ -104,12 +126,12 @@ internal data class Mp3FrameHeader(
             val frameLength = if (layer == 1) {
                 (12 * bitrate / sampleRate + paddingBytes) * 4
             } else {
-                val coef = if (mpegVersion == 1) 144 else 72
+                val coef = if (mpegVersion == MPEG_VERSION_1) 144 else 72
                 coef * bitrate / sampleRate + paddingBytes
             }
-            if (frameLength < 24) return null
+            if (frameLength < MIN_FRAME_LENGTH) return null
 
-            val channels = if (mode == 3) 1 else 2
+            val channels = if (mode == CHANNEL_MODE_MONO) 1 else 2
             return Mp3FrameHeader(
                 mpegVersion = mpegVersion,
                 layer = layer,
@@ -126,15 +148,14 @@ internal data class Mp3FrameHeader(
 
         /** Finds the first parseable MPEG frame in [bytes], skipping ID3v2 if present. */
         fun findFirst(bytes: ByteArray): Pair<Int, Mp3FrameHeader>? {
-            var offset = skipId3v2(bytes)
-            val limit = minOf(bytes.size - 4, offset + 64 * 1024)
+            var offset = skipId3v2Tag(bytes)
+            val limit = minOf(bytes.size - FRAME_HEADER_BYTES, offset + FIRST_FRAME_SCAN_LIMIT)
             while (offset <= limit) {
-                if ((bytes[offset].toInt() and 0xFF) == 0xFF) {
+                if ((bytes[offset].toInt() and 0xFF) == SYNC_BYTE) {
                     val header = tryParse(bytes, offset)
                     if (header != null) {
-                        // Validate by checking the next frame sync when possible
                         val next = offset + header.frameLength
-                        if (next + 4 <= bytes.size) {
+                        if (next + FRAME_HEADER_BYTES <= bytes.size) {
                             val nextHeader = tryParse(bytes, next)
                             if (nextHeader != null) {
                                 return offset to header
@@ -147,21 +168,6 @@ internal data class Mp3FrameHeader(
                 offset++
             }
             return null
-        }
-
-        fun skipId3v2(bytes: ByteArray): Int {
-            if (bytes.size < 10) return 0
-            if (bytes[0] != 'I'.code.toByte() ||
-                bytes[1] != 'D'.code.toByte() ||
-                bytes[2] != '3'.code.toByte()
-            ) {
-                return 0
-            }
-            val size = ((bytes[6].toInt() and 0x7F) shl 21) or
-                ((bytes[7].toInt() and 0x7F) shl 14) or
-                ((bytes[8].toInt() and 0x7F) shl 7) or
-                (bytes[9].toInt() and 0x7F)
-            return (10 + size).coerceAtMost(bytes.size)
         }
     }
 }

@@ -2,7 +2,6 @@ package space.kodio.core.io.files.mp3.id3
 
 import space.kodio.core.io.files.metadata.AudioTags
 
-private const val ID3V1_TAG_SIZE = 128
 private val ID3V1_GENRES = listOf(
     "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop",
     "Jazz", "Metal", "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae",

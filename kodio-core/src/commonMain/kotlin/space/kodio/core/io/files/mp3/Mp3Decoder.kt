@@ -9,6 +9,12 @@ private val logger = namedLogger("Mp3Decoder")
  * High-level MP3 decode API wrapping the minimp3-based core.
  *
  * Output is interleaved signed 16-bit little-endian PCM.
+ *
+ * **I/O strategy:** decode consumes a [ByteArray]. Frame scanning, the Layer III
+ * bit reservoir, and Huffman decoding need indexed random access; kotlinx-io
+ * [kotlinx.io.Source] is sequential and would add overhead on this hot path.
+ * Prefer kotlinx-io at the codec boundary ([AudioMp3] reads the file into bytes /
+ * parses ID3), then decode from the array.
  */
 internal object Mp3Decoder {
     class Result(

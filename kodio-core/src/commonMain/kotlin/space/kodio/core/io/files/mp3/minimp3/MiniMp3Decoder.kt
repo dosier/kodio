@@ -4,9 +4,16 @@
  */
 package space.kodio.core.io.files.mp3.minimp3
 
+import space.kodio.core.io.files.mp3.id3.excludeTrailingId3v1
+import space.kodio.core.io.files.mp3.id3.skipId3v2Tag
 
 /**
- * Frame decoder API mirroring minimp3's mp3dec_decode_frame.
+ * Frame decoder API mirroring minimp3's `mp3dec_decode_frame`.
+ *
+ * Hot path operates on [ByteArray] with integer offsets (frame scan, bit reservoir,
+ * Huffman). kotlinx-io Source is used only at the file/codec boundary
+ * (`readMp3` / `readMp3Metadata`); wrapping every bit read in a Source would add
+ * sequential/copy overhead for random-access Layer III decode.
  */
 internal object MiniMp3 {
     fun init(dec: Mp3dec) {
@@ -14,7 +21,7 @@ internal object MiniMp3 {
     }
 
     /**
-     * Decode one frame from [mp3] starting at offset 0 (caller advances by info.frameBytes).
+     * Decode one frame from [mp3] starting at [mp3Off] (caller advances by info.frameBytes).
      * @return number of PCM samples per channel produced (0 if sync-only / failure).
      */
     fun decodeFrame(
@@ -28,10 +35,10 @@ internal object MiniMp3 {
     ): Int {
         var i = 0
         var frameSize = 0
-        val scratch = Mp3decScratch()
-        val bsFrame = BitStream()
+        val scratch = dec.scratch
+        val bsFrame = dec.bsFrame
 
-        if (mp3Bytes > 4 && (dec.header[0].toInt() and 0xFF) == 0xff &&
+        if (mp3Bytes > HDR_SIZE && (dec.header[0].toInt() and 0xFF) == 0xff &&
             MiniMp3Header.hdrCompare(dec.header, 0, mp3, mp3Off)
         ) {
             frameSize = MiniMp3Header.hdrFrameBytes(mp3, mp3Off, dec.freeFormatBytes) +
@@ -45,12 +52,13 @@ internal object MiniMp3 {
         }
         if (frameSize == 0) {
             dec.clear()
-            val freeFmt = intArrayOf(dec.freeFormatBytes)
-            val frameBytesOut = intArrayOf(0)
-            // find_frame works on a slice view — pass offset by copying logic with mp3Off
-            i = findFrameAt(mp3, mp3Off, mp3Bytes, freeFmt, frameBytesOut)
-            dec.freeFormatBytes = freeFmt[0]
-            frameSize = frameBytesOut[0]
+            dec.freeFormatScratch[0] = dec.freeFormatBytes
+            dec.frameBytesScratch[0] = 0
+            i = MiniMp3Header.findFrame(
+                mp3, mp3Off, mp3Bytes, dec.freeFormatScratch, dec.frameBytesScratch,
+            )
+            dec.freeFormatBytes = dec.freeFormatScratch[0]
+            frameSize = dec.frameBytesScratch[0]
             if (frameSize == 0 || i + frameSize > mp3Bytes) {
                 info.frameBytes = i
                 return 0
@@ -97,61 +105,13 @@ internal object MiniMp3 {
                     info.channels,
                     pcm,
                     pcmI,
-                    scratch.syn,
+                    scratch,
                 )
-                pcmI += 576 * info.channels
+                pcmI += SAMPLES_PER_GRANULE * info.channels
             }
         }
         MiniMp3Layer3.saveReservoir(dec, scratch)
         return if (success) MiniMp3Header.hdrFrameSamples(dec.header, 0) else 0
-    }
-
-    private fun findFrameAt(
-        mp3: ByteArray,
-        mp3Off: Int,
-        mp3Bytes: Int,
-        freeFormatBytes: IntArray,
-        ptrFrameBytes: IntArray,
-    ): Int {
-        // Operate on absolute offsets; MiniMp3Header.findFrame expects offset 0 base.
-        // Create a thin wrapper by searching with absolute indices.
-        var i = 0
-        while (i < mp3Bytes - HDR_SIZE) {
-            val abs = mp3Off + i
-            if (MiniMp3Header.hdrValid(mp3, abs)) {
-                var frameBytes = MiniMp3Header.hdrFrameBytes(mp3, abs, freeFormatBytes[0])
-                var frameAndPadding = frameBytes + MiniMp3Header.hdrPadding(mp3, abs)
-                var k = HDR_SIZE
-                while (frameBytes == 0 && k < MAX_FREE_FORMAT_FRAME_SIZE && i + 2 * k < mp3Bytes - HDR_SIZE) {
-                    if (MiniMp3Header.hdrCompare(mp3, abs, mp3, abs + k)) {
-                        val fb = k - MiniMp3Header.hdrPadding(mp3, abs)
-                        val nextfb = fb + MiniMp3Header.hdrPadding(mp3, abs + k)
-                        if (i + k + nextfb + HDR_SIZE > mp3Bytes ||
-                            !MiniMp3Header.hdrCompare(mp3, abs, mp3, abs + k + nextfb)
-                        ) {
-                            k++
-                            continue
-                        }
-                        frameAndPadding = k
-                        frameBytes = fb
-                        freeFormatBytes[0] = fb
-                    }
-                    k++
-                }
-                if (
-                    (frameBytes != 0 && i + frameAndPadding <= mp3Bytes &&
-                        MiniMp3Header.matchFrame(mp3, abs, mp3Bytes - i, frameBytes)) ||
-                    (i == 0 && frameAndPadding == mp3Bytes)
-                ) {
-                    ptrFrameBytes[0] = frameAndPadding
-                    return i
-                }
-                freeFormatBytes[0] = 0
-            }
-            i++
-        }
-        ptrFrameBytes[0] = 0
-        return mp3Bytes
     }
 
     /**
@@ -159,8 +119,8 @@ internal object MiniMp3 {
      * Skips a leading ID3v2 tag and a trailing ID3v1 tag when present.
      */
     fun decodeAll(bytes: ByteArray): Triple<ByteArray, Int, Int> {
-        val start = skipId3v2(bytes)
-        val end = skipId3v1End(bytes, start)
+        val start = skipId3v2Tag(bytes)
+        val end = excludeTrailingId3v1(bytes, start)
         require(start < end) { "No MPEG audio frames found" }
 
         val dec = Mp3dec()
@@ -199,33 +159,5 @@ internal object MiniMp3 {
         check(out.isNotEmpty()) { "MP3 decode produced no PCM samples" }
         check(sampleRate > 0 && channels in 1..2) { "invalid MP3 format hz=$sampleRate ch=$channels" }
         return Triple(out.toByteArray(), sampleRate, channels)
-    }
-
-    private fun skipId3v2(bytes: ByteArray): Int {
-        if (bytes.size < 10) return 0
-        if (bytes[0] != 'I'.code.toByte() ||
-            bytes[1] != 'D'.code.toByte() ||
-            bytes[2] != '3'.code.toByte()
-        ) {
-            return 0
-        }
-        val size = ((bytes[6].toInt() and 0x7F) shl 21) or
-            ((bytes[7].toInt() and 0x7F) shl 14) or
-            ((bytes[8].toInt() and 0x7F) shl 7) or
-            (bytes[9].toInt() and 0x7F)
-        return (10 + size).coerceAtMost(bytes.size)
-    }
-
-    private fun skipId3v1End(bytes: ByteArray, start: Int): Int {
-        if (bytes.size - start < 128) return bytes.size
-        val off = bytes.size - 128
-        if (off < start) return bytes.size
-        if (bytes[off] == 'T'.code.toByte() &&
-            bytes[off + 1] == 'A'.code.toByte() &&
-            bytes[off + 2] == 'G'.code.toByte()
-        ) {
-            return off
-        }
-        return bytes.size
     }
 }

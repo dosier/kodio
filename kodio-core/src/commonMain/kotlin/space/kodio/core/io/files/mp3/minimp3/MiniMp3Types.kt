@@ -4,7 +4,10 @@
  */
 package space.kodio.core.io.files.mp3.minimp3
 
-internal const val MINIMP3_MAX_SAMPLES_PER_FRAME = 1152 * 2
+internal const val SAMPLES_PER_GRANULE = 576
+internal const val SAMPLES_LAYER1 = 384
+internal const val SAMPLES_LAYER2_OR_L3_MPEG1 = 1152
+internal const val MINIMP3_MAX_SAMPLES_PER_FRAME = SAMPLES_LAYER2_OR_L3_MPEG1 * 2
 internal const val MAX_FREE_FORMAT_FRAME_SIZE = 2304
 internal const val MAX_FRAME_SYNC_MATCHES = 10
 internal const val MAX_L3_FRAME_PAYLOAD_BYTES = MAX_FREE_FORMAT_FRAME_SIZE
@@ -18,16 +21,27 @@ internal const val BITS_DEQUANTIZER_OUT = -1
 internal const val MAX_SCF = 255 + BITS_DEQUANTIZER_OUT * 4 - 210
 internal const val MAX_SCFI = (MAX_SCF + 3) and 3.inv()
 
+/** Bytes-per-second factor: kbps * 125 == bitrate_bps / 8. */
+internal const val FRAME_BYTES_KBPS_FACTOR = 125
+
 internal fun miniMp3Min(a: Int, b: Int): Int = if (a > b) b else a
 internal fun miniMp3Max(a: Int, b: Int): Int = if (a < b) b else a
 
-/** MPEG frame header bytes with helpers matching minimp3 HDR_* macros. */
-internal class Mp3Hdr private constructor(private val bytes: ByteArray) {
+/**
+ * Zero-copy view of a 4-byte MPEG frame header (matches minimp3 HDR_* macros).
+ * Holds a reference into the bitstream buffer — do not mutate [bytes] while in use.
+ */
+internal class Mp3Hdr private constructor(
+    private val bytes: ByteArray,
+    private val offset: Int,
+) {
     init {
-        require(bytes.size >= HDR_SIZE) { "MPEG header requires $HDR_SIZE bytes" }
+        require(offset >= 0 && offset + HDR_SIZE <= bytes.size) {
+            "MPEG header out of bounds: offset=$offset size=${bytes.size}"
+        }
     }
 
-    private fun u(i: Int): Int = bytes[i].toInt() and 0xFF
+    private fun u(i: Int): Int = bytes[offset + i].toInt() and 0xFF
 
     fun isMono(): Boolean = (u(3) and 0xC0) == 0xC0
     fun isCrc(): Boolean = (u(1) and 1) == 0
@@ -43,13 +57,14 @@ internal class Mp3Hdr private constructor(private val bytes: ByteArray) {
     fun isLayer1(): Boolean = (u(1) and 6) == 6
 
     companion object {
-        fun from(src: ByteArray, offset: Int): Mp3Hdr {
-            require(offset + HDR_SIZE <= src.size) { "header out of bounds" }
-            return Mp3Hdr(src.copyOfRange(offset, offset + HDR_SIZE))
-        }
+        fun from(src: ByteArray, offset: Int): Mp3Hdr = Mp3Hdr(src, offset)
     }
 }
 
+/**
+ * Bit reader over a [ByteArray] slice. Indexed byte access (not kotlinx-io Source)
+ * because Layer III Huffman / reservoir code needs random access and bit-granular reads.
+ */
 internal class BitStream {
     var buf: ByteArray = ByteArray(0)
     var bufOff: Int = 0
@@ -109,16 +124,34 @@ internal class L3GrInfo {
     fun sfb(i: Int): Int = sfbtab[sfbtabOff + i]
 }
 
+/**
+ * Per-decoder scratch: reused across frames to keep the hot path allocation-free
+ * after [Mp3dec] construction.
+ */
 internal class Mp3decScratch {
     val bs = BitStream()
     val maindata = ByteArray(MAX_BITRESERVOIR_BYTES + MAX_L3_FRAME_PAYLOAD_BYTES)
     val grInfo = Array(4) { L3GrInfo() }
     /** Contiguous [ch0 | ch1] so midside can use left+576. */
-    val grbuf = FloatArray(2 * 576)
+    val grbuf = FloatArray(2 * SAMPLES_PER_GRANULE)
     val scf = FloatArray(40)
-    /** Contiguous syn[(18+15)][64] */
+    /** Contiguous syn[(18+15)][64] — also QMF delay line workspace. */
     val syn = FloatArray((18 + 15) * 64)
     val istPos = Array(2) { IntArray(39) }
+
+    // Hot-path workspaces (formerly stack/local allocations in Layer3 / synth)
+    val scfSize = IntArray(4)
+    val iscf = IntArray(40)
+    val scfCounts = IntArray(28)
+    val maxBand = IntArray(3)
+    val dctT = FloatArray(4 * 8)
+    val synthA = FloatArray(4)
+    val synthB = FloatArray(4)
+    val imdctCo = FloatArray(9)
+    val imdctSi = FloatArray(9)
+    val imdct12Co = FloatArray(3)
+    val imdct12Si = FloatArray(3)
+    val imdctShortTmp = FloatArray(18)
 }
 
 internal data class Mp3decFrameInfo(
@@ -135,8 +168,14 @@ internal class Mp3dec {
     val qmfState = FloatArray(15 * 2 * 32)
     var reserv: Int = 0
     var freeFormatBytes: Int = 0
-    val header = ByteArray(4)
+    val header = ByteArray(HDR_SIZE)
     val reservBuf = ByteArray(MAX_BITRESERVOIR_BYTES)
+    /** Reused every [MiniMp3.decodeFrame] call. */
+    val scratch = Mp3decScratch()
+    val bsFrame = BitStream()
+    /** Single-element holders for [MiniMp3Header.findFrame] out-params. */
+    val freeFormatScratch = IntArray(1)
+    val frameBytesScratch = IntArray(1)
 
     fun clear() {
         for (ch in 0 until 2) mdctOverlap[ch].fill(0f)

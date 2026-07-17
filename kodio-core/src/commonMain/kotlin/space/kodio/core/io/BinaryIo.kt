@@ -17,6 +17,15 @@ internal fun Source.readIntBe(): Int {
     return (b0 shl 24) or (b1 shl 16) or (b2 shl 8) or b3
 }
 
+/** Big-endian 32-bit int at [offset] (random-access; for ByteArray cold-path parsing). */
+internal fun ByteArray.readIntBe(offset: Int): Int {
+    require(offset >= 0 && offset + 4 <= size) { "readIntBe out of bounds: offset=$offset size=$size" }
+    return ((this[offset].toInt() and 0xFF) shl 24) or
+        ((this[offset + 1].toInt() and 0xFF) shl 16) or
+        ((this[offset + 2].toInt() and 0xFF) shl 8) or
+        (this[offset + 3].toInt() and 0xFF)
+}
+
 internal fun Sink.writeIntBe(value: Int) {
     writeByte(((value ushr 24) and 0xFF).toByte())
     writeByte(((value ushr 16) and 0xFF).toByte())

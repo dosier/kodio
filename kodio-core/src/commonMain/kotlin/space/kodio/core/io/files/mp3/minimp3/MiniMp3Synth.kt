@@ -4,7 +4,6 @@
  */
 package space.kodio.core.io.files.mp3.minimp3
 
-
 internal object MiniMp3Synth {
     fun scalePcm(sample: Float): Short {
         if (sample >= 32766.5f) return 32767
@@ -37,10 +36,9 @@ internal object MiniMp3Synth {
         pcm[pcmOff + 16 * nch] = scalePcm(a)
     }
 
-    fun dctII(grbuf: FloatArray, grOff: Int, n: Int) {
+    fun dctII(grbuf: FloatArray, grOff: Int, n: Int, t: FloatArray) {
         val gSec = MiniMp3Tables.sec
         // t[4][8] stored flat as t[i*8 + j]
-        val t = FloatArray(4 * 8)
         for (k in 0 until n) {
             val yBase = grOff + k
             for (i in 0 until 8) {
@@ -52,9 +50,6 @@ internal object MiniMp3Synth {
                 val t1 = x1 + x2
                 val t2 = (x1 - x2) * gSec[3 * i + 0]
                 val t3 = (x0 - x3) * gSec[3 * i + 1]
-                // x points to t[0]+i, so x[0]=t[i], x[8]=t[8+i], etc. with stride 1 in first dim of [4][8]?
-                // C: for (x = t[0], i = 0; i < 8; i++, x++) { x[0]=...; x[8]=...; x[16]=...; x[24]=...; }
-                // t is float t[4][8], so t[0][i], t[1][i], t[2][i], t[3][i]
                 t[0 * 8 + i] = t0 + t1
                 t[1 * 8 + i] = (t0 - t1) * gSec[3 * i + 2]
                 t[2 * 8 + i] = t3 + t2
@@ -77,9 +72,9 @@ internal object MiniMp3Synth {
                 x3 = x1 - x2; x1 += x2
                 t[row * 8 + 0] = x0 + x1
                 t[row * 8 + 4] = (x0 - x1) * Float.fromBits(0x3f3504f3)
-                x5 = x5 + x6
+                x5 += x6
                 x6 = (x6 + x7) * Float.fromBits(0x3f3504f3)
-                x7 = x7 + xt
+                x7 += xt
                 x3 = (x3 + x4) * Float.fromBits(0x3f3504f3)
                 x5 -= x7 * Float.fromBits(0x3e4bafaf)
                 x7 += x5 * Float.fromBits(0x3ec3ef15)
@@ -107,8 +102,18 @@ internal object MiniMp3Synth {
         }
     }
 
-    fun synth(xl: FloatArray, xlOff: Int, dst: ShortArray, dstOff: Int, nch: Int, lins: FloatArray, linsOff: Int) {
-        val xrOff = xlOff + 576 * (nch - 1)
+    fun synth(
+        xl: FloatArray,
+        xlOff: Int,
+        dst: ShortArray,
+        dstOff: Int,
+        nch: Int,
+        lins: FloatArray,
+        linsOff: Int,
+        a: FloatArray,
+        b: FloatArray,
+    ) {
+        val xrOff = xlOff + SAMPLES_PER_GRANULE * (nch - 1)
         val dstrOff = dstOff + (nch - 1)
         val dstlOff = dstOff
         val w = MiniMp3Tables.win
@@ -130,8 +135,6 @@ internal object MiniMp3Synth {
         synthPair(dst, dstlOff + 32 * nch, nch, lins, linsOff + 4 * 15 + 64)
 
         for (i in 14 downTo 0) {
-            val a = FloatArray(4)
-            val b = FloatArray(4)
             lins[zlinOff + 4 * i] = xl[xlOff + 18 * (31 - i)]
             lins[zlinOff + 4 * i + 1] = xl[xrOff + 18 * (31 - i)]
             lins[zlinOff + 4 * i + 2] = xl[xlOff + 1 + 18 * (31 - i)]
@@ -182,15 +185,19 @@ internal object MiniMp3Synth {
         nch: Int,
         pcm: ShortArray,
         pcmOff: Int,
-        lins: FloatArray,
+        scratch: Mp3decScratch,
     ) {
+        val lins = scratch.syn
         for (i in 0 until nch) {
-            dctII(grbuf, 576 * i, nbands)
+            dctII(grbuf, SAMPLES_PER_GRANULE * i, nbands, scratch.dctT)
         }
         qmfState.copyInto(lins, 0, 0, 15 * 64)
         var i = 0
         while (i < nbands) {
-            synth(grbuf, i, pcm, pcmOff + 32 * nch * i, nch, lins, i * 64)
+            synth(
+                grbuf, i, pcm, pcmOff + 32 * nch * i, nch, lins, i * 64,
+                scratch.synthA, scratch.synthB,
+            )
             i += 2
         }
         if (nch == 1) {

@@ -4,9 +4,7 @@ import space.kodio.core.io.files.metadata.AudioTags
 
 /**
  * Combines ID3v2 (header) and ID3v1 (footer) tag parsing for MP3 files.
- *
- * ID3v2 values take precedence; ID3v1 fills in missing fields. Intended for
- * use by the MP3 codec in Phase 3.
+ * ID3v2 values take precedence; ID3v1 fills in missing fields.
  */
 internal object Id3Parser {
     fun parse(bytes: ByteArray): AudioTags {

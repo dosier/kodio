@@ -5,13 +5,20 @@
 package space.kodio.core.io.files.mp3.minimp3
 
 internal object MiniMp3Header {
+    private val SAMPLE_RATE_MPEG1_HZ = intArrayOf(44100, 48000, 32000)
+
+    private const val SYNC_BYTE = 0xFF
+    /** MPEG-1/2 full sync nibble, or MPEG-2.5 Layer III pattern. */
+    private const val SYNC_MPEG12_NIBBLE = 0xF0
+    private const val SYNC_MPEG25_LAYER3 = 0xE2
+
     fun hdrValid(h: ByteArray, off: Int = 0): Boolean {
         if (off + HDR_SIZE > h.size) return false
         val b0 = h[off].toInt() and 0xFF
         val b1 = h[off + 1].toInt() and 0xFF
         val b2 = h[off + 2].toInt() and 0xFF
-        return b0 == 0xff &&
-            ((b1 and 0xF0) == 0xf0 || (b1 and 0xFE) == 0xe2) &&
+        return b0 == SYNC_BYTE &&
+            ((b1 and SYNC_MPEG12_NIBBLE) == SYNC_MPEG12_NIBBLE || (b1 and 0xFE) == SYNC_MPEG25_LAYER3) &&
             (((b1 ushr 1) and 3) != 0) &&
             ((b2 ushr 4) != 15) &&
             (((b2 ushr 2) and 3) != 3)
@@ -41,10 +48,9 @@ internal object MiniMp3Header {
 
     fun hdrSampleRateHz(h: ByteArray, off: Int = 0): Int {
         val hdr = Mp3Hdr.from(h, off)
-        val gHz = intArrayOf(44100, 48000, 32000)
         val sr = hdr.sampleRateIndex()
         if (sr !in 0..2) return 0
-        var hz = gHz[sr]
+        var hz = SAMPLE_RATE_MPEG1_HZ[sr]
         if (!hdr.testMpeg1()) hz = hz shr 1
         if (!hdr.testNotMpeg25()) hz = hz shr 1
         return hz
@@ -52,7 +58,11 @@ internal object MiniMp3Header {
 
     fun hdrFrameSamples(h: ByteArray, off: Int = 0): Int {
         val hdr = Mp3Hdr.from(h, off)
-        return if (hdr.isLayer1()) 384 else (1152 shr if (hdr.isFrame576()) 1 else 0)
+        return if (hdr.isLayer1()) {
+            SAMPLES_LAYER1
+        } else {
+            SAMPLES_LAYER2_OR_L3_MPEG1 shr if (hdr.isFrame576()) 1 else 0
+        }
     }
 
     fun hdrFrameBytes(h: ByteArray, off: Int, freeFormatSize: Int): Int {
@@ -60,7 +70,7 @@ internal object MiniMp3Header {
         val kbps = hdrBitrateKbps(h, off)
         val hz = hdrSampleRateHz(h, off)
         if (hz == 0) return freeFormatSize
-        var frameBytes = samples * kbps * 125 / hz
+        var frameBytes = samples * kbps * FRAME_BYTES_KBPS_FACTOR / hz
         if (Mp3Hdr.from(h, off).isLayer1()) {
             frameBytes = frameBytes and 3.inv()
         }
@@ -86,26 +96,32 @@ internal object MiniMp3Header {
     }
 
     /**
-     * @return pair of (frame offset into [mp3], frame byte size including padding).
-     * Updates [freeFormatBytes] in-place via the IntArray singleton holder.
+     * Locate a sync'd frame starting at [mp3Off].
+     *
+     * @return frame offset relative to [mp3Off]; writes frame size (incl. padding)
+     * into [ptrFrameBytes] and may update [freeFormatBytes].
      */
     fun findFrame(
         mp3: ByteArray,
+        mp3Off: Int,
         mp3Bytes: Int,
         freeFormatBytes: IntArray,
         ptrFrameBytes: IntArray,
     ): Int {
         var i = 0
         while (i < mp3Bytes - HDR_SIZE) {
-            if (hdrValid(mp3, i)) {
-                var frameBytes = hdrFrameBytes(mp3, i, freeFormatBytes[0])
-                var frameAndPadding = frameBytes + hdrPadding(mp3, i)
+            val abs = mp3Off + i
+            if (hdrValid(mp3, abs)) {
+                var frameBytes = hdrFrameBytes(mp3, abs, freeFormatBytes[0])
+                var frameAndPadding = frameBytes + hdrPadding(mp3, abs)
                 var k = HDR_SIZE
                 while (frameBytes == 0 && k < MAX_FREE_FORMAT_FRAME_SIZE && i + 2 * k < mp3Bytes - HDR_SIZE) {
-                    if (hdrCompare(mp3, i, mp3, i + k)) {
-                        val fb = k - hdrPadding(mp3, i)
-                        val nextfb = fb + hdrPadding(mp3, i + k)
-                        if (i + k + nextfb + HDR_SIZE > mp3Bytes || !hdrCompare(mp3, i, mp3, i + k + nextfb)) {
+                    if (hdrCompare(mp3, abs, mp3, abs + k)) {
+                        val fb = k - hdrPadding(mp3, abs)
+                        val nextfb = fb + hdrPadding(mp3, abs + k)
+                        if (i + k + nextfb + HDR_SIZE > mp3Bytes ||
+                            !hdrCompare(mp3, abs, mp3, abs + k + nextfb)
+                        ) {
                             k++
                             continue
                         }
@@ -117,7 +133,7 @@ internal object MiniMp3Header {
                 }
                 if (
                     (frameBytes != 0 && i + frameAndPadding <= mp3Bytes &&
-                        matchFrame(mp3, i, mp3Bytes - i, frameBytes)) ||
+                        matchFrame(mp3, abs, mp3Bytes - i, frameBytes)) ||
                     (i == 0 && frameAndPadding == mp3Bytes)
                 ) {
                     ptrFrameBytes[0] = frameAndPadding

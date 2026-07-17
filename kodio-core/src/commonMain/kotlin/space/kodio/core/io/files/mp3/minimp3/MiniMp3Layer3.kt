@@ -161,11 +161,13 @@ internal object MiniMp3Layer3 {
         gr: L3GrInfo,
         scf: FloatArray,
         ch: Int,
+        scratch: Mp3decScratch,
     ) {
         val partIdx = (if (gr.nShortSfb != 0) 1 else 0) + (if (gr.nLongSfb == 0) 1 else 0)
         var partitionBase = partIdx * 28
-        val scfSize = IntArray(4)
-        val iscf = IntArray(40)
+        val scfSize = scratch.scfSize
+        val iscf = scratch.iscf
+        iscf.fill(0)
         val scfShift = gr.scalefacScale + 1
         var scfsi = gr.scfsi
         val mpeg1 = (hdr[hdrOff + 1].toInt() and 0x8) != 0
@@ -191,9 +193,10 @@ internal object MiniMp3Layer3 {
             partitionBase += k
             scfsi = -16
         }
-        val counts = IntArray(28) { i ->
+        val counts = scratch.scfCounts
+        for (i in 0 until 28) {
             val idx = partitionBase + i
-            if (idx < scfPartitionsFlat.size) scfPartitionsFlat[idx] else 0
+            counts[i] = if (idx < scfPartitionsFlat.size) scfPartitionsFlat[idx] else 0
         }
         readScalefactors(iscf, istPos, scfSize, counts, bs, scfsi)
 
@@ -459,11 +462,20 @@ internal object MiniMp3Layer3 {
         }
     }
 
-    fun intensityStereo(left: FloatArray, leftOff: Int, istPos: IntArray, gr: L3GrInfo, grNext: L3GrInfo, hdr: ByteArray, hdrOff: Int) {
-        val maxBand = IntArray(3)
+    fun intensityStereo(
+        left: FloatArray,
+        leftOff: Int,
+        istPos: IntArray,
+        gr: L3GrInfo,
+        grNext: L3GrInfo,
+        hdr: ByteArray,
+        hdrOff: Int,
+        maxBand: IntArray,
+    ) {
+        maxBand.fill(0)
         val nSfb = gr.nLongSfb + gr.nShortSfb
         val maxBlocks = if (gr.nShortSfb != 0) 3 else 1
-        stereoTopBand(left, leftOff + 576, gr.sfbtab, gr.sfbtabOff, nSfb, maxBand)
+        stereoTopBand(left, leftOff + SAMPLES_PER_GRANULE, gr.sfbtab, gr.sfbtabOff, nSfb, maxBand)
         if (gr.nLongSfb != 0) {
             val m = miniMp3Max(miniMp3Max(maxBand[0], maxBand[1]), maxBand[2])
             maxBand[0] = m; maxBand[1] = m; maxBand[2] = m
@@ -548,12 +560,19 @@ internal object MiniMp3Layer3 {
         y[8] = s4 + s7
     }
 
-    private fun imdct36(grbuf: FloatArray, grOffIn: Int, overlap: FloatArray, ovOffIn: Int, window: FloatArray, nbands: Int) {
+    private fun imdct36(
+        grbuf: FloatArray,
+        grOffIn: Int,
+        overlap: FloatArray,
+        ovOffIn: Int,
+        window: FloatArray,
+        nbands: Int,
+        co: FloatArray,
+        si: FloatArray,
+    ) {
         val twid9 = MiniMp3Tables.twid9
         var grOff = grOffIn
         var ovOff = ovOffIn
-        val co = FloatArray(9)
-        val si = FloatArray(9)
         repeat(nbands) {
             co[0] = -grbuf[grOff + 0]
             si[0] = grbuf[grOff + 17]
@@ -586,10 +605,17 @@ internal object MiniMp3Layer3 {
         dst[2] = a1 - m1
     }
 
-    private fun imdct12(x: FloatArray, xOff: Int, dst: FloatArray, dstOff: Int, overlap: FloatArray, ovOff: Int) {
+    private fun imdct12(
+        x: FloatArray,
+        xOff: Int,
+        dst: FloatArray,
+        dstOff: Int,
+        overlap: FloatArray,
+        ovOff: Int,
+        co: FloatArray,
+        si: FloatArray,
+    ) {
         val twid3 = MiniMp3Tables.twid3
-        val co = FloatArray(3)
-        val si = FloatArray(3)
         idct3(-x[xOff + 0], x[xOff + 6] + x[xOff + 3], x[xOff + 12] + x[xOff + 9], co)
         idct3(x[xOff + 15], x[xOff + 12] - x[xOff + 9], x[xOff + 6] - x[xOff + 3], si)
         si[1] = -si[1]
@@ -602,17 +628,26 @@ internal object MiniMp3Layer3 {
         }
     }
 
-    private fun imdctShort(grbuf: FloatArray, grOffIn: Int, overlap: FloatArray, ovOffIn: Int, nbandsIn: Int) {
+    private fun imdctShort(
+        grbuf: FloatArray,
+        grOffIn: Int,
+        overlap: FloatArray,
+        ovOffIn: Int,
+        nbandsIn: Int,
+        scratch: Mp3decScratch,
+    ) {
         var nbands = nbandsIn
         var grOff = grOffIn
         var ovOff = ovOffIn
-        val tmp = FloatArray(18)
+        val tmp = scratch.imdctShortTmp
+        val co = scratch.imdct12Co
+        val si = scratch.imdct12Si
         while (nbands > 0) {
             grbuf.copyInto(tmp, 0, grOff, grOff + 18)
             overlap.copyInto(grbuf, grOff, ovOff, ovOff + 6)
-            imdct12(tmp, 0, grbuf, grOff + 6, overlap, ovOff + 6)
-            imdct12(tmp, 1, grbuf, grOff + 12, overlap, ovOff + 6)
-            imdct12(tmp, 2, overlap, ovOff, overlap, ovOff + 6)
+            imdct12(tmp, 0, grbuf, grOff + 6, overlap, ovOff + 6, co, si)
+            imdct12(tmp, 1, grbuf, grOff + 12, overlap, ovOff + 6, co, si)
+            imdct12(tmp, 2, overlap, ovOff, overlap, ovOff + 6, co, si)
             nbands--
             ovOff += 9
             grOff += 18
@@ -633,21 +668,30 @@ internal object MiniMp3Layer3 {
         }
     }
 
-    fun imdctGr(grbuf: FloatArray, grOff: Int, overlap: FloatArray, blockType: Int, nLongBands: Int) {
+    fun imdctGr(
+        grbuf: FloatArray,
+        grOff: Int,
+        overlap: FloatArray,
+        blockType: Int,
+        nLongBands: Int,
+        scratch: Mp3decScratch,
+    ) {
         val w0 = MiniMp3Tables.mdctWindow0
         val w1 = MiniMp3Tables.mdctWindow1
+        val co = scratch.imdctCo
+        val si = scratch.imdctSi
         var gOff = grOff
         var oOff = 0
         if (nLongBands != 0) {
-            imdct36(grbuf, gOff, overlap, oOff, w0, nLongBands)
+            imdct36(grbuf, gOff, overlap, oOff, w0, nLongBands, co, si)
             gOff += 18 * nLongBands
             oOff += 9 * nLongBands
         }
         if (blockType == SHORT_BLOCK_TYPE) {
-            imdctShort(grbuf, gOff, overlap, oOff, 32 - nLongBands)
+            imdctShort(grbuf, gOff, overlap, oOff, 32 - nLongBands, scratch)
         } else {
             val win = if (blockType == STOP_BLOCK_TYPE) w1 else w0
-            imdct36(grbuf, gOff, overlap, oOff, win, 32 - nLongBands)
+            imdct36(grbuf, gOff, overlap, oOff, win, 32 - nLongBands, co, si)
         }
     }
 
@@ -677,13 +721,15 @@ internal object MiniMp3Layer3 {
     fun decode(h: Mp3dec, s: Mp3decScratch, grInfo: Array<L3GrInfo>, grOff: Int, nch: Int) {
         for (ch in 0 until nch) {
             val layer3grLimit = s.bs.pos + grInfo[grOff + ch].part23Length
-            decodeScalefactors(h.header, 0, s.istPos[ch], s.bs, grInfo[grOff + ch], s.scf, ch)
-            huffman(s.grbuf, ch * 576, s.bs, grInfo[grOff + ch], s.scf, layer3grLimit)
+            decodeScalefactors(h.header, 0, s.istPos[ch], s.bs, grInfo[grOff + ch], s.scf, ch, s)
+            huffman(s.grbuf, ch * SAMPLES_PER_GRANULE, s.bs, grInfo[grOff + ch], s.scf, layer3grLimit)
         }
         if ((h.header[3].toInt() and 0x10) != 0) {
-            intensityStereo(s.grbuf, 0, s.istPos[1], grInfo[grOff], grInfo[grOff + 1], h.header, 0)
+            intensityStereo(
+                s.grbuf, 0, s.istPos[1], grInfo[grOff], grInfo[grOff + 1], h.header, 0, s.maxBand,
+            )
         } else if ((h.header[3].toInt() and 0xE0) == 0x60) {
-            midsideStereo(s.grbuf, 0, 576)
+            midsideStereo(s.grbuf, 0, SAMPLES_PER_GRANULE)
         }
         for (ch in 0 until nch) {
             val g = grInfo[grOff + ch]
@@ -692,11 +738,17 @@ internal object MiniMp3Layer3 {
             val nLongBands = (if (g.mixedBlockFlag != 0) 2 else 0) shl (if (mySr == 2) 1 else 0)
             if (g.nShortSfb != 0) {
                 aaBands = nLongBands - 1
-                reorder(s.grbuf, ch * 576 + nLongBands * 18, s.syn, g.sfbtab, g.sfbtabOff + g.nLongSfb)
+                reorder(
+                    s.grbuf,
+                    ch * SAMPLES_PER_GRANULE + nLongBands * 18,
+                    s.syn,
+                    g.sfbtab,
+                    g.sfbtabOff + g.nLongSfb,
+                )
             }
-            antialias(s.grbuf, ch * 576, aaBands)
-            imdctGr(s.grbuf, ch * 576, h.mdctOverlap[ch], g.blockType, nLongBands)
-            changeSign(s.grbuf, ch * 576)
+            antialias(s.grbuf, ch * SAMPLES_PER_GRANULE, aaBands)
+            imdctGr(s.grbuf, ch * SAMPLES_PER_GRANULE, h.mdctOverlap[ch], g.blockType, nLongBands, s)
+            changeSign(s.grbuf, ch * SAMPLES_PER_GRANULE)
         }
     }
 }

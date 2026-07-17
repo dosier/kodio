@@ -6,10 +6,8 @@ import space.kodio.core.io.files.metadata.AudioTags
 import space.kodio.core.io.readExactly
 import space.kodio.core.io.readIntBe
 
-private const val ID3V2_HEADER_SIZE = 10
-
 /**
- * Parses ID3v2.3 and ID3v2.4 tags from the start of an MP3 file.
+ * Parses ID3v2.3 and ID3v2.4 tags from the start of an MP3 file (cold path; kotlinx-io).
  */
 internal object Id3v2Parser {
     fun parseAtStart(bytes: ByteArray): AudioTags? {

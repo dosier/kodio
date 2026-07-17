@@ -28,11 +28,13 @@ private val Pcm16Le = SampleEncoding.PcmInt(
     signed = true,
 )
 
+/** Cold path: kotlinx-io [Source] → bytes, then [ByteArray] decode (see [Mp3Decoder]). */
 internal fun readMp3(source: Source): AudioSource {
     val bytes = source.readByteArray()
     return decodeMp3Bytes(bytes)
 }
 
+/** Cold path: kotlinx-io [Source] → bytes for ID3 / Xing / frame-header metadata. */
 internal fun readMp3Metadata(source: Source): AudioFileMetadata {
     val bytes = source.readByteArray()
     return readMp3MetadataBytes(bytes)
@@ -95,7 +97,7 @@ internal fun readMp3MetadataBytes(bytes: ByteArray): AudioFileMetadata {
         encoding = AudioEncodingInfo.Compressed.Mp3(
             bitrate = bitrate,
             vbr = vbr,
-            mpegVersion = if (header.mpegVersion == 25) 25 else header.mpegVersion,
+            mpegVersion = header.mpegVersion,
             layer = header.layer,
             encoderDelay = xing?.encoderDelay,
             encoderPadding = xing?.encoderPadding,
