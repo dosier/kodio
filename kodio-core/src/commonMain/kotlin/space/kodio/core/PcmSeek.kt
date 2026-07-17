@@ -30,18 +30,34 @@ fun pcmSeekByteOffset(
     format: AudioFormat,
     byteCount: Int,
 ): Int {
-    val bytesPerFrame = format.bytesPerFrame
-    if (bytesPerFrame <= 0 || byteCount <= 0 || format.sampleRate <= 0) return 0
+    if (byteCount <= 0) return 0
+    val offset = pcmSeekByteOffset(position, format, byteCount.toLong())
+    return offset.coerceIn(0L, byteCount.toLong()).toInt()
+}
 
-    val totalFrames = (byteCount / bytesPerFrame).toLong()
-    if (totalFrames <= 0L) return 0
+/**
+ * Frame-aligned absolute byte offset for [position] on a [Long]-sized timeline.
+ *
+ * When [byteCount] is [Long.MAX_VALUE] (unknown / open-ended ceiling), the result
+ * is only clamped to be non-negative and frame-aligned — not to a buffer end.
+ */
+fun pcmSeekByteOffset(
+    position: Duration,
+    format: AudioFormat,
+    byteCount: Long,
+): Long {
+    val bytesPerFrame = format.bytesPerFrame
+    if (bytesPerFrame <= 0 || byteCount <= 0L || format.sampleRate <= 0) return 0L
+
+    val bpf = bytesPerFrame.toLong()
+    val totalFrames = if (byteCount == Long.MAX_VALUE) Long.MAX_VALUE else byteCount / bpf
+    if (totalFrames <= 0L) return 0L
 
     val targetFrame = position.toSampleFrame(format.sampleRate)
         .coerceIn(0L, totalFrames)
-    val offset = (targetFrame * bytesPerFrame.toLong())
-        .coerceIn(0L, byteCount.toLong())
-    val aligned = offset - (offset % bytesPerFrame.toLong())
-    return aligned.toInt().coerceIn(0, byteCount)
+    val offset = if (targetFrame == Long.MAX_VALUE) Long.MAX_VALUE else targetFrame * bpf
+    val capped = if (byteCount == Long.MAX_VALUE) offset.coerceAtLeast(0L) else offset.coerceIn(0L, byteCount)
+    return capped - (capped % bpf)
 }
 
 /**
