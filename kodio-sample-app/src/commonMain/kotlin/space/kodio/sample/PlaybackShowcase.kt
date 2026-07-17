@@ -60,15 +60,14 @@ import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.launch
 import space.kodio.compose.AudioWaveform
+import space.kodio.compose.PlayerState
 import space.kodio.compose.WaveformStyle
 import space.kodio.compose.rememberPlayerState
+import space.kodio.compose.waveformPeaks
 import space.kodio.core.AudioDevice
 import space.kodio.core.AudioRecording
 import space.kodio.core.Channels
-import space.kodio.core.Endianness
-import space.kodio.core.FloatPrecision
 import space.kodio.core.Kodio
-import space.kodio.core.SampleEncoding
 import space.kodio.core.io.files.AudioFileReadError
 import space.kodio.core.io.files.AudioFileReader
 import space.kodio.core.io.files.fromBytes
@@ -76,8 +75,6 @@ import space.kodio.core.io.files.metadata.AudioEncodingInfo
 import space.kodio.core.io.files.metadata.AudioFileMetadata
 import space.kodio.core.io.files.metadata.AudioTags
 import space.kodio.sample.icons.SampleIcons
-import kotlin.math.abs
-import kotlin.math.max
 import kotlin.time.Duration
 
 /** Supported picker extensions for decode + metadata. */
@@ -104,8 +101,21 @@ private fun PlaybackShowcaseContent() {
     var outputDevices by remember { mutableStateOf<List<AudioDevice.Output>>(emptyList()) }
     var selectedOutputDevice by remember { mutableStateOf<AudioDevice.Output?>(null) }
 
+    // Hoisted above the wide/narrow layout branches so window resize does not
+    // dispose PlayerState (PreviewPane is composed in separate when-branches).
+    val playerState = rememberPlayerState(device = selectedOutputDevice)
+
     LaunchedEffect(Unit) {
         outputDevices = Kodio.listOutputDevices()
+    }
+
+    LaunchedEffect(loaded?.recording, playerState) {
+        val recording = loaded?.recording
+        if (recording != null) {
+            playerState.loadAsync(recording)
+        } else {
+            playerState.resetAsync()
+        }
     }
 
     val scope = rememberCoroutineScope()
@@ -204,7 +214,7 @@ private fun PlaybackShowcaseContent() {
                     ) {
                         PreviewPane(
                             loaded = current,
-                            device = selectedOutputDevice,
+                            playerState = playerState,
                             isPicking = isPicking,
                             isDragOver = isDragOver,
                             onPickFile = ::pickAndLoad,
@@ -235,7 +245,7 @@ private fun PlaybackShowcaseContent() {
                     ) {
                         PreviewPane(
                             loaded = current,
-                            device = selectedOutputDevice,
+                            playerState = playerState,
                             isPicking = isPicking,
                             isDragOver = isDragOver,
                             onPickFile = ::pickAndLoad,
@@ -335,7 +345,7 @@ private fun EmptyDropPane(
 @Composable
 private fun PreviewPane(
     loaded: LoadedAudioFile,
-    device: AudioDevice.Output?,
+    playerState: PlayerState,
     isPicking: Boolean,
     isDragOver: Boolean,
     onPickFile: () -> Unit,
@@ -357,7 +367,7 @@ private fun PreviewPane(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(SampleDimens.PanelPadding),
-                verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap),
+                verticalArrangement = Arrangement.spacedBy(SampleDimens.DenseGap),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -388,7 +398,10 @@ private fun PreviewPane(
                     }
                 }
 
-                PlaybackControls(recording = loaded.recording, device = device)
+                PlaybackControls(
+                    recording = loaded.recording,
+                    playerState = playerState,
+                )
             }
         }
 
@@ -405,24 +418,28 @@ private fun PreviewPane(
 @Composable
 private fun PlaybackControls(
     recording: AudioRecording,
-    device: AudioDevice.Output?,
+    playerState: PlayerState,
 ) {
-    val playerState = rememberPlayerState(recording, device = device)
-    val waveform = remember(recording) { generateStaticWaveform(recording) }
     val canScrub = playerState.duration > Duration.ZERO && !playerState.isLoading
 
-    Column(verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap)) {
-        AudioWaveform(
-            amplitudes = waveform,
-            style = WaveformStyle.Bar(width = 3.dp, spacing = 1.dp),
-            colors = sampleWaveformColors(),
-            progress = playerState.progress,
-            onProgressChange = if (canScrub) { p -> playerState.seekTo(p) } else null,
-            animate = false,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(100.dp),
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(SampleDimens.DenseGap)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val barCount = ((maxWidth / 3.dp).toInt()).coerceIn(80, 320)
+            val waveform = remember(recording, barCount) {
+                recording.waveformPeaks(barCount)
+            }
+            AudioWaveform(
+                amplitudes = waveform,
+                style = WaveformStyle.Bar(width = 2.dp, spacing = 1.dp, minHeight = 3.dp),
+                colors = sampleWaveformColors(),
+                progress = playerState.progress,
+                onProgressChange = if (canScrub) { p -> playerState.seekTo(p) } else null,
+                animate = false,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
+            )
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -762,112 +779,4 @@ private fun hasSecondaryTags(tags: AudioTags): Boolean =
         tags.year != null ||
         !tags.genre.isNullOrBlank() ||
         !tags.comment.isNullOrBlank()
-
-/**
- * Builds a static peak waveform for [recording].
- *
- * Must honor [SampleEncoding] (bit depth, signedness, endianness, float).
- * The previous LE-int16-only path looked fine for decoded MP3 (always PCM16 LE)
- * but collapsed 24/32-bit and float PCM (common in WAV/AIFF/AU) to near-silence.
- */
-private fun generateStaticWaveform(recording: AudioRecording, barCount: Int = 96): List<Float> {
-    val rawBytes = recording.toByteArray()
-    if (rawBytes.isEmpty()) return emptyList()
-
-    val format = recording.format
-    val bytesPerSample = format.bytesPerSample.coerceAtLeast(1)
-    val channelCount = format.channels.count.coerceAtLeast(1)
-    val bytesPerFrame = format.bytesPerFrame.coerceAtLeast(bytesPerSample)
-    val totalFrames = rawBytes.size / bytesPerFrame
-    if (totalFrames == 0) return List(barCount) { 0f }
-
-    val framesPerBar = (totalFrames / barCount).coerceAtLeast(1)
-    val amplitudes = ArrayList<Float>(barCount)
-
-    for (bar in 0 until barCount) {
-        val startFrame = bar * framesPerBar
-        val endFrame = (startFrame + framesPerBar).coerceAtMost(totalFrames)
-        var peak = 0f
-
-        for (frame in startFrame until endFrame) {
-            val frameOffset = frame * bytesPerFrame
-            for (ch in 0 until channelCount) {
-                val sampleOffset = frameOffset + ch * bytesPerSample
-                peak = max(peak, absSample(rawBytes, sampleOffset, format.encoding))
-            }
-        }
-
-        amplitudes.add(peak.coerceIn(0.02f, 1f))
-    }
-
-    return amplitudes
-}
-
-private fun absSample(bytes: ByteArray, offset: Int, encoding: SampleEncoding): Float {
-    return when (encoding) {
-        is SampleEncoding.PcmInt -> {
-            val bits = encoding.bitDepth.bits
-            val bps = bits / 8
-            if (offset < 0 || offset + bps > bytes.size) return 0f
-            val raw = readPcmIntBits(bytes, offset, bps, encoding.endianness)
-            val centered = if (encoding.signed) {
-                signExtend(raw, bits)
-            } else {
-                raw - (1L shl (bits - 1))
-            }
-            val divisor = (1L shl (bits - 1)).toFloat()
-            abs(centered.toFloat() / divisor).coerceIn(0f, 1f)
-        }
-        is SampleEncoding.PcmFloat -> when (encoding.precision) {
-            FloatPrecision.F32 -> {
-                if (offset + 4 > bytes.size) return 0f
-                abs(Float.fromBits(readInt32Le(bytes, offset))).coerceIn(0f, 1f)
-            }
-            FloatPrecision.F64 -> {
-                if (offset + 8 > bytes.size) return 0f
-                abs(Double.fromBits(readInt64Le(bytes, offset)).toFloat()).coerceIn(0f, 1f)
-            }
-        }
-    }
-}
-
-private fun readPcmIntBits(bytes: ByteArray, offset: Int, bps: Int, endianness: Endianness): Long {
-    var value = 0L
-    when (endianness) {
-        Endianness.Little -> {
-            for (i in 0 until bps) {
-                value = value or ((bytes[offset + i].toLong() and 0xFF) shl (8 * i))
-            }
-        }
-        Endianness.Big -> {
-            for (i in 0 until bps) {
-                value = (value shl 8) or (bytes[offset + i].toLong() and 0xFF)
-            }
-        }
-    }
-    return value
-}
-
-private fun signExtend(value: Long, bits: Int): Long {
-    val signBit = 1L shl (bits - 1)
-    return if (value and signBit != 0L) {
-        value or (-1L shl bits)
-    } else {
-        value
-    }
-}
-
-private fun readInt32Le(bytes: ByteArray, offset: Int): Int =
-    (bytes[offset].toInt() and 0xFF) or
-        ((bytes[offset + 1].toInt() and 0xFF) shl 8) or
-        ((bytes[offset + 2].toInt() and 0xFF) shl 16) or
-        ((bytes[offset + 3].toInt() and 0xFF) shl 24)
-
-private fun readInt64Le(bytes: ByteArray, offset: Int): Long {
-    var value = 0L
-    for (i in 0 until 8) {
-        value = value or ((bytes[offset + i].toLong() and 0xFF) shl (8 * i))
-    }
-    return value
-}
 

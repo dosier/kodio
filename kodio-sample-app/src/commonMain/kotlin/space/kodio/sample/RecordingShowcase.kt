@@ -79,7 +79,8 @@ fun RecordingShowcase() {
         quality = selectedQuality,
         device = selectedInputDevice,
         onRecordingComplete = { recording ->
-            recordings = recordings + recording
+            // Newest first so the session list shows the latest take at the top.
+            recordings = listOf(recording) + recordings
         },
     )
 
@@ -145,7 +146,7 @@ fun RecordingShowcase() {
                                 stitchError = null
                                 try {
                                     val stitched = AudioRecording.concat(source)
-                                    recordings = recordings + stitched
+                                    recordings = listOf(stitched) + recordings
                                     selectedRecordings = emptySet()
                                 } catch (e: Exception) {
                                     stitchError = e.message ?: e::class.simpleName
@@ -204,7 +205,7 @@ fun RecordingShowcase() {
                                 stitchError = null
                                 try {
                                     val stitched = AudioRecording.concat(source)
-                                    recordings = recordings + stitched
+                                    recordings = listOf(stitched) + recordings
                                     selectedRecordings = emptySet()
                                 } catch (e: Exception) {
                                     stitchError = e.message ?: e::class.simpleName
