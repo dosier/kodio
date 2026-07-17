@@ -34,26 +34,26 @@ internal fun DrawScope.renderBarStyle(
 ) {
     if (amplitudes.isEmpty()) return
 
-    val barWidthPx = style.width.toPx()
-    val barSpacingPx = style.spacing.toPx()
-    val totalBarWidth = barWidthPx + barSpacingPx
+    val preferredBarWidth = style.width.toPx()
+    val preferredSpacing = style.spacing.toPx()
+    val preferredStep = (preferredBarWidth + preferredSpacing).coerceAtLeast(1f)
     val minHeightPx = style.minHeight.toPx()
     val cornerRadiusPx = style.cornerRadius.toPx()
 
-    val maxBars = (size.width / totalBarWidth).toInt()
-    val displayAmplitudes = if (amplitudes.size > maxBars) {
-        amplitudes.takeLast(maxBars)
-    } else {
-        amplitudes
-    }
+    val maxBars = (size.width / preferredStep).toInt().coerceAtLeast(1)
+    val displayAmplitudes = downsampleAmplitudes(amplitudes, maxBars)
+    val count = displayAmplitudes.size
+    // Distribute evenly across the full width so scrub progress matches visuals.
+    val step = size.width / count
+    val barWidthPx = preferredBarWidth.coerceAtMost(step * 0.85f).coerceAtLeast(1f)
 
-    val maxHeight = size.height * 0.95f
-    val progressIndex = (displayAmplitudes.size * progress).toInt()
+    val maxHeight = size.height
+    val progressIndex = (count * progress.coerceIn(0f, 1f)).toInt()
 
     displayAmplitudes.forEachIndexed { index, amplitude ->
         val normalizedAmplitude = amplitude.coerceIn(0f, 1f)
         val barHeight = (maxHeight * normalizedAmplitude).coerceAtLeast(minHeightPx)
-        val x = index * totalBarWidth
+        val x = index * step + (step - barWidthPx) / 2f
 
         val (top, bottom) = calculateBarPosition(
             alignment = style.alignment,
@@ -96,24 +96,23 @@ internal fun DrawScope.renderSpikeStyle(
 ) {
     if (amplitudes.isEmpty()) return
 
-    val spikeWidthPx = style.width.toPx()
-    val spikeSpacingPx = style.spacing.toPx()
-    val totalWidth = spikeWidthPx + spikeSpacingPx
+    val preferredSpikeWidth = style.width.toPx()
+    val preferredSpacing = style.spacing.toPx()
+    val preferredStep = (preferredSpikeWidth + preferredSpacing).coerceAtLeast(1f)
 
-    val maxSpikes = (size.width / totalWidth).toInt()
-    val displayAmplitudes = if (amplitudes.size > maxSpikes) {
-        amplitudes.takeLast(maxSpikes)
-    } else {
-        amplitudes
-    }
+    val maxSpikes = (size.width / preferredStep).toInt().coerceAtLeast(1)
+    val displayAmplitudes = downsampleAmplitudes(amplitudes, maxSpikes)
+    val count = displayAmplitudes.size
+    val step = size.width / count
+    val spikeWidthPx = preferredSpikeWidth.coerceAtMost(step * 0.85f).coerceAtLeast(1f)
 
-    val maxHeight = size.height * 0.95f
-    val progressIndex = (displayAmplitudes.size * progress).toInt()
+    val maxHeight = size.height
+    val progressIndex = (count * progress.coerceIn(0f, 1f)).toInt()
 
     displayAmplitudes.forEachIndexed { index, amplitude ->
         val normalizedAmplitude = amplitude.coerceIn(0f, 1f)
         val spikeHeight = (maxHeight * normalizedAmplitude).coerceAtLeast(2f)
-        val x = index * totalWidth + spikeWidthPx / 2
+        val x = index * step + step / 2f
 
         val (top, bottom) = calculateBarPosition(
             alignment = style.alignment,
@@ -204,27 +203,26 @@ internal fun DrawScope.renderMirroredStyle(
 ) {
     if (amplitudes.isEmpty()) return
 
-    val barWidthPx = style.barWidth.toPx()
-    val barSpacingPx = style.barSpacing.toPx()
+    val preferredBarWidth = style.barWidth.toPx()
+    val preferredSpacing = style.barSpacing.toPx()
+    val preferredStep = (preferredBarWidth + preferredSpacing).coerceAtLeast(1f)
     val gapPx = style.gap.toPx()
     val cornerRadiusPx = style.cornerRadius.toPx()
-    val totalBarWidth = barWidthPx + barSpacingPx
 
-    val maxBars = (size.width / totalBarWidth).toInt()
-    val displayAmplitudes = if (amplitudes.size > maxBars) {
-        amplitudes.takeLast(maxBars)
-    } else {
-        amplitudes
-    }
+    val maxBars = (size.width / preferredStep).toInt().coerceAtLeast(1)
+    val displayAmplitudes = downsampleAmplitudes(amplitudes, maxBars)
+    val count = displayAmplitudes.size
+    val step = size.width / count
+    val barWidthPx = preferredBarWidth.coerceAtMost(step * 0.85f).coerceAtLeast(1f)
 
     val centerY = size.height / 2
-    val maxBarHeight = (size.height - gapPx) / 2 * 0.95f
-    val progressIndex = (displayAmplitudes.size * progress).toInt()
+    val maxBarHeight = (size.height - gapPx) / 2
+    val progressIndex = (count * progress.coerceIn(0f, 1f)).toInt()
 
     displayAmplitudes.forEachIndexed { index, amplitude ->
         val normalizedAmplitude = amplitude.coerceIn(0f, 1f)
         val barHeight = (maxBarHeight * normalizedAmplitude).coerceAtLeast(2f)
-        val x = index * totalBarWidth
+        val x = index * step + (step - barWidthPx) / 2f
 
         val currentBrush = if (index < progressIndex) progressBrush else brush
 
@@ -375,6 +373,29 @@ internal fun DrawScope.renderFilledStyle(
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/**
+ * Reduces [amplitudes] to at most [maxCount] peaks by even bucketing.
+ * Preserves the full time span so scrub progress stays aligned with the drawing.
+ */
+private fun downsampleAmplitudes(amplitudes: List<Float>, maxCount: Int): List<Float> {
+    if (amplitudes.size <= maxCount) return amplitudes
+    if (maxCount <= 0) return emptyList()
+    val result = ArrayList<Float>(maxCount)
+    val bucketSize = amplitudes.size.toDouble() / maxCount
+    for (i in 0 until maxCount) {
+        val start = (i * bucketSize).toInt()
+        val end = (((i + 1) * bucketSize).toInt()).coerceAtMost(amplitudes.size)
+        var peak = 0f
+        val rangeEnd = end.coerceAtLeast(start + 1).coerceAtMost(amplitudes.size)
+        for (j in start until rangeEnd) {
+            val value = amplitudes[j]
+            if (value > peak) peak = value
+        }
+        result.add(peak)
+    }
+    return result
+}
 
 /**
  * Calculates the top and bottom Y coordinates for a bar based on alignment.

@@ -8,8 +8,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import space.kodio.compose.internal.pcmDuration
+import space.kodio.compose.internal.seekByteOffset
 import space.kodio.core.*
 import space.kodio.core.logging.kodioLogger
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
@@ -73,9 +76,16 @@ class PlayerState internal constructor(
     private var _progress = mutableFloatStateOf(0f)
     private var stateObserverJob: Job? = null
     private var progressJob: Job? = null
+    private var seekJob: Job? = null
 
     /** Full source recording (not a seek slice). */
     private var sourceRecording: AudioRecording? = null
+
+    /**
+     * Remembers that playback was active when a scrub/seek began so rapid
+     * intermediate seeks (which stop the player) still resume afterward.
+     */
+    private var resumeAfterSeek: Boolean = false
 
     // Mutex for thread-safe state transitions
     private val stateMutex = Mutex()
@@ -133,10 +143,15 @@ class PlayerState internal constructor(
     val progress: Float by _progress
 
     /**
-     * Duration of the loaded recording, or [Duration.ZERO] if none / unknown.
+     * Duration of the loaded recording from the PCM frame clock, or [Duration.ZERO]
+     * if none / unknown. Uses frames (not container metadata) so [progress],
+     * [position], and [seekTo] stay aligned.
      */
     val duration: Duration
-        get() = sourceRecording?.calculatedDuration ?: Duration.ZERO
+        get() {
+            val source = sourceRecording ?: return Duration.ZERO
+            return pcmDuration(source.format, source.frameCount)
+        }
 
     /**
      * Estimated playback position derived from [progress] and [duration].
@@ -236,6 +251,7 @@ class PlayerState internal constructor(
      * Pauses playback.
      */
     fun pause() {
+        resumeAfterSeek = false
         _player?.pause()
     }
 
@@ -243,6 +259,9 @@ class PlayerState internal constructor(
      * Stops playback and resets to the beginning of the full recording.
      */
     fun stop() {
+        resumeAfterSeek = false
+        seekJob?.cancel()
+        seekJob = null
         stopProgressTicker()
         _player?.stop()
         _isPlaying.value = false
@@ -258,6 +277,9 @@ class PlayerState internal constructor(
      * Stops playback and resets to the beginning (suspend version).
      */
     suspend fun stopAsync() {
+        resumeAfterSeek = false
+        seekJob?.cancel()
+        seekJob = null
         stopProgressTicker()
         _player?.stop()
         _isPlaying.value = false
@@ -285,9 +307,15 @@ class PlayerState internal constructor(
      * [progress] is normalized (`0f..1f`) over the full source duration.
      * If currently playing, playback continues from the new position by loading
      * a PCM window via public [AudioRecording] APIs (no session seek required).
+     * Rapid scrub updates cancel prior in-flight seeks but preserve the
+     * play-through-seek intent from the first press.
      */
     fun seekTo(progress: Float) {
-        scope.launch {
+        if (_isPlaying.value) {
+            resumeAfterSeek = true
+        }
+        seekJob?.cancel()
+        seekJob = scope.launch {
             seekToAsync(progress)
         }
     }
@@ -299,7 +327,10 @@ class PlayerState internal constructor(
         val source = sourceRecording ?: return
         val player = _player ?: return
         val clamped = progress.coerceIn(0f, 1f)
-        val wasPlaying = _isPlaying.value
+        if (_isPlaying.value) {
+            resumeAfterSeek = true
+        }
+        val shouldResume = resumeAfterSeek
 
         stopProgressTicker()
 
@@ -313,6 +344,7 @@ class PlayerState internal constructor(
             }
 
             if (clamped >= 1f) {
+                resumeAfterSeek = false
                 player.load(source)
                 _isReady.value = true
                 _isFinished.value = true
@@ -323,9 +355,11 @@ class PlayerState internal constructor(
             loadPlaybackWindow(clamped)
             _isReady.value = true
 
-            if (wasPlaying) {
+            if (shouldResume) {
                 player.start()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.error(e) { "Error seeking: ${e.message}" }
             _error.value = AudioError.from(e)
@@ -386,6 +420,9 @@ class PlayerState internal constructor(
      */
     suspend fun resetAsync() {
         stateMutex.withLock {
+            resumeAfterSeek = false
+            seekJob?.cancel()
+            seekJob = null
             stopProgressTicker()
             stateObserverJob?.cancel()
             stateObserverJob = null
@@ -407,6 +444,9 @@ class PlayerState internal constructor(
      * Cleans up resources. Called automatically when the composable leaves composition.
      */
     internal fun release() {
+        resumeAfterSeek = false
+        seekJob?.cancel()
+        seekJob = null
         stopProgressTicker()
         stateObserverJob?.cancel()
         stateObserverJob = null
@@ -429,18 +469,17 @@ class PlayerState internal constructor(
             return
         }
 
-        val targetFrame = (progress.coerceIn(0f, 1f) * frames)
-            .toLong()
-            .coerceIn(0L, frames)
-        if (targetFrame == 0L) {
+        val bytes = source.toByteArray()
+        val offsetBytes = seekByteOffset(
+            progress = progress,
+            frameCount = frames,
+            bytesPerFrame = bytesPerFrame,
+            byteCount = bytes.size,
+        )
+        if (offsetBytes <= 0) {
             player.load(source)
             return
         }
-
-        val bytes = source.toByteArray()
-        val offsetBytes = (targetFrame * bytesPerFrame)
-            .toInt()
-            .coerceIn(0, bytes.size)
         if (offsetBytes >= bytes.size) {
             player.load(source)
             return
@@ -471,6 +510,7 @@ class PlayerState internal constructor(
                         stopProgressTicker()
                     }
                     is AudioPlaybackSession.State.Finished -> {
+                        resumeAfterSeek = false
                         stopProgressTicker()
                         _isPlaying.value = false
                         _isPaused.value = false

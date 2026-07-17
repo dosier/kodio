@@ -6,6 +6,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import space.kodio.compose.internal.calculateRmsAmplitude
 import space.kodio.core.*
 import space.kodio.core.logging.kodioLogger
 import space.kodio.core.security.AudioPermissionManager
@@ -14,9 +15,6 @@ import kotlin.math.sqrt
 private val logger = kodioLogger("RecorderState")
 
 private const val MAX_LIVE_AMPLITUDES = 100
-private const val INT16_MAX_MAGNITUDE = 32768.0
-private const val UINT8_MIDPOINT = 128
-private const val UINT8_MIDPOINT_D = 128.0
 private const val DEFAULT_LIVE_WAVEFORM_GAIN = 4f
 
 /**
@@ -470,62 +468,8 @@ class RecorderState internal constructor(
         return gained.coerceIn(0f, 1f)
     }
 
-    private fun calculateAmplitude(chunk: ByteArray, format: AudioFormat): Float {
-        if (chunk.isEmpty()) return 0f
-        
-        val bytesPerSample = format.bytesPerSample
-        
-        return when (bytesPerSample) {
-            2 -> calculateAmplitude16Bit(chunk)
-            1 -> calculateAmplitude8Bit(chunk)
-            else -> calculateAmplitudeGeneric(chunk)
-        }
-    }
-
-    /**
-     * Calculate RMS amplitude for 16-bit signed PCM (little-endian).
-     */
-    private fun calculateAmplitude16Bit(chunk: ByteArray): Float {
-        var sum = 0.0
-        var count = 0
-        
-        var i = 0
-        while (i + 1 < chunk.size) {
-            // Correctly read little-endian 16-bit signed sample
-            val low = chunk[i].toInt() and 0xFF
-            val high = chunk[i + 1].toInt()  // Keep sign for high byte
-            val sample = (high shl 8) or low  // Signed 16-bit value
-            
-            val normalized = sample / INT16_MAX_MAGNITUDE
-            sum += normalized * normalized
-            count++
-            i += 2
-        }
-        
-        return if (count > 0) kotlin.math.sqrt(sum / count).toFloat() else 0f
-    }
-
-    /**
-     * Calculate amplitude for 8-bit unsigned PCM.
-     */
-    private fun calculateAmplitude8Bit(chunk: ByteArray): Float {
-        var sum = 0.0
-        for (byte in chunk) {
-            // 8-bit PCM is typically unsigned, centered at 128
-            val sample = (byte.toInt() and 0xFF) - UINT8_MIDPOINT
-            val normalized = sample / UINT8_MIDPOINT_D
-            sum += normalized * normalized
-        }
-        return if (chunk.isNotEmpty()) kotlin.math.sqrt(sum / chunk.size).toFloat() else 0f
-    }
-
-    /**
-     * Generic amplitude calculation (fallback).
-     */
-    private fun calculateAmplitudeGeneric(chunk: ByteArray): Float {
-        if (chunk.isEmpty()) return 0f
-        return chunk.map { (it.toInt() and 0xFF) / 255f }.average().toFloat()
-    }
+    private fun calculateAmplitude(chunk: ByteArray, format: AudioFormat): Float =
+        calculateRmsAmplitude(chunk, format)
 }
 
 /**
