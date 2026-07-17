@@ -26,7 +26,7 @@ private val logger = namedLogger("TransportController")
  * [seekEpoch] is independent of session-level `playEpoch` (BaseAudioPlaybackSession):
  * bumping seek abandons in-flight device writes without cancelling an in-flight
  * play() handshake. Platform AudioQueue seek must NOT reuse channel-closing
- * teardown from stop/dispose — that is a later platform-glue concern; this
+ * teardown from stop/dispose; that is a later platform-glue concern. This
  * controller only moves the soft cursor and stamps epochs.
  */
 internal class TransportController(

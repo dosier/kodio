@@ -98,7 +98,7 @@ class Player(
 
     /**
      * Whether the underlying session implements transport-buffer seek.
-     * When `true`, [SeekResult.Unsupported] means out-of-window — not "use PCM fallback".
+     * When `true`, [SeekResult.Unsupported] means out-of-window, not "use PCM fallback".
      */
     val supportsTransportSeek: Boolean
         get() = session.supportsTransportSeek

@@ -40,7 +40,7 @@ fun pcmSeekByteOffset(
  * Frame-aligned absolute byte offset for [position] on a [Long]-sized timeline.
  *
  * When [byteCount] is [Long.MAX_VALUE] (unknown / open-ended ceiling), the result
- * is only clamped to be non-negative and frame-aligned — not to a buffer end.
+ * is only clamped to be non-negative and frame-aligned, not to a buffer end.
  */
 fun pcmSeekByteOffset(
     position: Duration,

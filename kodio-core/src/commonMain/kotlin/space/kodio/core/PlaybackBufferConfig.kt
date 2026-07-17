@@ -9,7 +9,7 @@ import kotlin.time.Duration.Companion.seconds
  *
  * Out-of-range seek policy is not configurable in v1: targets outside the retained
  * window return [SeekResult.Unsupported] (known-finite ahead-of-ingest seeks are
- * accepted as a pending cursor — see transport seek semantics).
+ * accepted as a pending cursor; see transport seek semantics).
  */
 data class PlaybackBufferConfig(
     /** Hard cap for growable storage; also the ring capacity upper bound. */

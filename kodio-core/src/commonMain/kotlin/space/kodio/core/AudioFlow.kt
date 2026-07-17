@@ -30,7 +30,7 @@ class AudioFlow(
     data: Flow<ByteArray>,
     /**
      * Total PCM byte length when this flow is a known-finite recording.
-     * `null` means unbounded, live, or unknown — never fully collect for seek.
+     * `null` means unbounded, live, or unknown; never fully collect for seek.
      */
     val knownByteCount: Long? = null,
 ) : Flow<ByteArray> by data {

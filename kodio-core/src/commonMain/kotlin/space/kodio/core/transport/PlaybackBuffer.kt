@@ -46,7 +46,7 @@ internal interface PlaybackBuffer {
     /**
      * Acquire a contiguous writable region of up to [requested] bytes into [out].
      * Returns acquired length (`0` if [requested] ≤ 0). On a ring wrap, only the
-     * first contiguous segment is returned — call again after [commitWrite].
+     * first contiguous segment is returned; call again after [commitWrite].
      */
     fun acquireWrite(requested: Int, out: BufferAcquire): Int
 

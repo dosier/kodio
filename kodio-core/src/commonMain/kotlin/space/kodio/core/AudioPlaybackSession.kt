@@ -34,7 +34,7 @@ private val DefaultBufferedRangeFlow: StateFlow<BufferedRange> =
  * [SeekResult.Unsupported] without inventing a second timeline.
  *
  * [knownByteCount] / [AudioFlow.isKnownFinite] are length metadata and growable
- * eligibility — not the sole seek gate.
+ * eligibility, not the sole seek gate.
  */
 interface AudioPlaybackSession {
 
