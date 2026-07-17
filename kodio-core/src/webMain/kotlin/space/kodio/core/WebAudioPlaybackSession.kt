@@ -9,6 +9,7 @@ import space.kodio.core.AudioPlaybackSession.State
 import web.audio.*
 import web.events.EventHandler
 import kotlin.coroutines.coroutineContext
+import kotlin.time.Duration
 
 /**
  * Web playback session. Output device selection via [AudioContext.setSinkId] is
@@ -89,6 +90,12 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         }.lastOrNull()
         lastCompletable?.await()
     }
+
+    /**
+     * Chunked [AudioBufferSourceNode] scheduling has no reliable mid-stream seek;
+     * Compose falls back to a clipped PCM window reload.
+     */
+    override fun onSeek(position: Duration): Boolean = false
 
     override fun onPause() {
         scope.launch { audioContext?.suspend() }

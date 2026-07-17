@@ -7,6 +7,9 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.AudioFormat as AndroidAudioFormat
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlin.time.Duration
 
 internal class AndroidAudioPlaybackSession(
     private val context: Context,
@@ -17,6 +20,8 @@ internal class AndroidAudioPlaybackSession(
     private lateinit var preparedFormat: AudioFormat
     private var androidEncoding: Int = AndroidAudioFormat.ENCODING_INVALID
     private var androidChannelMask: Int = 0
+
+    private val isPaused = MutableStateFlow(false)
 
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
         ensureInterleaved(format) // AudioTrack expects interleaved frames
@@ -66,17 +71,20 @@ internal class AndroidAudioPlaybackSession(
 
         this.audioTrack = track
         this.preparedFormat = format
+        this.isPaused.value = false
         return format
     }
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {
         val track = audioTrack ?: return
+        isPaused.value = false
         track.play()
 
         when (preparedFormat.encoding) {
             is SampleEncoding.PcmInt -> {
                 // Bytes are already in target PCM-int format; write directly.
                 audioFlow.collect { chunk ->
+                    isPaused.first { !it }
                     // For 24-bit packed/32-bit, write(byte[]) also works on modern APIs.
                     track.write(chunk, 0, chunk.size)
                 }
@@ -86,6 +94,7 @@ internal class AndroidAudioPlaybackSession(
                 // If upstream already produces float[], you can adapt the flow to emit float[] instead.
                 require(androidEncoding == AndroidAudioFormat.ENCODING_PCM_FLOAT)
                 audioFlow.collect { chunk ->
+                    isPaused.first { !it }
                     val floats = bytesToFloatArrayLE(chunk)
                     // WRITE_BLOCKING to keep behavior similar to your original
                     track.write(floats, 0, floats.size, AudioTrack.WRITE_BLOCKING)
@@ -94,15 +103,25 @@ internal class AndroidAudioPlaybackSession(
         }
     }
 
+    /**
+     * MODE_STREAM [AudioTrack] cannot reposition unread PCM; Compose falls back
+     * to a clipped window reload. Pause is gated in [playBlocking] so pause wins
+     * over in-flight writes.
+     */
+    override fun onSeek(position: Duration): Boolean = false
+
     override fun onPause() {
+        isPaused.value = true
         audioTrack?.pause()
     }
 
     override fun onResume() {
+        isPaused.value = false
         audioTrack?.play()
     }
 
     override fun onStop() {
+        isPaused.value = false
         audioTrack?.stop()
         audioTrack?.release()
         audioTrack = null

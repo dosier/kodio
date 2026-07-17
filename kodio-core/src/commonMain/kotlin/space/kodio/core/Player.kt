@@ -2,6 +2,7 @@ package space.kodio.core
 
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlin.time.Duration
 
 /**
  * High-level wrapper around [AudioPlaybackSession] providing a simplified API.
@@ -28,6 +29,12 @@ import kotlinx.coroutines.flow.first
  *     player.awaitComplete()
  * } // auto-released
  * ```
+ *
+ * ## Seek
+ *
+ * [seekTo] forwards to the session's optional native seek. When it returns `false`,
+ * callers (e.g. Compose [space.kodio.compose.PlayerState]) should fall back to
+ * reloading a clipped [AudioRecording] window.
  */
 class Player(
     private val session: AudioPlaybackSession
@@ -117,6 +124,13 @@ class Player(
     fun stop() {
         session.stop()
     }
+
+    /**
+     * Attempts a platform-native seek to [position].
+     *
+     * @return `true` if applied natively; `false` if unsupported (use a PCM window fallback).
+     */
+    fun seekTo(position: Duration): Boolean = session.seekTo(position)
 
     /**
      * Toggles between playing and paused states.

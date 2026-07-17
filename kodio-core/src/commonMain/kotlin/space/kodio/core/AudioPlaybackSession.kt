@@ -1,9 +1,22 @@
 package space.kodio.core
 
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.time.Duration
 
 /**
  * Represents an active playback session.
+ *
+ * ## Seek capability
+ *
+ * [seekTo] is an optional native transport capability. The default implementation
+ * returns `false` (unsupported). Platforms that can reposition playback without
+ * reloading audio override it and return `true`.
+ *
+ * When [seekTo] returns `false`, higher layers should fall back to a portable
+ * approach (Compose [space.kodio.compose.PlayerState] reloads a clipped PCM window
+ * via [AudioRecording.fromPcmBytes]). Keep that fallback out of individual
+ * platform sessions so core stays capability-oriented rather than branching on
+ * every target.
  */
 interface AudioPlaybackSession {
 
@@ -27,6 +40,14 @@ interface AudioPlaybackSession {
 
     /** Stops the playback entirely. */
     fun stop()
+
+    /**
+     * Attempts a platform-native seek to [position] within the currently loaded audio.
+     *
+     * @return `true` if the native transport applied the seek; `false` if unsupported.
+     * When `false`, callers should use a fallback (e.g. PCM window reload in Compose).
+     */
+    fun seekTo(position: Duration): Boolean = false
 
     /**
      * Represents the state of a playback session.

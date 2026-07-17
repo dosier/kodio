@@ -13,6 +13,7 @@ import platform.AVFAudio.AVAudioPlayerNode
 import space.kodio.core.io.convertSimple
 import space.kodio.core.io.toIosAudioBuffer
 import space.kodio.core.util.namedLogger
+import kotlin.time.Duration
 
 private val log = namedLogger("AVAudioPlayback")
 
@@ -152,6 +153,12 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
         lastCompletable?.await()
         log.info { "playBlocking() finished" }
     }
+
+    /**
+     * Streaming [scheduleBuffer] playback has no safe mid-drain seek without
+     * racing [playBlocking]'s completion await; Compose falls back to a PCM window.
+     */
+    override fun onSeek(position: Duration): Boolean = false
 
     override fun onPause() {
         log.info { "onPause()" }

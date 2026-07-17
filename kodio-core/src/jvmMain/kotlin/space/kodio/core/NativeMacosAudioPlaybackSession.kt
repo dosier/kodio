@@ -46,6 +46,10 @@ internal class NativeMacosAudioPlaybackSession(
     private var completionJob: Job? = null
     private val completionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    /** Mirrors [BaseAudioPlaybackSession] play/pause sequencing. */
+    private val wantPlaying = MutableStateFlow(false)
+    private val playEpoch = MutableStateFlow(0)
+
     /**
      * Streaming playback (feeding audio incrementally) is deferred. The native
      * library only exposes a whole-buffer [NativeMacosLib.macos_playback_session_load]
@@ -105,37 +109,79 @@ internal class NativeMacosAudioPlaybackSession(
     override suspend fun play() {
         if (!loaded) return
 
+        val epoch = playEpoch.value + 1
+        playEpoch.value = epoch
+        wantPlaying.value = true
+
+        completionJob?.cancel()
+        completionJob = null
+
+        if (!isCurrentPlay(epoch)) {
+            ensurePausedIfStillDesired()
+            return
+        }
+
         _state.value = AudioPlaybackSession.State.Playing
 
         NativeMacosLib.macos_playback_session_play.invokeExact(nativeMemSeq)
+
+        if (!isCurrentPlay(epoch)) {
+            NativeMacosLib.macos_playback_session_pause.invokeExact(nativeMemSeq)
+            ensurePausedIfStillDesired()
+            return
+        }
 
         completionJob = completionScope.launch {
             val result = NativeMacosLib.macos_playback_session_await_completion
                 .invokeExact(nativeMemSeq) as Int
             ensureActive()
+            if (!isCurrentPlay(epoch)) return@launch
             _state.value = when (result) {
                 0 -> AudioPlaybackSession.State.Finished
                 1 -> AudioPlaybackSession.State.Error(RuntimeException("Native playback error"))
                 else -> AudioPlaybackSession.State.Idle
             }
+            if (result == 0) wantPlaying.value = false
         }
     }
 
     override fun pause() {
+        wantPlaying.value = false
+        playEpoch.value = playEpoch.value + 1
         NativeMacosLib.macos_playback_session_pause.invokeExact(nativeMemSeq)
         _state.value = AudioPlaybackSession.State.Paused
     }
 
     override fun resume() {
+        wantPlaying.value = true
         NativeMacosLib.macos_playback_session_resume.invokeExact(nativeMemSeq)
         _state.value = AudioPlaybackSession.State.Playing
     }
 
     override fun stop() {
+        wantPlaying.value = false
+        playEpoch.value = playEpoch.value + 1
         completionJob?.cancel()
+        completionJob = null
         NativeMacosLib.macos_playback_session_stop.invokeExact(nativeMemSeq)
         _state.value = AudioPlaybackSession.State.Idle
         loaded = false
+    }
+
+    private fun isCurrentPlay(epoch: Int): Boolean =
+        wantPlaying.value && playEpoch.value == epoch
+
+    private fun ensurePausedIfStillDesired() {
+        if (wantPlaying.value) return
+        when (_state.value) {
+            is AudioPlaybackSession.State.Idle,
+            is AudioPlaybackSession.State.Finished,
+            is AudioPlaybackSession.State.Error -> return
+            else -> {
+                NativeMacosLib.macos_playback_session_pause.invokeExact(nativeMemSeq)
+                _state.value = AudioPlaybackSession.State.Paused
+            }
+        }
     }
 
     private fun closePreviousArena() {
