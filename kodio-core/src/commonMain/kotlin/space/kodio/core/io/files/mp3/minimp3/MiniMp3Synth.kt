@@ -76,21 +76,21 @@ internal object MiniMp3Synth {
                 x4 = x0 - x3; x0 += x3
                 x3 = x1 - x2; x1 += x2
                 t[row * 8 + 0] = x0 + x1
-                t[row * 8 + 4] = (x0 - x1) * 0.70710677f
+                t[row * 8 + 4] = (x0 - x1) * Float.fromBits(0x3f3504f3)
                 x5 = x5 + x6
-                x6 = (x6 + x7) * 0.70710677f
+                x6 = (x6 + x7) * Float.fromBits(0x3f3504f3)
                 x7 = x7 + xt
-                x3 = (x3 + x4) * 0.70710677f
-                x5 -= x7 * 0.198912367f
-                x7 += x5 * 0.382683432f
-                x5 -= x7 * 0.198912367f
+                x3 = (x3 + x4) * Float.fromBits(0x3f3504f3)
+                x5 -= x7 * Float.fromBits(0x3e4bafaf)
+                x7 += x5 * Float.fromBits(0x3ec3ef15)
+                x5 -= x7 * Float.fromBits(0x3e4bafaf)
                 x0 = xt - x6; xt += x6
-                t[row * 8 + 1] = (xt + x7) * 0.50979561f
-                t[row * 8 + 2] = (x4 + x3) * 0.54119611f
-                t[row * 8 + 3] = (x0 - x5) * 0.60134488f
-                t[row * 8 + 5] = (x0 + x5) * 0.89997619f
-                t[row * 8 + 6] = (x4 - x3) * 1.30656302f
-                t[row * 8 + 7] = (xt - x7) * 2.56291556f
+                t[row * 8 + 1] = (xt + x7) * Float.fromBits(0x3f0281f7)
+                t[row * 8 + 2] = (x4 + x3) * Float.fromBits(0x3f0a8bd4)
+                t[row * 8 + 3] = (x0 - x5) * Float.fromBits(0x3f19f1bd)
+                t[row * 8 + 5] = (x0 + x5) * Float.fromBits(0x3f6664d7)
+                t[row * 8 + 6] = (x4 - x3) * Float.fromBits(0x3fa73d75)
+                t[row * 8 + 7] = (xt - x7) * Float.fromBits(0x402406cf)
             }
             var y = yBase
             for (i in 0 until 7) {

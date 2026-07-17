@@ -434,7 +434,7 @@ internal object MiniMp3Layer3 {
         while (sfb[sfbOff + i] != 0) {
             val ipos = istPos[i]
             if (i > maxBand[i % 3] && ipos < maxPos) {
-                val s = if ((hdr[hdrOff + 3].toInt() and 0x20) != 0) 1.41421356f else 1f
+                val s = if ((hdr[hdrOff + 3].toInt() and 0x20) != 0) Float.fromBits(0x3fb504f3) else 1f
                 val kl: Float
                 val kr: Float
                 if (mpeg1) {
@@ -520,9 +520,9 @@ internal object MiniMp3Layer3 {
         var s0 = y[0]; var s2 = y[2]; var s4 = y[4]; var s6 = y[6]; var s8 = y[8]
         var t0 = s0 + s6 * 0.5f
         s0 -= s6
-        var t4 = (s4 + s2) * 0.93969262f
-        var t2 = (s8 + s2) * 0.76604444f
-        s6 = (s4 - s8) * 0.17364818f
+        var t4 = (s4 + s2) * Float.fromBits(0x3f708fb2)
+        var t2 = (s8 + s2) * Float.fromBits(0x3f441b7d)
+        s6 = (s4 - s8) * Float.fromBits(0x3e31d0d4)
         s4 += s8 - s2
         s2 = s0 - s4 * 0.5f
         y[4] = s4 + s0
@@ -530,11 +530,11 @@ internal object MiniMp3Layer3 {
         s0 = t0 - t4 + t2
         s4 = t0 + t4 - s6
         var s1 = y[1]; var s3 = y[3]; var s5 = y[5]; var s7 = y[7]
-        s3 *= 0.86602540f
-        t0 = (s5 + s1) * 0.98480775f
-        t4 = (s5 - s7) * 0.34202014f
-        t2 = (s1 + s7) * 0.64278761f
-        s1 = (s1 - s5 - s7) * 0.86602540f
+        s3 *= Float.fromBits(0x3f5db3d7)
+        t0 = (s5 + s1) * Float.fromBits(0x3f7c1c5c)
+        t4 = (s5 - s7) * Float.fromBits(0x3eaf1d44)
+        t2 = (s1 + s7) * Float.fromBits(0x3f248dbb)
+        s1 = (s1 - s5 - s7) * Float.fromBits(0x3f5db3d7)
         s5 = t0 - s3 - t2
         s7 = t4 - s3 - t0
         s3 = t4 + s3 - t2
@@ -579,7 +579,7 @@ internal object MiniMp3Layer3 {
     }
 
     private fun idct3(x0: Float, x1: Float, x2: Float, dst: FloatArray) {
-        val m1 = x1 * 0.86602540f
+        val m1 = x1 * Float.fromBits(0x3f5db3d7)
         val a1 = x0 - x2 * 0.5f
         dst[1] = x0 + x2
         dst[0] = a1 + m1
