@@ -76,6 +76,7 @@ private fun audioFileFormatForName(name: String): AudioFileFormat = when {
     name.endsWith(".wav", true) || name.endsWith(".wave", true) -> AudioFileFormat.Wav
     name.endsWith(".aiff", true) || name.endsWith(".aif", true) -> AudioFileFormat.Aiff
     name.endsWith(".au", true) || name.endsWith(".snd", true) -> AudioFileFormat.Au
+    name.endsWith(".mp3", true) -> AudioFileFormat.Mp3
     else -> AudioFileFormat.Wav
 }
 
@@ -83,14 +84,18 @@ private fun containerLabel(format: AudioFileFormat): String = when (format) {
     is AudioFileFormat.Wav -> "WAV"
     is AudioFileFormat.Aiff -> "AIFF"
     is AudioFileFormat.Au -> "AU"
+    is AudioFileFormat.Mp3 -> "MP3"
 }
+
+private val encodableFileFormats: List<AudioFileFormat> =
+    AudioFileFormat.entries.filter { it !is AudioFileFormat.Mp3 }
 
 private fun encodingChoiceToSampleEncoding(
     choice: EncodingChoice,
     container: AudioFileFormat,
 ): SampleEncoding {
     val endianness = when (container) {
-        is AudioFileFormat.Wav -> Endianness.Little
+        is AudioFileFormat.Wav, is AudioFileFormat.Mp3 -> Endianness.Little
         is AudioFileFormat.Aiff, is AudioFileFormat.Au -> Endianness.Big
     }
     return when (choice) {
@@ -183,7 +188,10 @@ fun ConversionShowcase() {
         targetSampleRate = snapSampleRate(rec.format.sampleRate)
         targetChannels = rec.format.channels
         targetEncodingChoice = encodingFromSource(rec.format.encoding)
-        targetFileFormat = loadedContainer ?: AudioFileFormat.Wav
+        targetFileFormat = when (val c = loadedContainer) {
+            null, is AudioFileFormat.Mp3 -> AudioFileFormat.Wav
+            else -> c
+        }
         previewParamsKey = null
         playerState.reset()
     }
@@ -299,7 +307,7 @@ fun ConversionShowcase() {
                                 scope.launch {
                                     try {
                                         val file = pickFile(
-                                            listOf("wav", "wave", "aiff", "aif", "au", "snd"),
+                                            listOf("wav", "wave", "aiff", "aif", "au", "snd", "mp3"),
                                         )
                                         if (file != null) {
                                             isLoadingFile = true
@@ -385,13 +393,13 @@ fun ConversionShowcase() {
 
                         Text("File format", style = MaterialTheme.typography.labelMedium)
                         SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                            AudioFileFormat.entries.forEachIndexed { index, fmt ->
+                            encodableFileFormats.forEachIndexed { index, fmt ->
                                 SegmentedButton(
                                     selected = targetFileFormat == fmt,
                                     onClick = { targetFileFormat = fmt },
                                     shape = SegmentedButtonDefaults.itemShape(
                                         index = index,
-                                        count = AudioFileFormat.entries.size,
+                                        count = encodableFileFormats.size,
                                     ),
                                 ) {
                                     Text(containerLabel(fmt), maxLines = 1)

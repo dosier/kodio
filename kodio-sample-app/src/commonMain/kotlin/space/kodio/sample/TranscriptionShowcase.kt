@@ -584,7 +584,7 @@ private fun FileUploadTab(apiKey: String) {
                     scope.launch {
                         try {
                             val file = pickFile(
-                                listOf("wav", "wave", "aiff", "aif", "au", "snd")
+                                listOf("wav", "wave", "aiff", "aif", "au", "snd", "mp3")
                             )
                             if (file != null) {
                                 selectedFileName = file.name

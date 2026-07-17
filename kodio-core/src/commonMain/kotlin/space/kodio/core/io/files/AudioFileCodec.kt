@@ -6,6 +6,7 @@ import space.kodio.core.io.AudioSource
 import space.kodio.core.io.files.aiff.AiffCodec
 import space.kodio.core.io.files.au.AuCodec
 import space.kodio.core.io.files.metadata.AudioFileMetadata
+import space.kodio.core.io.files.mp3.Mp3Codec
 import space.kodio.core.io.files.wav.WavCodec
 
 internal interface AudioFileCodec {
@@ -20,7 +21,7 @@ internal interface AudioFileCodec {
 }
 
 internal object AudioFileCodecs {
-    val all: List<AudioFileCodec> = listOf(WavCodec, AiffCodec, AuCodec)
+    val all: List<AudioFileCodec> = listOf(WavCodec, AiffCodec, AuCodec, Mp3Codec)
 
     fun of(format: AudioFileFormat): AudioFileCodec =
         all.firstOrNull { it.format == format }

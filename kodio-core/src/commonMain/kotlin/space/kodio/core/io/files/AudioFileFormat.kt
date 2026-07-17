@@ -11,9 +11,10 @@ sealed class AudioFileFormat(
     data object Wav : AudioFileFormat("wav")
     data object Aiff : AudioFileFormat("aiff")
     data object Au : AudioFileFormat("au")
+    data object Mp3 : AudioFileFormat("mp3")
 
     companion object {
-        val entries: List<AudioFileFormat> = listOf(Wav, Aiff, Au)
+        val entries: List<AudioFileFormat> = listOf(Wav, Aiff, Au, Mp3)
 
         /** Magic-byte sniff; returns null if unrecognized. */
         fun detect(bytes: ByteArray): AudioFileFormat? =

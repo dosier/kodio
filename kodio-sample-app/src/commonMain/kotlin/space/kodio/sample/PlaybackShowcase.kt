@@ -97,7 +97,7 @@ fun PlaybackShowcase() {
                     isPicking = true
                     scope.launch {
                         try {
-                            val file = pickFile(listOf("wav", "wave", "aiff", "aif", "au", "snd"))
+                            val file = pickFile(listOf("wav", "wave", "aiff", "aif", "au", "snd", "mp3"))
                             if (file != null) {
                                 val bytes = file.readBytes()
                                 loadAudioBytes(file.name, bytes)
