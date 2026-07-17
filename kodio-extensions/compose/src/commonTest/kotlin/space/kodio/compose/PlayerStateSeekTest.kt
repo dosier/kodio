@@ -12,6 +12,7 @@ import space.kodio.core.AudioFlow
 import space.kodio.core.AudioPlaybackSession
 import space.kodio.core.AudioQuality
 import space.kodio.core.AudioRecording
+import space.kodio.core.BufferedRange
 import space.kodio.core.Player
 import space.kodio.core.SeekResult
 import kotlin.test.Test
@@ -19,6 +20,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Logic tests for [PlayerState] seek / scrub transport UI stability.
@@ -188,6 +190,26 @@ class PlayerStateSeekTest {
         )
     }
 
+    @Test
+    fun transportUnsupported_skipsPcmWindowFallback() = runTest(UnconfinedTestDispatcher()) {
+        val session = ControllablePlaybackSession(
+            nativeSeek = false,
+            publishTransportBuffer = true,
+        )
+        val state = playerState(session)
+        state.loadAsync(testRecording())
+        state.playAsync()
+        val loadsBefore = session.loadCount
+        session.resetPlayFlags()
+
+        state.seekToAsync(0.5f)
+
+        assertTrue(session.seekCalled)
+        assertFalse(session.stopCalled, "transport Unsupported must not stop/reload")
+        assertEquals(loadsBefore, session.loadCount)
+        assertEquals(0.5f, state.progress, absoluteTolerance = 0.001f)
+    }
+
     private fun TestScope.playerState(session: ControllablePlaybackSession): PlayerState {
         return PlayerState(
             scope = backgroundScope,
@@ -210,12 +232,22 @@ class PlayerStateSeekTest {
  */
 private class ControllablePlaybackSession(
     private val nativeSeek: Boolean = false,
+    private val publishTransportBuffer: Boolean = false,
 ) : AudioPlaybackSession {
     private val _state = MutableStateFlow<AudioPlaybackSession.State>(AudioPlaybackSession.State.Idle)
     override val state: StateFlow<AudioPlaybackSession.State> = _state
 
     private val _audioFlow = MutableStateFlow<AudioFlow?>(null)
     override val audioFlow: StateFlow<AudioFlow?> = _audioFlow
+
+    private val _bufferedRange = MutableStateFlow(
+        if (publishTransportBuffer) {
+            BufferedRange(Duration.ZERO, 1_000.milliseconds)
+        } else {
+            BufferedRange.Empty
+        }
+    )
+    override val bufferedRange: StateFlow<BufferedRange> = _bufferedRange
 
     var playCalled = false
         private set

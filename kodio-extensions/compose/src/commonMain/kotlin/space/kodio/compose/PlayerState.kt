@@ -93,6 +93,13 @@ class PlayerState internal constructor(
     private val _resumeAfterSeek = mutableStateOf(false)
 
     /**
+     * Once the session publishes a non-empty [Player.bufferedRange], PCM-window
+     * reload must not run: [SeekResult.Unsupported] means out-of-window on a
+     * transport session, not "use the Compose fallback".
+     */
+    private var transportBufferSeen: Boolean = false
+
+    /**
      * User-facing transport intent. Cleared by [pause]/[stop] so a late
      * [AudioPlaybackSession.State.Playing] from an in-flight [playAsync] cannot
      * resurrect the UI after the user paused.
@@ -207,6 +214,7 @@ class PlayerState internal constructor(
             }
 
             sourceRecording = recording
+            transportBufferSeen = false
             player.load(recording)
 
             stateMutex.withLock {
@@ -258,8 +266,8 @@ class PlayerState internal constructor(
             if (_isFinished.value || _progress.floatValue >= 1f) {
                 _progress.floatValue = 0f
                 sourceRecording?.let { player.load(it) }
-            } else if (_progress.floatValue > 0f) {
-                // Ensure the session is loaded at the current scrub position.
+            } else if (_progress.floatValue > 0f && !transportBufferSeen) {
+                // Unmigrated sessions only: ensure load at scrub via PCM window.
                 loadPlaybackWindow(_progress.floatValue)
             }
             if (!desiredPlaying) return
@@ -412,7 +420,12 @@ class PlayerState internal constructor(
                 (totalMs * clamped.toDouble()).toLong().milliseconds
             }
 
-            // Prefer native session seek; keep Compose window reload as portable fallback.
+            if (!player.bufferedRange.value.isEmpty) {
+                transportBufferSeen = true
+            }
+
+            // Prefer transport seek. PCM-window reload is only for unmigrated
+            // sessions that never publish a buffered range.
             when (player.seekTo(position)) {
                 is SeekResult.Applied -> {
                     _progress.floatValue = clamped
@@ -433,7 +446,17 @@ class PlayerState internal constructor(
                     return
                 }
                 is SeekResult.Unsupported -> {
-                    // Fall through to PCM window reload below.
+                    if (transportBufferSeen || !player.bufferedRange.value.isEmpty) {
+                        // Out-of-window on a transport session — keep scrubber
+                        // position but do not invent a clipped PCM timeline.
+                        transportBufferSeen = true
+                        _progress.floatValue = clamped
+                        _resumeAfterSeek.value = false
+                        logger.debug {
+                            "seek Unsupported inside transport window policy; skipping PCM fallback"
+                        }
+                        return
+                    }
                 }
             }
 
@@ -542,6 +565,7 @@ class PlayerState internal constructor(
             _player?.release()
             _player = null
             sourceRecording = null
+            transportBufferSeen = false
             _loadedRecording.value = null
             _isReady.value = false
             _isPlaying.value = false
@@ -575,6 +599,11 @@ class PlayerState internal constructor(
         return playerFactory?.invoke() ?: Kodio.player(device)
     }
 
+    /**
+     * Exotic-path fallback for sessions that still return [SeekResult.Unsupported]
+     * and never publish [Player.bufferedRange] (unmigrated external implementors).
+     * Transport platforms must not reach this after [transportBufferSeen].
+     */
     private suspend fun loadPlaybackWindow(progress: Float) {
         val source = sourceRecording ?: return
         val player = _player ?: return
@@ -601,6 +630,7 @@ class PlayerState internal constructor(
             return
         }
 
+        logger.debug { "PCM-window fallback at progress=$progress offset=$offsetBytes" }
         val window = AudioRecording.fromPcmBytes(
             format = source.format,
             data = bytes.copyOfRange(offsetBytes, bytes.size),

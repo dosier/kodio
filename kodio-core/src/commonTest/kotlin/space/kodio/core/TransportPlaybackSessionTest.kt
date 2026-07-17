@@ -75,19 +75,17 @@ class TransportPlaybackSessionTest {
 
         val chunkFrames = 160 // 10ms
         val chunk = ByteArray(chunkFrames * format.bytesPerFrame) { 2 }
-        // Emit until the transport feed has written at least once (native schedulers vary).
-        withTimeout(5_000) {
-            var emitted = 0
-            while (!session.firstWrite.isCompleted) {
+        // Emit until the retained window clearly covers 2s (schedulers / DROP_OLDEST vary).
+        withTimeout(8_000) {
+            while (session.bufferedRange.value.endExclusive < 2.seconds) {
                 hot.tryEmit(chunk)
-                if (++emitted % 50 == 0) delay(1)
+                delay(1)
             }
-            // Fill ~4s of retained window after feed is alive.
-            repeat(400) { hot.tryEmit(chunk) }
         }
 
         assertEquals(SeekResult.Applied, session.seekTo(1.seconds))
-        assertEquals(SeekResult.Unsupported, session.seekTo(9.seconds)) // past write edge
+        val pastEdge = session.bufferedRange.value.endExclusive + 1.seconds
+        assertEquals(SeekResult.Unsupported, session.seekTo(pastEdge))
 
         session.stop()
     }

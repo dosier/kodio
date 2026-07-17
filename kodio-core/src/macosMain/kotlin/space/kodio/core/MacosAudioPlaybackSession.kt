@@ -76,6 +76,7 @@ class MacosAudioPlaybackSession(
 
     override fun createAudioSink(format: AudioFormat): AudioSink = AudioQueueSink()
 
+    @Deprecated("Transport playback", level = DeprecationLevel.HIDDEN)
     override suspend fun playBlocking(audioFlow: AudioFlow) {
         error("MacosAudioPlaybackSession uses transport playback")
     }

@@ -76,6 +76,7 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         return WebAudioSink(format)
     }
 
+    @Deprecated("Transport playback", level = DeprecationLevel.HIDDEN)
     override suspend fun playBlocking(audioFlow: AudioFlow) {
         error("WebAudioPlaybackSession uses transport playback")
     }

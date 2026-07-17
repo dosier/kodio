@@ -49,8 +49,8 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : BaseAudi
         return created
     }
 
+    @Deprecated("Transport playback", level = DeprecationLevel.HIDDEN)
     override suspend fun playBlocking(audioFlow: AudioFlow) {
-        // Transport path never calls this.
         error("JvmAudioPlaybackSession uses transport playback")
     }
 

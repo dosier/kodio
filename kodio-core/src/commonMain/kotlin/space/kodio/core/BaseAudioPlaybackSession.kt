@@ -136,10 +136,19 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     abstract suspend fun preparePlayback(format: AudioFormat): AudioFormat
 
     /**
-     * Legacy pull-loop path. Still required for unmigrated platforms; transport
-     * sessions may leave a stub that is never called.
+     * Legacy pull-loop path. All in-tree platforms use transport playback
+     * ([useTransportPlayback]); this remains only for external subclassers.
      */
-    abstract suspend fun playBlocking(audioFlow: AudioFlow)
+    @Deprecated(
+        message = "Override useTransportPlayback()/createAudioSink() instead of playBlocking",
+        level = DeprecationLevel.WARNING,
+    )
+    open suspend fun playBlocking(audioFlow: AudioFlow) {
+        error(
+            "${this::class.simpleName}: playBlocking is deprecated; " +
+                "enable useTransportPlayback() and implement createAudioSink()",
+        )
+    }
 
     protected abstract fun onPause()
     protected abstract fun onResume()

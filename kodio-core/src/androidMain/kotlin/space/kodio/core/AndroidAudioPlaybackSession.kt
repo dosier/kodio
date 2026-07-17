@@ -91,6 +91,7 @@ internal class AndroidAudioPlaybackSession(
 
     override fun createAudioSink(format: AudioFormat): AudioSink = AndroidTrackSink()
 
+    @Deprecated("Transport playback", level = DeprecationLevel.HIDDEN)
     override suspend fun playBlocking(audioFlow: AudioFlow) {
         error("AndroidAudioPlaybackSession uses transport playback")
     }
