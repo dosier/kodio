@@ -63,6 +63,7 @@ import space.kodio.core.AudioDevice
 import space.kodio.core.AudioQuality
 import space.kodio.core.AudioRecording
 import space.kodio.core.Kodio
+import space.kodio.core.security.AudioPermissionManager
 import space.kodio.sample.icons.SampleIcons
 
 /** Grace before treating unsettled permission as "Needs permission" in the showcase UI. */
@@ -77,10 +78,6 @@ fun RecordingShowcase() {
     var selectedInputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
     var stitchError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        inputDevices = Kodio.listInputDevices()
-    }
-
     val recorderState = rememberRecorderState(
         quality = selectedQuality,
         device = selectedInputDevice,
@@ -89,6 +86,21 @@ fun RecordingShowcase() {
             recordings = listOf(recording) + recordings
         },
     )
+
+    // enumerateDevices only returns labeled IDs after mic permission; refresh on grant.
+    LaunchedEffect(recorderState.permissionState) {
+        if (recorderState.permissionState == AudioPermissionManager.State.Granted) {
+            inputDevices = Kodio.listInputDevices()
+            // Drop a stale selection if the device disappeared after re-enumeration.
+            val selected = selectedInputDevice
+            if (selected != null && inputDevices.none { it.id == selected.id }) {
+                selectedInputDevice = null
+            }
+        } else {
+            inputDevices = emptyList()
+            selectedInputDevice = null
+        }
+    }
 
     val scope = rememberCoroutineScope()
     val recorderActive = recorderState.isRecording || recorderState.isPaused
@@ -320,6 +332,7 @@ private fun CaptureControls(
                     selected = selectedInputDevice,
                     onSelect = onSelectDevice,
                     enabled = !recorderActive,
+                    needsPermission = showPermissionUi,
                 )
                 CompactQualityRow(
                     selected = selectedQuality,
@@ -394,20 +407,30 @@ private fun CompactDeviceField(
     selected: AudioDevice.Input?,
     onSelect: (AudioDevice.Input?) -> Unit,
     enabled: Boolean,
+    needsPermission: Boolean,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val canPickDevices = enabled && !needsPermission
+    val displayValue = when {
+        needsPermission -> "Grant permission to list devices"
+        selected != null -> selected.name
+        else -> "System default"
+    }
 
     ExposedDropdownMenuBox(
         expanded = expanded,
-        onExpandedChange = { if (enabled) expanded = it },
+        onExpandedChange = { if (canPickDevices) expanded = it },
     ) {
         OutlinedTextField(
-            value = selected?.name ?: "System default",
+            value = displayValue,
             onValueChange = {},
             readOnly = true,
-            enabled = enabled,
+            enabled = canPickDevices,
             label = { Text("Input") },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+            supportingText = if (needsPermission) {
+                { Text("Microphone access is required before devices can be listed.") }
+            } else null,
             modifier = Modifier
                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                 .fillMaxWidth(),

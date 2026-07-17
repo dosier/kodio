@@ -15,10 +15,12 @@ open class WebAudioPermissionManager : AudioPermissionManager() {
     override suspend fun requestPermission() {
         try {
             val constraints = createMediaStreamConstraints(
-                audio = createMediaTrackConstraints(deviceId = null, sampleRate = 48000, sampleSize = 16, channelCount = 1)
+                audio = createMediaTrackConstraints(deviceId = null, sampleRate = 48000, channelCount = 1)
             )
+            logger.debug { "Requesting microphone permission via getUserMedia" }
             val stream = navigator.mediaDevices.getUserMedia(constraints)
             stream.getTracks().toList().forEach { it.stop() }
+            logger.debug { "Microphone permission granted" }
             setState(State.Granted)
         } catch (e: Throwable) {
             logger.warn(e) { "Microphone permission request failed" }

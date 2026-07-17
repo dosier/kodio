@@ -28,23 +28,37 @@ class WebAudioRecordingSession(
     private val blobUrl = createCodeBlobUrl(AUDIO_PROCESSOR_CODE)
 
     override suspend fun prepareRecording(): AudioFormat {
-        val mediaStreamConstraints = createMediaStreamConstraints(
-            audio = createMediaTrackConstraints(
-                deviceId = device?.id,
-                sampleRate = format.sampleRate,
-                sampleSize = format.bytesPerSample * 8,
-                channelCount = format.channels.count
-            )
+        val requestedDeviceId = device?.id?.takeIf { it.isNotEmpty() }
+        logger.debug {
+            "prepareRecording: requestedDeviceId=${requestedDeviceId ?: "<none>"}, " +
+                "requestedFormat rate=${format.sampleRate} channels=${format.channels.count}"
+        }
+
+        val stream = acquireMediaStream(
+            deviceId = requestedDeviceId,
+            sampleRate = format.sampleRate,
+            channelCount = format.channels.count,
         )
-        val stream = navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
         mediaStream = stream
 
-        val inputTrack = stream.getAudioTracks().toList().first()
+        val inputTrack = stream.getAudioTracks().toList().firstOrNull()
+            ?: throw AudioError.DeviceError("getUserMedia returned no audio tracks")
         val settings = inputTrack.getSettings()
         val actualSampleRate = settings.sampleRate ?: format.sampleRate
 
-        logger.debug { "Requested: rate=${format.sampleRate}, channels=${format.channels.count}, sampleSize=${format.bytesPerSample * 8}" }
-        logger.debug { "Track settings: rate=${settings.sampleRate}, channels=${settings.channelCount}" }
+        logger.debug {
+            "Track ready: id=${inputTrack.id}, label='${inputTrack.label}', " +
+                "readyState=${inputTrack.readyState}, enabled=${inputTrack.enabled}, muted=${inputTrack.muted}, " +
+                "settings.deviceId=${settings.deviceId?.take(12)}, rate=${settings.sampleRate}, " +
+                "channels=${settings.channelCount}, sampleSize=${settings.sampleSize}"
+        }
+        if (!inputTrack.enabled) {
+            logger.warn { "Audio track is disabled; enabling before capture" }
+            inputTrack.enabled = true
+        }
+        if (inputTrack.muted) {
+            logger.warn { "Audio track reports muted=true (often transient until hardware starts)" }
+        }
 
         val finalFormat = AudioFormat(
             sampleRate = actualSampleRate,
@@ -59,10 +73,63 @@ class WebAudioRecordingSession(
         )
         audioContext = context
 
-        logger.debug { "AudioContext sampleRate=${context.sampleRate}, finalFormat=$finalFormat" }
+        logger.debug {
+            "AudioContext created: state=${context.state}, sampleRate=${context.sampleRate}, finalFormat=$finalFormat"
+        }
+
+        // Autoplay policies leave new contexts suspended; without resume(), the
+        // AudioWorklet process() callback never runs and capture stays silent.
+        if (context.state != AudioContextState.running) {
+            logger.debug { "Resuming AudioContext from state=${context.state}" }
+            context.resume()
+            logger.debug { "AudioContext after resume: state=${context.state}" }
+        }
 
         context.audioWorklet.addModule(blobUrl)
         return finalFormat
+    }
+
+    private suspend fun acquireMediaStream(
+        deviceId: String?,
+        sampleRate: Int,
+        channelCount: Int,
+    ): MediaStream {
+        val primary = createMediaTrackConstraints(
+            deviceId = deviceId,
+            sampleRate = sampleRate,
+            channelCount = channelCount,
+        )
+        logger.debug {
+            "getUserMedia primary: deviceId=${deviceId?.let { "{exact:${it.take(12)}}" } ?: "<omitted>"}, " +
+                "sampleRate.ideal=$sampleRate, channelCount.ideal=$channelCount"
+        }
+        return try {
+            navigator.mediaDevices.getUserMedia(createMediaStreamConstraints(audio = primary)).also {
+                logger.debug { "getUserMedia succeeded with ${it.getAudioTracks().toList().size} audio track(s)" }
+            }
+        } catch (e: Throwable) {
+            if (deviceId == null) {
+                logger.error(e) { "getUserMedia failed for system default" }
+                throw e
+            }
+            // Chrome 130+ may reject stale exact IDs; fall back to browser default.
+            logger.warn(e) {
+                "getUserMedia with exact deviceId failed; retrying without deviceId constraint"
+            }
+            val fallback = createMediaTrackConstraints(
+                deviceId = null,
+                sampleRate = sampleRate,
+                channelCount = channelCount,
+            )
+            try {
+                navigator.mediaDevices.getUserMedia(createMediaStreamConstraints(audio = fallback)).also {
+                    logger.debug { "getUserMedia fallback (no deviceId) succeeded" }
+                }
+            } catch (fallbackError: Throwable) {
+                logger.error(fallbackError) { "getUserMedia fallback also failed" }
+                throw fallbackError
+            }
+        }
     }
 
     private var chunkCount = 0
@@ -72,15 +139,23 @@ class WebAudioRecordingSession(
         val stream = mediaStream ?: return
         chunkCount = 0
 
+        if (context.state != AudioContextState.running) {
+            logger.debug { "startRecording: resuming AudioContext from state=${context.state}" }
+            context.resume()
+        }
+
         val workletNode = createAudioWorkletNode(context, "pcm-recorder-processor")
         workletNode.port.onmessage = EventHandler { event ->
             try {
                 val pcmData = (event as MessageEvent).data as Float32Array<*>
                 chunkCount++
-                if (chunkCount <= 5 || chunkCount % 200 == 0) {
-                    logger.debug { "Chunk #$chunkCount: samples=${pcmData.length}" }
-                }
                 val byteData = pcmData.encodeAs16BitPcmByteArray()
+                if (chunkCount <= 5 || chunkCount % 200 == 0) {
+                    logger.debug {
+                        "Chunk #$chunkCount: samples=${pcmData.length}, bytes=${byteData.size}, " +
+                            "format=pcm16le mono @ ${context.sampleRate}Hz"
+                    }
+                }
                 val sendResult = channel.trySend(byteData)
                 if (sendResult.isFailure) {
                     logger.warn { "Failed to emit ${byteData.size} bytes" }
@@ -92,7 +167,13 @@ class WebAudioRecordingSession(
         this.audioWorkletNode = workletNode
         mediaStreamSource = context.createMediaStreamSource(stream)
         mediaStreamSource?.connect(workletNode)
+        // Keep the worklet in a live graph. Outputs are unused (silence) so this
+        // does not monitor the microphone through speakers.
         workletNode.connect(context.destination)
+        logger.debug {
+            "Capture graph connected: MediaStreamSource -> AudioWorklet -> destination, " +
+                "context.state=${context.state}"
+        }
     }
 
     override fun cleanup() {
@@ -126,6 +207,9 @@ class WebAudioRecordingSession(
         val source = mediaStreamSource
         val node = audioWorkletNode
         if (context != null && source != null && node != null) {
+            if (context.state != AudioContextState.running) {
+                context.resume()
+            }
             source.connect(node)
         } else {
             super.resumeRecording()

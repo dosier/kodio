@@ -56,11 +56,16 @@ actual fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStre
     js("return { audio };")
 }
 
-actual fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints =
-    newMediaTrackConstraints(deviceId?.toJsString(), sampleRate.toJsNumber(), sampleSize.toJsNumber(), channelCount.toJsNumber())
+actual fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int?, channelCount: Int?): MediaTrackConstraints =
+    newMediaTrackConstraints(
+        deviceId?.takeIf { it.isNotEmpty() }?.toJsString(),
+        sampleRate?.toJsNumber(),
+        channelCount?.toJsNumber(),
+    )
+
 @Suppress("unused")
-private fun newMediaTrackConstraints(deviceId: JsAny?, sampleRate: JsAny?, sampleSize: JsAny?, channelCount: JsAny?): MediaTrackConstraints {
-    js("return { deviceId, sampleRate, sampleSize, channelCount };")
+private fun newMediaTrackConstraints(deviceId: JsAny?, sampleRate: JsAny?, channelCount: JsAny?): MediaTrackConstraints {
+    js("var c = {}; if (deviceId != null) c.deviceId = { exact: deviceId }; if (sampleRate != null) c.sampleRate = { ideal: sampleRate }; if (channelCount != null) c.channelCount = { ideal: channelCount }; return c;")
 }
 actual val microphonePermissionDescriptor: PermissionDescriptor =
     js("({name: 'microphone'})")

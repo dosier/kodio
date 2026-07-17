@@ -80,10 +80,9 @@ sealed class AudioError(
     /**
      * The current platform does not support pinning a specific input/output device.
      *
-     * Web browsers, for example, expose enumerable device IDs via `enumerateDevices()`
-     * but cannot reliably honour a `requestedDevice` argument when starting capture or
-     * playback. Callers can either omit the device or catch this error and fall back
-     * to the platform default.
+     * On web, **input** selection via `getUserMedia({ audio: { deviceId: { exact } } })`
+     * is supported. **Output** selection (`AudioContext.setSinkId`) remains unsupported
+     * in this library because it is not available in Firefox/Safari.
      *
      * @property kind Whether the unsupported selection was for an input or output device.
      */

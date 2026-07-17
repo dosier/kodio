@@ -49,8 +49,16 @@ actual fun createAudioContextOptions(latencyHint: AudioContextLatencyCategory, s
 actual fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStreamConstraints =
     MediaStreamConstraints(audio = audio)
 
-actual fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints =
-    MediaTrackConstraints(deviceId = deviceId, sampleRate = sampleRate, sampleSize = sampleSize, channelCount = channelCount)
+actual fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int?, channelCount: Int?): MediaTrackConstraints =
+    newMediaTrackConstraints(
+        deviceId = deviceId?.takeIf { it.isNotEmpty() },
+        sampleRate = sampleRate,
+        channelCount = channelCount,
+    )
+
+@Suppress("UNUSED_PARAMETER")
+private fun newMediaTrackConstraints(deviceId: String?, sampleRate: Int?, channelCount: Int?): MediaTrackConstraints =
+    js("var c = {}; if (deviceId != null) c.deviceId = { exact: deviceId }; if (sampleRate != null) c.sampleRate = { ideal: sampleRate }; if (channelCount != null) c.channelCount = { ideal: channelCount }; return c;")
 
 actual val microphonePermissionDescriptor: PermissionDescriptor =
     PermissionDescriptor(PermissionName.microphone)

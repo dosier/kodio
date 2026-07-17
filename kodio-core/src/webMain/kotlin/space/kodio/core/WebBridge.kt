@@ -34,7 +34,17 @@ expect fun <B : ArrayBufferLike> Float32Array<B>.encodeAs16BitPcmByteArray(): By
 
 expect fun createAudioContextOptions(latencyHint: AudioContextLatencyCategory, sampleRate: Int): AudioContextOptions
 expect fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStreamConstraints
-expect fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int, sampleSize: Int, channelCount: Int): MediaTrackConstraints
+
+/**
+ * Builds [MediaTrackConstraints] for [web.mediadevices.getUserMedia].
+ *
+ * When [deviceId] is non-null/non-blank it is applied as `{ exact: deviceId }` so
+ * Chrome 130+ honours app-driven mic switching (plain/`ideal` deviceId is ignored
+ * in favor of the browser's preferred device). [sampleRate] and [channelCount] are
+ * soft `ideal` hints. `sampleSize` is intentionally omitted — MediaStreamTrack bit
+ * depth is unrelated to our post-worklet PCM encoding.
+ */
+expect fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int?, channelCount: Int?): MediaTrackConstraints
 expect fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode
 internal expect fun createWorkletFlushMessage(): JsAny
 
