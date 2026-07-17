@@ -42,11 +42,17 @@ internal object NativeMacosLib {
     val macos_create_playback_session_with_device: MethodHandle
     val macos_create_playback_session_with_default_device: MethodHandle
     val macos_playback_session_load: MethodHandle
+    val macos_playback_session_begin_stream: MethodHandle
+    val macos_playback_session_append: MethodHandle
+    val macos_playback_session_end_stream: MethodHandle
     val macos_playback_session_play: MethodHandle
     val macos_playback_session_await_completion: MethodHandle
     val macos_playback_session_pause: MethodHandle
     val macos_playback_session_resume: MethodHandle
     val macos_playback_session_stop: MethodHandle
+    val macos_playback_session_seek: MethodHandle
+    val macos_playback_session_position_ns: MethodHandle
+    val macos_playback_session_buffered_range_ns: MethodHandle
     val macos_playback_session_release: MethodHandle
 
     // Device functions
@@ -135,6 +141,24 @@ internal object NativeMacosLib {
             ValueLayout.JAVA_INT, // audioDataSize
             ValueLayout.ADDRESS  // audioDataPtr
         )
+        macos_playback_session_begin_stream = lookupMethodVoid(
+            name = "macos_playback_session_begin_stream",
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_LONG,
+        )
+        macos_playback_session_append = lookupMethod(
+            name = "macos_playback_session_append",
+            res = ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+        )
+        macos_playback_session_end_stream = lookupMethodVoid(
+            name = "macos_playback_session_end_stream",
+            ValueLayout.ADDRESS,
+        )
 
         macos_playback_session_play = lookupMethodVoid(
             name = "macos_playback_session_play",
@@ -158,6 +182,24 @@ internal object NativeMacosLib {
         macos_playback_session_stop = lookupMethodVoid(
             name = "macos_playback_session_stop",
             ValueLayout.ADDRESS
+        )
+        macos_playback_session_seek = lookupMethod(
+            name = "macos_playback_session_seek",
+            res = ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+            ValueLayout.JAVA_LONG,
+        )
+        macos_playback_session_position_ns = lookupMethod(
+            name = "macos_playback_session_position_ns",
+            res = ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS,
+        )
+        macos_playback_session_buffered_range_ns = lookupMethod(
+            name = "macos_playback_session_buffered_range_ns",
+            res = ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS,
         )
         macos_playback_session_release = lookupMethodVoid(
             name = "macos_playback_session_release",

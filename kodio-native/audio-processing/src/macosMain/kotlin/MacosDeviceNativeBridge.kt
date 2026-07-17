@@ -3,7 +3,9 @@
 
 import kotlinx.cinterop.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import space.kodio.core.AudioDevice
@@ -11,12 +13,14 @@ import space.kodio.core.AudioFlow
 import space.kodio.core.AudioFormat
 import space.kodio.core.AudioPlaybackSession
 import space.kodio.core.AudioRecordingSession
+import space.kodio.core.SeekResult
 import space.kodio.core.SystemAudioSystem
 import space.kodio.core.io.decodeAsAudioFormat
 import space.kodio.core.io.encodeToByteArray
 import space.kodio.core.io.readAudioDevice
 import space.kodio.core.io.writeAudioDevice
 import kotlin.experimental.ExperimentalNativeApi
+import kotlin.time.Duration.Companion.nanoseconds
 
 @CName("macos_free")
 fun macos_free(ptr: NativePtr): Unit =
@@ -186,6 +190,19 @@ fun macos_recording_session_release(ptr: COpaquePointer) =
 
 // --- Playback -----------------------------------------------------------------
 
+/**
+ * Panama playback handle: wraps the K/N [AudioPlaybackSession] (transport-backed
+ * AudioQueue) plus an optional ingest [Channel] for streaming append without
+ * materializing the whole PCM on the JVM.
+ */
+private class PlaybackNativeHandle(
+    val session: AudioPlaybackSession,
+    var ingestChannel: Channel<ByteArray>? = null,
+)
+
+private fun COpaquePointer.playbackHandle(): PlaybackNativeHandle =
+    asStableRef<PlaybackNativeHandle>().get()
+
 @CName("macos_create_playback_session_with_device")
 fun macos_create_playback_session_with_device(
     deviceDataSize: Int,
@@ -205,17 +222,60 @@ fun macos_create_playback_session_with_default_device(): COpaquePointer =
 
 private fun createPlaybackSession(device: AudioDevice.Output?): COpaquePointer {
     val session = runBlocking { SystemAudioSystem.createPlaybackSession(device) }
-    return StableRef.create(session).asCPointer()
+    return StableRef.create(PlaybackNativeHandle(session)).asCPointer()
 }
 
 /**
- * Load audio data into the playback session.
- *
- * @param sessionPtr The session pointer
- * @param formatDataSize Size of the format data
- * @param formatDataPtr Pointer to encoded AudioFormat bytes
- * @param audioDataSize Size of the audio data
- * @param audioDataPtr Pointer to raw audio bytes
+ * Begin a streaming load: [macos_playback_session_append] feeds PCM chunks;
+ * [macos_playback_session_end_stream] closes ingest. [knownByteCount] may be -1
+ * for unbounded/live content.
+ */
+@CName("macos_playback_session_begin_stream")
+fun macos_playback_session_begin_stream(
+    sessionPtr: COpaquePointer,
+    formatDataSize: Int,
+    formatDataPtr: CArrayPointer<ByteVar>,
+    knownByteCount: Long,
+) {
+    val handle = sessionPtr.playbackHandle()
+    handle.ingestChannel?.close()
+    val format = formatDataPtr.readBytes(formatDataSize).decodeAsAudioFormat()
+    val channel = Channel<ByteArray>(capacity = 64)
+    handle.ingestChannel = channel
+    val known = knownByteCount.takeIf { it >= 0L }
+    val audioFlow = AudioFlow(
+        format = format,
+        data = channel.receiveAsFlow(),
+        knownByteCount = known,
+    )
+    runBlocking { handle.session.load(audioFlow) }
+}
+
+/** Append one PCM chunk into the open ingest stream (copies bytes). */
+@CName("macos_playback_session_append")
+fun macos_playback_session_append(
+    sessionPtr: COpaquePointer,
+    audioDataSize: Int,
+    audioDataPtr: CArrayPointer<ByteVar>,
+): Int {
+    val handle = sessionPtr.playbackHandle()
+    val channel = handle.ingestChannel ?: return 0
+    if (audioDataSize <= 0) return 1
+    val audioData = audioDataPtr.readBytes(audioDataSize)
+    return if (channel.trySend(audioData).isSuccess) 1 else 0
+}
+
+/** Close the ingest stream so the transport can finish after draining. */
+@CName("macos_playback_session_end_stream")
+fun macos_playback_session_end_stream(sessionPtr: COpaquePointer) {
+    val handle = sessionPtr.playbackHandle()
+    handle.ingestChannel?.close()
+    handle.ingestChannel = null
+}
+
+/**
+ * Legacy whole-buffer load (still used by older callers). Prefer begin/append/end
+ * for long content so the JVM need not retain the full PCM.
  */
 @CName("macos_playback_session_load")
 fun macos_playback_session_load(
@@ -225,22 +285,17 @@ fun macos_playback_session_load(
     audioDataSize: Int,
     audioDataPtr: CArrayPointer<ByteVar>
 ) {
-    val session = sessionPtr.asStableRef<AudioPlaybackSession>().get()
-    
-    // Decode format
-    val formatData = formatDataPtr.readBytes(formatDataSize)
-    val format = formatData.decodeAsAudioFormat()
-    
-    // Copy audio data
+    val handle = sessionPtr.playbackHandle()
+    handle.ingestChannel?.close()
+    handle.ingestChannel = null
+    val format = formatDataPtr.readBytes(formatDataSize).decodeAsAudioFormat()
     val audioData = audioDataPtr.readBytes(audioDataSize)
-    
-    // Create AudioFlow from the data
     val audioFlow = AudioFlow(
         format = format,
-        data = kotlinx.coroutines.flow.flowOf(audioData)
+        data = kotlinx.coroutines.flow.flowOf(audioData),
+        knownByteCount = audioData.size.toLong(),
     )
-    
-    runBlocking { session.load(audioFlow) }
+    runBlocking { handle.session.load(audioFlow) }
 }
 
 /**
@@ -249,7 +304,7 @@ fun macos_playback_session_load(
  */
 @CName("macos_playback_session_play")
 fun macos_playback_session_play(sessionPtr: COpaquePointer) {
-    val session = sessionPtr.asStableRef<AudioPlaybackSession>().get()
+    val session = sessionPtr.playbackHandle().session
     runBlocking { session.play() }
 }
 
@@ -263,7 +318,7 @@ private const val COMPLETION_IDLE = 2
  */
 @CName("macos_playback_session_await_completion")
 fun macos_playback_session_await_completion(sessionPtr: COpaquePointer): Int {
-    val session = sessionPtr.asStableRef<AudioPlaybackSession>().get()
+    val session = sessionPtr.playbackHandle().session
     val terminal = runBlocking {
         session.state.first {
             it is AudioPlaybackSession.State.Finished ||
@@ -280,26 +335,60 @@ fun macos_playback_session_await_completion(sessionPtr: COpaquePointer): Int {
 
 @CName("macos_playback_session_pause")
 fun macos_playback_session_pause(ptr: COpaquePointer) {
-    val session = ptr.asStableRef<AudioPlaybackSession>().get()
-    session.pause()
+    ptr.playbackHandle().session.pause()
 }
 
 @CName("macos_playback_session_resume")
 fun macos_playback_session_resume(ptr: COpaquePointer) {
-    val session = ptr.asStableRef<AudioPlaybackSession>().get()
-    session.resume()
+    ptr.playbackHandle().session.resume()
 }
 
 @CName("macos_playback_session_stop")
 fun macos_playback_session_stop(ptr: COpaquePointer) {
-    val session = ptr.asStableRef<AudioPlaybackSession>().get()
-    session.stop()
+    val handle = ptr.playbackHandle()
+    handle.ingestChannel?.close()
+    handle.ingestChannel = null
+    handle.session.stop()
+}
+
+/**
+ * Transport seek on the native AudioQueue session.
+ * @return 1 if [SeekResult.Applied], 0 if [SeekResult.Unsupported].
+ */
+@CName("macos_playback_session_seek")
+fun macos_playback_session_seek(sessionPtr: COpaquePointer, positionNanos: Long): Int {
+    val result = sessionPtr.playbackHandle().session.seekTo(positionNanos.nanoseconds)
+    return if (result is SeekResult.Applied) 1 else 0
+}
+
+/** Current transport position in nanoseconds. */
+@CName("macos_playback_session_position_ns")
+fun macos_playback_session_position_ns(sessionPtr: COpaquePointer): Long =
+    sessionPtr.playbackHandle().session.position.value.inWholeNanoseconds
+
+/**
+ * Writes buffered-range start/end (nanoseconds, end-exclusive) into out pointers.
+ * @return 1 if a non-empty range is published, else 0.
+ */
+@CName("macos_playback_session_buffered_range_ns")
+fun macos_playback_session_buffered_range_ns(
+    sessionPtr: COpaquePointer,
+    startOut: CPointer<LongVar>,
+    endOut: CPointer<LongVar>,
+): Int {
+    val range = sessionPtr.playbackHandle().session.bufferedRange.value
+    startOut[0] = range.start.inWholeNanoseconds
+    endOut[0] = range.endExclusive.inWholeNanoseconds
+    return if (range.isEmpty) 0 else 1
 }
 
 /** Dispose StableRef when you're fully done with the session. */
 @CName("macos_playback_session_release")
-fun macos_playback_session_release(ptr: COpaquePointer) =
-    ptr.asStableRef<AudioPlaybackSession>().dispose()
+fun macos_playback_session_release(ptr: COpaquePointer) {
+    val handle = ptr.playbackHandle()
+    handle.ingestChannel?.close()
+    ptr.asStableRef<PlaybackNativeHandle>().dispose()
+}
 
 // --- Devices ------------------------------------------------------------------
 
