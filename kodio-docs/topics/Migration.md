@@ -218,9 +218,37 @@ The session API is still available for advanced use:
 val session = recorder.underlyingSession()
 ```
 
+## File I/O (0.2.x) {id="file-io-0-2-x"}
+
+Container loaders no longer default to WAV. Format is detected from magic bytes, then extension. Unresolved formats throw `AudioFileReadError.UnsupportedFormat`.
+
+Raw PCM construction was renamed:
+
+```kotlin
+// Before
+AudioRecording.fromBytes(format, pcmData)
+
+// After
+AudioRecording.fromPcmBytes(format, pcmData)
+```
+
+Container load:
+
+```kotlin
+// Before (silent WAV default)
+AudioRecording.fromBytes(fileBytes)
+
+// After (auto-detect, optional fileName)
+AudioRecording.fromBytes(fileBytes, fileName = "clip.mp3")
+AudioRecording.fromBytes(fileBytes, AudioFileFormat.Wav)
+```
+
+MP3 decode is supported. MP3 encode throws `AudioFileWriteError.UnsupportedFormat`. See [File I/O](File-IO.md) and [Metadata](Metadata.md).
+
 <seealso style="cards">
     <category ref="core-api">
         <a href="Recording.md"/>
+        <a href="File-IO.md"/>
         <a href="Error-Handling.md"/>
     </category>
 </seealso>

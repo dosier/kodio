@@ -25,7 +25,7 @@
 - **Compose Integration**: State holders and UI components
 - **Live Waveforms**: Real-time amplitude data for visualizations
 - **Permission Handling**: Built-in permission management
-- **File I/O**: Save and load WAV files
+- **File I/O**: Save/load WAV, AIFF, AU; decode MP3; read tags/metadata
 - **Transcription**: Speech-to-text via OpenAI Whisper API
 - **Ktor Extension**: WebSocket streaming of `AudioFlow`
 

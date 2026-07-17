@@ -80,14 +80,71 @@ val calculatedDuration: Duration
 val sizeInBytes: Long
 
 // Raw PCM
-fromBytes(format: AudioFormat, data: ByteArray)
+fromPcmBytes(format: AudioFormat, data: ByteArray)
 fromChunks(format: AudioFormat, chunks: List<ByteArray>, duration: Duration? = null)
 fromAudioFlow(audioFlow: AudioFlow, duration: Duration? = null)
 
 // Container files (space.kodio.core.io.files)
-fromBytes(bytes: ByteArray, fileFormat: AudioFileFormat = Wav)
-fromSource(source: Source, fileFormat: AudioFileFormat = Wav)
+fromBytes(bytes: ByteArray, fileName: String? = null)
+fromBytes(bytes: ByteArray, fileFormat: AudioFileFormat)
+fromSource(source: Source, fileName: String? = null)
+fromSource(source: Source, fileFormat: AudioFileFormat)
 fromFile(path: Path, fileSystem: FileSystem = SystemFileSystem)
+```
+
+## AudioFileFormat / AudioFileReader {id="audio-file"}
+
+```kotlin
+sealed class AudioFileFormat(val extension: String) {
+    data object Wav
+    data object Aiff
+    data object Au
+    data object Mp3  // decode only
+    companion object {
+        val entries: List<AudioFileFormat>
+        fun detect(bytes: ByteArray): AudioFileFormat?
+        fun fromExtension(extension: String): AudioFileFormat?
+    }
+}
+
+class AudioFileReader(path: Path, fileSystem: FileSystem = SystemFileSystem) {
+    fun read(): AudioRecording
+    fun readMetadata(): AudioFileMetadata
+    companion object {
+        fun read(bytes: ByteArray, fileName: String? = null): AudioRecording
+        fun readMetadata(bytes: ByteArray, fileName: String? = null): AudioFileMetadata
+    }
+}
+```
+
+## AudioFileMetadata {id="audio-file-metadata"}
+
+```kotlin
+data class AudioFileMetadata(
+    val container: AudioFileFormat,
+    val sampleRate: Int,
+    val channels: Channels,
+    val encoding: AudioEncodingInfo,
+    val duration: Duration?,
+    val tags: AudioTags,
+)
+
+sealed interface AudioEncodingInfo {
+    data class Pcm(val encoding: SampleEncoding) : AudioEncodingInfo
+    sealed interface Compressed : AudioEncodingInfo {
+        val bitrate: Int?
+        val vbr: Boolean
+        data class Mp3(...) : Compressed
+    }
+}
+
+data class AudioTags(
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    // ...
+    val raw: Map<String, String> = emptyMap(),
+)
 ```
 
 ## AudioQuality {id="audio-quality"}

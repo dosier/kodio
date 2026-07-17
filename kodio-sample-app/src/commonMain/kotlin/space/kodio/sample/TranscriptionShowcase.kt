@@ -528,7 +528,7 @@ private fun LiveRecordingTab(apiKey: String) {
 
 /**
  * File upload transcription tab.
- * Uses FileKit for cross-platform file picking (WAV, AIFF, AU — formats kodio-core decodes).
+ * Uses FileKit for cross-platform file picking (WAV, AIFF, AU, MP3).
  */
 @Composable
 private fun FileUploadTab(apiKey: String) {
