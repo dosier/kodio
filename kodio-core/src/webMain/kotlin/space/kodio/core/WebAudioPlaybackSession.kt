@@ -71,7 +71,8 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
     }
 
     override fun createAudioSink(format: AudioFormat): AudioSink {
-        val known = audioFlow.value?.knownByteCount
+        // Prefer the converted-flow hint (set by Base before createAudioSink).
+        val known = convertedKnownByteCount ?: audioFlow.value?.knownByteCount
         useFiniteAudioBuffer = known != null && known <= bufferConfig.maxBytes
         return WebAudioSink(format)
     }
@@ -161,7 +162,7 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         val generation = ++sourceGeneration
         stopAllSources()
 
-        val durationSec = buffer.duration.toDouble()
+        val durationSec = buffer.duration
         val clamped = offsetSec.coerceIn(0.0, durationSec)
         pendingOffsetSec = clamped
         if (clamped >= durationSec) {
@@ -186,6 +187,16 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         logger.debug { "Started finite AudioBufferSourceNode at offset=$clamped gen=$generation" }
     }
 
+    private fun stopStreamingSlicesOnly() {
+        scheduledSources.forEach { src ->
+            src.onended = EventHandler { }
+            runCatching { src.stop() }
+            runCatching { src.disconnect() }
+        }
+        scheduledSources = mutableListOf()
+        nextSliceStartTime = audioContext?.currentTime ?: 0.0
+    }
+
     private fun stopAllSources() {
         currentSource?.let { src ->
             src.onended = EventHandler { }
@@ -194,13 +205,7 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         }
         currentSource = null
         finiteSourcePlaying = false
-        scheduledSources.forEach { src ->
-            src.onended = EventHandler { }
-            runCatching { src.stop() }
-            runCatching { src.disconnect() }
-        }
-        scheduledSources = mutableListOf()
-        nextSliceStartTime = audioContext?.currentTime ?: 0.0
+        stopStreamingSlicesOnly()
     }
 
     private fun closeContext() {
@@ -230,11 +235,23 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
             if (length <= 0) return
 
             if (useFiniteAudioBuffer) {
-                // Mirror the retained PlaybackBuffer into one AudioBuffer (not the
-                // feed chunk stream — seek restarts from offset, chunks would duplicate).
-                rebuildFiniteAudioBuffer(context)
-                if (!finiteSourcePlaying && state.value is State.Playing) {
-                    startFiniteSourceAt(pendingOffsetSec)
+                val transport = currentTransport()
+                if (transport?.isIngestComplete == true) {
+                    // Full growable buffer is ready: one AudioBuffer + offset seeks.
+                    // Stop any interim slices from the pre-complete streaming phase.
+                    if (scheduledSources.isNotEmpty()) {
+                        stopStreamingSlicesOnly()
+                    }
+                    rebuildFiniteAudioBuffer(context)
+                    if (!finiteSourcePlaying && state.value is State.Playing) {
+                        startFiniteSourceAt(pendingOffsetSec)
+                    }
+                } else {
+                    // Do not start an AudioBufferSourceNode on partial ingest —
+                    // the node keeps the buffer snapshot from start(); later
+                    // rebuilds would not extend an already-playing source.
+                    val chunk = data.copyOfRange(offset, offset + length)
+                    scheduleSlice(context, chunk, seekEpoch)
                 }
                 return
             }

@@ -117,8 +117,9 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : BaseAudi
             val line = dataLine ?: return
             var written = 0
             while (written < length) {
-                // Cooperative pause: wait without holding a device lock forever.
-                // Transport feed loop also awaits pause; this covers blocking write splits.
+                // Abandon in-flight writes after a seek flush on another thread.
+                val transport = currentTransport()
+                if (transport != null && transport.seekEpoch != seekEpoch) return
                 val n = line.write(data, offset + written, length - written)
                 if (n <= 0) break
                 written += n

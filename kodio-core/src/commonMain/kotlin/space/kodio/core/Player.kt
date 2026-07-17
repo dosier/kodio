@@ -33,8 +33,10 @@ import kotlin.time.Duration
  * ## Seek
  *
  * [seekTo] forwards to the session's optional native seek. When it returns
- * [SeekResult.Unsupported], callers (e.g. Compose [space.kodio.compose.PlayerState])
- * should fall back to reloading a clipped [AudioRecording] window.
+ * [SeekResult.Unsupported] and [supportsTransportSeek] is `false`, callers
+ * (e.g. Compose [space.kodio.compose.PlayerState]) may fall back to reloading
+ * a clipped [AudioRecording] window. Transport sessions treat Unsupported as
+ * out-of-window only.
  */
 class Player(
     private val session: AudioPlaybackSession
@@ -93,6 +95,13 @@ class Player(
      */
     val bufferedRange: StateFlow<BufferedRange>
         get() = session.bufferedRange
+
+    /**
+     * Whether the underlying session implements transport-buffer seek.
+     * When `true`, [SeekResult.Unsupported] means out-of-window — not "use PCM fallback".
+     */
+    val supportsTransportSeek: Boolean
+        get() = session.supportsTransportSeek
 
     /**
      * Loads an [AudioRecording] for playback.

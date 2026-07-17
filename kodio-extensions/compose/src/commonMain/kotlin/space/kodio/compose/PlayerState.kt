@@ -93,9 +93,9 @@ class PlayerState internal constructor(
     private val _resumeAfterSeek = mutableStateOf(false)
 
     /**
-     * Once the session publishes a non-empty [Player.bufferedRange], PCM-window
-     * reload must not run: [SeekResult.Unsupported] means out-of-window on a
-     * transport session, not "use the Compose fallback".
+     * Once the session is known to support transport seek ([Player.supportsTransportSeek]
+     * or a non-empty [Player.bufferedRange]), PCM-window reload must not run:
+     * [SeekResult.Unsupported] means out-of-window, not "use the Compose fallback".
      */
     private var transportBufferSeen: Boolean = false
 
@@ -214,7 +214,7 @@ class PlayerState internal constructor(
             }
 
             sourceRecording = recording
-            transportBufferSeen = false
+            transportBufferSeen = player.supportsTransportSeek
             player.load(recording)
 
             stateMutex.withLock {
@@ -272,7 +272,19 @@ class PlayerState internal constructor(
             }
             if (!desiredPlaying) return
             _isFinished.value = false
+            val scrubProgress = _progress.floatValue
             player.start()
+            // Transport: apply scrub-before-play after the session creates its buffer.
+            if (transportBufferSeen && scrubProgress > 0f && scrubProgress < 1f) {
+                val totalMs = duration.inWholeMilliseconds
+                if (totalMs > 0L) {
+                    val position = (totalMs * scrubProgress.toDouble()).toLong().milliseconds
+                    when (player.seekTo(position)) {
+                        is SeekResult.Applied -> _progress.floatValue = scrubProgress
+                        is SeekResult.Unsupported -> Unit
+                    }
+                }
+            }
             // Pause won while start()/prepare was in flight.
             if (!desiredPlaying) {
                 player.pause()
@@ -420,12 +432,12 @@ class PlayerState internal constructor(
                 (totalMs * clamped.toDouble()).toLong().milliseconds
             }
 
-            if (!player.bufferedRange.value.isEmpty) {
+            if (player.supportsTransportSeek || !player.bufferedRange.value.isEmpty) {
                 transportBufferSeen = true
             }
 
             // Prefer transport seek. PCM-window reload is only for unmigrated
-            // sessions that never publish a buffered range.
+            // sessions that never support transport seek.
             when (player.seekTo(position)) {
                 is SeekResult.Applied -> {
                     _progress.floatValue = clamped
@@ -446,14 +458,16 @@ class PlayerState internal constructor(
                     return
                 }
                 is SeekResult.Unsupported -> {
-                    if (transportBufferSeen || !player.bufferedRange.value.isEmpty) {
-                        // Out-of-window on a transport session — keep scrubber
-                        // position but do not invent a clipped PCM timeline.
+                    if (transportBufferSeen || player.supportsTransportSeek ||
+                        !player.bufferedRange.value.isEmpty
+                    ) {
+                        // Out-of-window / pre-buffer on a transport session —
+                        // keep scrubber position but do not invent a clipped PCM timeline.
                         transportBufferSeen = true
                         _progress.floatValue = clamped
                         _resumeAfterSeek.value = false
                         logger.debug {
-                            "seek Unsupported inside transport window policy; skipping PCM fallback"
+                            "seek Unsupported on transport session; skipping PCM fallback"
                         }
                         return
                     }
@@ -734,7 +748,7 @@ class PlayerState internal constructor(
                         (startProgress + elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
                 }
                 if (_progress.floatValue >= 1f) break
-                delay(50)
+                delay(50.milliseconds)
             }
         }
     }

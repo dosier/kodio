@@ -27,11 +27,11 @@ private val DefaultBufferedRangeFlow: StateFlow<BufferedRange> =
  * Live/unbounded flows must never be fully collected for seek; seek outside the
  * retained window returns [SeekResult.Unsupported].
  *
- * When [seekTo] returns [SeekResult.Unsupported], higher layers should fall back
- * to a portable approach (Compose [space.kodio.compose.PlayerState] reloads a
- * clipped PCM window via [AudioRecording.fromPcmBytes]). Keep that fallback out
- * of individual platform sessions so core stays capability-oriented rather than
- * branching on every target.
+ * When [seekTo] returns [SeekResult.Unsupported] on a session with
+ * [supportsTransportSeek] `false`, higher layers may fall back to a portable
+ * approach (Compose [space.kodio.compose.PlayerState] reloads a clipped PCM
+ * window). Transport sessions publish [bufferedRange]; out-of-window seeks stay
+ * [SeekResult.Unsupported] without inventing a second timeline.
  *
  * [knownByteCount] / [AudioFlow.isKnownFinite] are length metadata and growable
  * eligibility — not the sole seek gate.
@@ -57,6 +57,14 @@ interface AudioPlaybackSession {
      */
     val bufferedRange: StateFlow<BufferedRange>
         get() = DefaultBufferedRangeFlow
+
+    /**
+     * `true` when this session implements [PlaybackBuffer]-backed seek
+     * ([bufferedRange] / pending-cursor). Compose uses this to skip the PCM-window
+     * fallback even before the first non-empty [bufferedRange] is published.
+     */
+    val supportsTransportSeek: Boolean
+        get() = false
 
     /** Loads the given audio data. */
     suspend fun load(audioFlow: AudioFlow)

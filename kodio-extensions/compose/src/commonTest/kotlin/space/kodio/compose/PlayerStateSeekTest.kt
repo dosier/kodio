@@ -210,6 +210,22 @@ class PlayerStateSeekTest {
         assertEquals(0.5f, state.progress, absoluteTolerance = 0.001f)
     }
 
+    @Test
+    fun scrubBeforePlay_onTransportSession_skipsPcmWindow() = runTest(UnconfinedTestDispatcher()) {
+        val session = ControllablePlaybackSession(nativeSeek = true)
+        val state = playerState(session)
+        state.loadAsync(testRecording())
+        val loadsBefore = session.loadCount
+
+        // Scrub before the first play — transport sessions must not PCM-fallback.
+        state.seekToAsync(0.4f)
+
+        assertTrue(session.seekCalled)
+        assertFalse(session.stopCalled)
+        assertEquals(loadsBefore, session.loadCount)
+        assertEquals(0.4f, state.progress, absoluteTolerance = 0.001f)
+    }
+
     private fun TestScope.playerState(session: ControllablePlaybackSession): PlayerState {
         return PlayerState(
             scope = backgroundScope,
@@ -248,6 +264,9 @@ private class ControllablePlaybackSession(
         }
     )
     override val bufferedRange: StateFlow<BufferedRange> = _bufferedRange
+
+    override val supportsTransportSeek: Boolean
+        get() = nativeSeek || publishTransportBuffer
 
     var playCalled = false
         private set

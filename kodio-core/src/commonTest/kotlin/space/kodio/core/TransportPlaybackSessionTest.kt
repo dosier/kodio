@@ -58,6 +58,31 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
+    fun finiteSeek_beforePlay_appliedAsPendingCursor() = runBlocking {
+        val frames = 1600
+        val pcm = ByteArray(frames * format.bytesPerFrame) { 1 }
+        val session = FakeTransportSession(bufferConfig = PlaybackBufferConfig(maxBytes = 1L shl 20))
+        session.load(AudioFlow(format, flowOf(pcm), knownByteCount = pcm.size.toLong()))
+
+        assertTrue(session.supportsTransportSeek)
+        assertEquals(SeekResult.Applied, session.seekTo(50.milliseconds))
+        assertEquals(50.milliseconds, session.position.value)
+
+        session.play()
+        withTimeout(2_000) { session.firstWrite.await() }
+
+        // Pending seek must land on the transport cursor (no bytes before 50ms).
+        val writes = session.sink.writes
+        assertTrue(writes.isNotEmpty())
+        assertTrue(
+            writes.all { it.mediaByteOffset >= format.bytesForDuration(50.milliseconds) },
+            "expected no pre-seek bytes after pending seek; got $writes",
+        )
+
+        session.stop()
+    }
+
+    @Test
     fun liveSeek_insideWindow_applied_pastEdge_unsupported() = runBlocking {
         val config = PlaybackBufferConfig(
             maxBytes = format.bytesForDuration(10.seconds),

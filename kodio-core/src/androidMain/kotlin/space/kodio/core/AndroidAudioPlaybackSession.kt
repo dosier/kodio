@@ -161,18 +161,25 @@ internal class AndroidAudioPlaybackSession(
             mediaByteOffset: Long,
         ) {
             val track = audioTrack ?: return
+            fun epochStale(): Boolean {
+                val transport = currentTransport()
+                return transport != null && transport.seekEpoch != seekEpoch
+            }
             when (preparedFormat.encoding) {
                 is SampleEncoding.PcmInt -> {
                     var written = 0
                     while (written < length) {
+                        if (epochStale()) return
                         val n = track.write(data, offset + written, length - written)
                         if (n <= 0) break
                         written += n
                     }
                 }
                 is SampleEncoding.PcmFloat -> {
+                    if (epochStale()) return
                     require(androidEncoding == AndroidAudioFormat.ENCODING_PCM_FLOAT)
                     val floats = bytesToFloatArrayLE(data, offset, length)
+                    if (epochStale()) return
                     track.write(floats, 0, floats.size, AudioTrack.WRITE_BLOCKING)
                 }
             }

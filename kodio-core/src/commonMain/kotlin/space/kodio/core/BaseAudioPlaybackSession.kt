@@ -120,7 +120,15 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     private var transportFormat: AudioFormat? = null
     private var transportSink: AudioSink? = null
     private var mediaBase: Duration = Duration.ZERO
-    private var convertedKnownByteCount: Long? = null
+    /**
+     * Converted-flow [AudioFlow.knownByteCount] for the active transport generation.
+     * Set before [createAudioSink] so platforms can choose growable vs ring / finite paths.
+     */
+    protected var convertedKnownByteCount: Long? = null
+        private set
+
+    /** Pre-play seek accepted before the transport controller exists. */
+    private var pendingSeekPosition: Duration? = null
 
     private val _transportPaused = MutableStateFlow(false)
 
@@ -131,22 +139,28 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
 
     internal fun currentTransport(): TransportController? = transport
 
-    internal fun currentMediaBase(): Duration = mediaBase
+    /**
+     * In-tree platforms that return `true` from [useTransportPlayback] publish
+     * real [bufferedRange] / transport seek. External subclassers keep the default.
+     */
+    override val supportsTransportSeek: Boolean
+        get() = useTransportPlayback()
 
     abstract suspend fun preparePlayback(format: AudioFormat): AudioFormat
 
     /**
      * Legacy pull-loop path. All in-tree platforms use transport playback
-     * ([useTransportPlayback]); this remains only for external subclassers.
+     * ([useTransportPlayback]); this remains only for external subclassers
+     * until removal in a future minor (cannot override the internal transport hooks).
      */
     @Deprecated(
-        message = "Override useTransportPlayback()/createAudioSink() instead of playBlocking",
+        message = "Migrate to a transport-capable session; playBlocking will be removed in a future minor",
         level = DeprecationLevel.WARNING,
     )
     open suspend fun playBlocking(audioFlow: AudioFlow) {
         error(
             "${this::class.simpleName}: playBlocking is deprecated; " +
-                "enable useTransportPlayback() and implement createAudioSink()",
+                "use a transport-capable AudioPlaybackSession implementation",
         )
     }
 
@@ -160,11 +174,25 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     protected open fun onSeek(position: Duration): SeekResult = SeekResult.Unsupported
 
     final override fun seekTo(position: Duration): SeekResult {
-        if (audioFlow.value == null) return SeekResult.Unsupported
+        val loaded = audioFlow.value ?: return SeekResult.Unsupported
         if (useTransportPlayback()) {
-            val t = transport ?: return SeekResult.Unsupported
+            val t = transport
+            if (t == null) {
+                // Pre-play seek: stash a pending cursor for known-finite content
+                // (matches JVM/Web historical behavior and pending-cursor semantics).
+                // Live/unbounded cannot wait for future data before ingest starts.
+                if (loaded.knownByteCount == null && position > Duration.ZERO) {
+                    return SeekResult.Unsupported
+                }
+                pendingSeekPosition = position
+                mediaBase = position
+                _position.value = position
+                log.debug { "seekTo($position) -> Applied (pending until transport starts)" }
+                return SeekResult.Applied
+            }
             val result = t.seekTo(position)
             if (result.isApplied) {
+                pendingSeekPosition = null
                 mediaBase = position
                 _position.value = position
                 onTransportSeekApplied(position)
@@ -266,7 +294,8 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     private suspend fun playViaTransport(audioFlow: AudioFlow) {
         val existing = transport
         // Seek-after-finish / replay from retained buffer: do not re-ingest a cold flow.
-        if (existing != null && existing.isIngestComplete && transportFormat != null) {
+        val retainedFormat = transportFormat
+        if (existing != null && existing.isIngestComplete && retainedFormat != null) {
             val epoch = playEpoch.value + 1
             playEpoch.value = epoch
             wantPlaying.value = true
@@ -276,12 +305,12 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
             playbackJob = null
 
             try {
-                val format = transportFormat!!
-                ensureDeviceReadyForTransport(format)
+                ensureDeviceReadyForTransport(retainedFormat)
                 if (!isCurrentPlay(epoch)) {
                     ensurePausedIfStillDesired()
                     return
                 }
+                applyPendingSeek(existing)
                 existing.prime()
                 onTransportResumed()
                 _state.value = State.Playing
@@ -340,8 +369,11 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
             transport = controller
             transportFormat = playbackAudioFlow.format
             transportSink = sink
-            mediaBase = Duration.ZERO
-            _position.value = Duration.ZERO
+            if (pendingSeekPosition == null) {
+                mediaBase = Duration.ZERO
+                _position.value = Duration.ZERO
+            }
+            applyPendingSeek(controller)
             publishBufferedRange(controller)
             startBufferedRangePublisher(controller)
 
@@ -509,12 +541,27 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
         }
     }
 
+    private fun applyPendingSeek(controller: TransportController) {
+        val pending = pendingSeekPosition ?: return
+        pendingSeekPosition = null
+        val result = controller.seekTo(pending)
+        if (result.isApplied) {
+            mediaBase = pending
+            _position.value = pending
+            onTransportSeekApplied(pending)
+            log.debug { "applied pending seek $pending" }
+        } else {
+            log.debug { "pending seek $pending rejected after transport start" }
+        }
+    }
+
     private fun discardTransport() {
         discardTransportBuffersOnly()
         _position.value = Duration.ZERO
         _bufferedRange.value = BufferedRange.Empty
         mediaBase = Duration.ZERO
         convertedKnownByteCount = null
+        pendingSeekPosition = null
     }
 
     private fun discardTransportBuffersOnly() {

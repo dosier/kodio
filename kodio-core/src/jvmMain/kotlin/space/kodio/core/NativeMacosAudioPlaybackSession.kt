@@ -28,7 +28,8 @@ private val logger = namedLogger("NativeMacosPlayback")
  * Panama FFI wrapper around the K/N [MacosAudioPlaybackSession] transport.
  *
  * Streams PCM via begin/append/end so long recordings are not fully retained on
- * the JVM heap. Seek delegates to native transport seek (AudioQueue quiesce+Stop);
+ * the JVM heap (native append copies bytes; JVM arenas are confined per call).
+ * Seek delegates to native transport seek (AudioQueue quiesce+Stop);
  * no Kotlin upcalls from GCD threads.
  */
 internal class NativeMacosAudioPlaybackSession(
@@ -47,8 +48,10 @@ internal class NativeMacosAudioPlaybackSession(
     private val _bufferedRange = MutableStateFlow(BufferedRange.Empty)
     override val bufferedRange: StateFlow<BufferedRange> = _bufferedRange.asStateFlow()
 
-    private var runtimeArena: Arena? = null
+    override val supportsTransportSeek: Boolean get() = true
+
     private var streamPrepared = false
+    private var ingestComplete = false
     private var completionJob: Job? = null
     private var ingestJob: Job? = null
     private var positionJob: Job? = null
@@ -60,7 +63,7 @@ internal class NativeMacosAudioPlaybackSession(
     override suspend fun load(audioFlow: AudioFlow) {
         _audioFlowHolder.value = audioFlow
         streamPrepared = false
-        closePreviousArena()
+        ingestComplete = false
         _position.value = Duration.ZERO
         _bufferedRange.value = BufferedRange.Empty
         _state.value = AudioPlaybackSession.State.Ready
@@ -99,17 +102,29 @@ internal class NativeMacosAudioPlaybackSession(
 
         completionJob?.cancel()
         completionJob = null
-        ingestJob?.cancel()
-        ingestJob = null
 
         if (!isCurrentPlay(epoch)) {
             ensurePausedIfStillDesired()
             return
         }
 
+        // Retained native transport buffer: do not re-begin / re-ingest a drained cold flow.
+        if (streamPrepared && ingestComplete) {
+            replayFromRetainedBuffer(epoch)
+            return
+        }
+
+        ingestJob?.cancel()
+        ingestJob = null
+
         val normalized = normalizeForPlayback(source)
-        beginNativeStream(normalized)
-        streamPrepared = true
+        // Pre-play seek may already have opened the native stream; do not re-begin
+        // (that would wipe a pending cursor / reload a fresh AudioFlow).
+        if (!streamPrepared) {
+            beginNativeStream(normalized)
+            streamPrepared = true
+            ingestComplete = false
+        }
 
         if (!isCurrentPlay(epoch)) {
             ensurePausedIfStillDesired()
@@ -127,6 +142,7 @@ internal class NativeMacosAudioPlaybackSession(
                     appendNative(chunk)
                 }
                 endNativeStream()
+                ingestComplete = true
             }.onFailure {
                 logger.error(it) { "native ingest failed: ${it.message}" }
             }
@@ -140,6 +156,23 @@ internal class NativeMacosAudioPlaybackSession(
             return
         }
 
+        watchCompletion(epoch)
+    }
+
+    private fun replayFromRetainedBuffer(epoch: Int) {
+        _state.value = AudioPlaybackSession.State.Playing
+        startPositionPolling()
+        NativeMacosLib.macos_playback_session_play.invokeExact(nativeMemSeq)
+        if (!isCurrentPlay(epoch)) {
+            NativeMacosLib.macos_playback_session_pause.invokeExact(nativeMemSeq)
+            ensurePausedIfStillDesired()
+            return
+        }
+        watchCompletion(epoch)
+        logger.debug { "replayFromRetainedBuffer epoch=$epoch" }
+    }
+
+    private fun watchCompletion(epoch: Int) {
         completionJob = completionScope.launch {
             val result = NativeMacosLib.macos_playback_session_await_completion
                 .invokeExact(nativeMemSeq) as Int
@@ -182,9 +215,9 @@ internal class NativeMacosAudioPlaybackSession(
         NativeMacosLib.macos_playback_session_stop.invokeExact(nativeMemSeq)
         _state.value = AudioPlaybackSession.State.Idle
         streamPrepared = false
+        ingestComplete = false
         _position.value = Duration.ZERO
         _bufferedRange.value = BufferedRange.Empty
-        closePreviousArena()
     }
 
     override fun seekTo(position: Duration): SeekResult {
@@ -196,6 +229,7 @@ internal class NativeMacosAudioPlaybackSession(
                 val normalized = normalizeForPlayback(source)
                 beginNativeStream(normalized)
                 streamPrepared = true
+                ingestComplete = false
             }
         }
         val code = NativeMacosLib.macos_playback_session_seek.invokeExact(
@@ -219,37 +253,39 @@ internal class NativeMacosAudioPlaybackSession(
     }
 
     private fun beginNativeStream(audioFlow: AudioFlow) {
-        closePreviousArena()
-        val arena = Arena.ofShared().also { runtimeArena = it }
-        val formatData = audioFlow.format.encodeToByteArray()
-        val formatDataSeq = arena.allocate(formatData.size.toLong())
-        formatDataSeq.asSlice(0, formatData.size.toLong()).copyFrom(MemorySegment.ofArray(formatData))
-        val known = audioFlow.knownByteCount ?: -1L
-        NativeMacosLib.macos_playback_session_begin_stream.invokeExact(
-            nativeMemSeq,
-            formatData.size,
-            formatDataSeq,
-            known,
-        )
+        // Native bridge copies format bytes synchronously; confine arena to this call.
+        Arena.ofConfined().use { arena ->
+            val formatData = audioFlow.format.encodeToByteArray()
+            val formatDataSeq = arena.allocate(formatData.size.toLong())
+            formatDataSeq.asSlice(0, formatData.size.toLong()).copyFrom(MemorySegment.ofArray(formatData))
+            val known = audioFlow.knownByteCount ?: -1L
+            NativeMacosLib.macos_playback_session_begin_stream.invokeExact(
+                nativeMemSeq,
+                formatData.size,
+                formatDataSeq,
+                known,
+            )
+        }
     }
 
     private fun appendNative(chunk: ByteArray) {
         if (chunk.isEmpty()) return
-        val arena = runtimeArena ?: return
-        // Short-lived segments for each chunk (arena grows; closed on stop/reload).
-        val dataSeq = arena.allocate(chunk.size.toLong())
-        dataSeq.asSlice(0, chunk.size.toLong()).copyFrom(MemorySegment.ofArray(chunk))
-        var attempts = 0
-        while (attempts++ < 64) {
-            val ok = NativeMacosLib.macos_playback_session_append.invokeExact(
-                nativeMemSeq,
-                chunk.size,
-                dataSeq,
-            ) as Int
-            if (ok == 1) return
-            Thread.sleep(1) // back-pressure when native ingest channel is full
+        // Native append copies via readBytes; do not retain chunk memory across calls.
+        Arena.ofConfined().use { arena ->
+            val dataSeq = arena.allocate(chunk.size.toLong())
+            dataSeq.asSlice(0, chunk.size.toLong()).copyFrom(MemorySegment.ofArray(chunk))
+            var attempts = 0
+            while (attempts++ < 64) {
+                val ok = NativeMacosLib.macos_playback_session_append.invokeExact(
+                    nativeMemSeq,
+                    chunk.size,
+                    dataSeq,
+                ) as Int
+                if (ok == 1) return@use
+                Thread.sleep(1) // back-pressure when native ingest channel is full
+            }
+            logger.warn { "appendNative dropped ${chunk.size} bytes after back-pressure retries" }
         }
-        logger.warn { "appendNative dropped ${chunk.size} bytes after back-pressure retries" }
     }
 
     private fun endNativeStream() {
@@ -277,8 +313,7 @@ internal class NativeMacosAudioPlaybackSession(
                 .invokeExact(nativeMemSeq) as Long
             _position.value = posNs.nanoseconds
 
-            val arena = Arena.ofConfined()
-            try {
+            Arena.ofConfined().use { arena ->
                 val startSeg = arena.allocate(ValueLayout.JAVA_LONG)
                 val endSeg = arena.allocate(ValueLayout.JAVA_LONG)
                 val nonempty = NativeMacosLib.macos_playback_session_buffered_range_ns.invokeExact(
@@ -291,8 +326,6 @@ internal class NativeMacosAudioPlaybackSession(
                     val end = endSeg.get(ValueLayout.JAVA_LONG, 0).nanoseconds
                     _bufferedRange.value = BufferedRange(start, end)
                 }
-            } finally {
-                arena.close()
             }
         }.onFailure {
             logger.trace { "pollTransportClocks failed: ${it.message}" }
@@ -313,10 +346,5 @@ internal class NativeMacosAudioPlaybackSession(
                 _state.value = AudioPlaybackSession.State.Paused
             }
         }
-    }
-
-    private fun closePreviousArena() {
-        runtimeArena?.close()
-        runtimeArena = null
     }
 }
