@@ -18,7 +18,7 @@ class MacosAudioRecordingSession(
     private val bufferCount: Int = 5              // 5 buffers - better resilience to delays
 ) : BaseAudioRecordingSession() {
 
-    private lateinit var audioQueue: MacosAudioQueue.ReadOnly
+    private var audioQueue: MacosAudioQueue.ReadOnly? = null
 
     override suspend fun prepareRecording(): AudioFormat {
         val preferred = requestedFormat ?: DefaultRecordingInt16
@@ -32,7 +32,7 @@ class MacosAudioRecordingSession(
                 val deviceUID: String? = requestedDevice?.id ?: getDefaultInputDeviceUID()
                 if (deviceUID != null) {
                     logger.info { "Setting AudioQueue input device to: $deviceUID" }
-                    audioQueue.setPropertyValue(CurrentDevice, deviceUID)
+                    audioQueue?.setPropertyValue(CurrentDevice, deviceUID)
                 }
                 return resolved
             }
@@ -78,18 +78,21 @@ class MacosAudioRecordingSession(
     }
 
     override suspend fun startRecording(channel: SendChannel<ByteArray>) {
-        audioQueue.start()
-        audioQueue.streamTo(channel)
+        val queue = requireNotNull(audioQueue) { "AudioQueue not prepared" }
+        queue.start()
+        queue.streamTo(channel)
     }
 
     override fun cleanup() {
-        audioQueue.dispose(inImmediate = true)
+        // Idempotent: stop()/reset() may call cleanup() and awaitClose may call it again.
+        audioQueue?.dispose(inImmediate = true)
+        audioQueue = null
     }
 
     override suspend fun pauseRecording() {
         // Native pause: AudioQueuePause halts capture but keeps the queue + buffers
         // allocated, so resume only needs an AudioQueueStart call.
-        runCatching { audioQueue.pause() }.onFailure {
+        runCatching { audioQueue?.pause() }.onFailure {
             logger.warn(it) { "AudioQueuePause failed; falling back to dispose+reprepare" }
             super.pauseRecording()
         }
@@ -98,7 +101,7 @@ class MacosAudioRecordingSession(
     override suspend fun resumeRecording() {
         // Just AudioQueueStart on the same queue. If the queue was disposed
         // (e.g. fallback path above), re-prepare from scratch.
-        runCatching { audioQueue.start() }.onFailure {
+        runCatching { audioQueue?.start() }.onFailure {
             logger.warn(it) { "AudioQueueStart on resume failed; re-preparing queue" }
             super.resumeRecording()
         }

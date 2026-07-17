@@ -6,6 +6,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
+import kotlin.concurrent.Volatile
 
 private val logger = namedLogger("BaseRecording")
 
@@ -32,6 +33,10 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
 
     private var hotFlowSource: MutableSharedFlow<ByteArray>? = null
     private var recordingAudioFormat: AudioFormat? = null
+
+    /** Ensures platform [cleanup] runs at most once per recording cycle. */
+    @Volatile
+    private var deviceReleased = false
 
     /**
      * Authoritative buffer for the finished (cold) flow. The hot flow is
@@ -71,6 +76,7 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
         try {
             _audioFlow.value = null // Clear previous flow
             recordedChunks.clear()
+            deviceReleased = false
 
             val format = prepareRecording()
             recordingAudioFormat = format
@@ -161,9 +167,15 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
         recordingJob = scope.launch {
             logger.debug { "Recording job started" }
             var emitCount = 0
+            // Register awaitClose before the producer runs so cancellation always
+            // reaches platform cleanup(). Blocking reads (e.g. TargetDataLine.read,
+            // AudioRecord.read) often ignore job cancel until the line/record is closed.
             val platformFlow = callbackFlow {
-                startRecording(this)
-                awaitClose(::cleanup)
+                val producer = launch { startRecording(this@callbackFlow) }
+                awaitClose {
+                    releaseDevice()
+                    producer.cancel()
+                }
             }
 
             platformFlow.collect { chunk ->
@@ -192,7 +204,9 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             // cancellation, and exit cleanly.
             _pausedFlow.value = false
 
-            // 1. Stop the recording job. This triggers onCleanup() via awaitClose.
+            // 1. Stop the recording job and release the capture device immediately.
+            // Platform cleanup() closes the line/record/queue so blocking reads unblock
+            // and the OS mic indicator clears without waiting for the producer to exit.
             cleanupRecording()
 
             // 2. Get the recorded data from the accumulator.
@@ -230,8 +244,19 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
     }
 
     private fun cleanupRecording() {
+        // Release the device first so blocking platform reads observe a closed
+        // handle and exit; then cancel the job. awaitClose may also call
+        // releaseDevice(); the once-flag keeps platform cleanup() single-shot.
+        releaseDevice()
         recordingJob?.cancel()
         recordingJob = null
+    }
+
+    private fun releaseDevice() {
+        if (deviceReleased) return
+        deviceReleased = true
+        runCatching { cleanup() }
+            .onFailure { logger.error(it) { "Platform cleanup() failed: ${it.message}" } }
     }
 
     /**

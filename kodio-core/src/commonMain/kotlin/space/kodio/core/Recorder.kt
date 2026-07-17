@@ -214,7 +214,9 @@ class Recorder internal constructor(
      * The recorder should not be used after calling this method.
      */
     fun release() {
-        if (isRecording) {
+        // Stop while Recording or Paused so the session can finalize and release
+        // the capture device; reset alone is not enough if the session was paused.
+        if (isRecording || isPaused) {
             session.stop()
         }
         cachedRecording = null
