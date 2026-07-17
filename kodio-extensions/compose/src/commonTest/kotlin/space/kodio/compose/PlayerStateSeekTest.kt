@@ -14,8 +14,10 @@ import space.kodio.core.AudioQuality
 import space.kodio.core.AudioRecording
 import space.kodio.core.Player
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 
 /**
  * Logic tests for [PlayerState] seek / scrub transport UI stability.
@@ -118,6 +120,50 @@ class PlayerStateSeekTest {
         assertFalse(state.isPlaying)
     }
 
+    @Test
+    fun rapidPlayThenPauseDoesNotResurrectPlaying() = runTest(UnconfinedTestDispatcher()) {
+        val session = ControllablePlaybackSession()
+        val state = playerState(session)
+
+        state.loadAsync(testRecording())
+
+        val playGate = CompletableDeferred<Unit>()
+        session.playGate = playGate
+
+        state.play()
+        runCurrent()
+        state.pause()
+        assertFalse(state.isPlaying)
+        assertTrue(state.isPaused)
+
+        playGate.complete(Unit)
+        runCurrent()
+
+        assertFalse(
+            state.isPlaying,
+            "late session Playing from in-flight play must not overwrite pause",
+        )
+        assertTrue(state.isPaused)
+        assertTrue(session.pauseCalled)
+    }
+
+    @Test
+    fun nativeSeekIsPreferredOverWindowReload() = runTest(UnconfinedTestDispatcher()) {
+        val session = ControllablePlaybackSession(nativeSeek = true)
+        val state = playerState(session)
+
+        state.loadAsync(testRecording())
+        state.playAsync()
+        session.resetPlayFlags()
+
+        state.seekToAsync(0.3f)
+
+        assertTrue(session.seekCalled, "native seek should be attempted")
+        assertFalse(session.stopCalled, "native seek must not fall back to stop/reload")
+        assertEquals(0.3f, state.progress, absoluteTolerance = 0.001f)
+        assertTrue(state.isPlaying)
+    }
+
     private fun TestScope.playerState(session: ControllablePlaybackSession): PlayerState {
         return PlayerState(
             scope = backgroundScope,
@@ -138,7 +184,9 @@ class PlayerStateSeekTest {
 /**
  * Minimal session that mirrors the Idle→Ready→Playing transitions of a real seek reload.
  */
-private class ControllablePlaybackSession : AudioPlaybackSession {
+private class ControllablePlaybackSession(
+    private val nativeSeek: Boolean = false,
+) : AudioPlaybackSession {
     private val _state = MutableStateFlow<AudioPlaybackSession.State>(AudioPlaybackSession.State.Idle)
     override val state: StateFlow<AudioPlaybackSession.State> = _state
 
@@ -149,13 +197,22 @@ private class ControllablePlaybackSession : AudioPlaybackSession {
         private set
     var stopCalled = false
         private set
+    var pauseCalled = false
+        private set
+    var seekCalled = false
+        private set
 
     /** When set, [load] suspends until the deferred completes (seek mid-gap). */
     var loadGate: CompletableDeferred<Unit>? = null
 
+    /** When set, [play] suspends until the deferred completes (play→pause race). */
+    var playGate: CompletableDeferred<Unit>? = null
+
     fun resetPlayFlags() {
         playCalled = false
         stopCalled = false
+        pauseCalled = false
+        seekCalled = false
     }
 
     override suspend fun load(audioFlow: AudioFlow) {
@@ -165,11 +222,13 @@ private class ControllablePlaybackSession : AudioPlaybackSession {
     }
 
     override suspend fun play() {
+        playGate?.await()
         playCalled = true
         _state.value = AudioPlaybackSession.State.Playing
     }
 
     override fun pause() {
+        pauseCalled = true
         _state.value = AudioPlaybackSession.State.Paused
     }
 
@@ -181,5 +240,12 @@ private class ControllablePlaybackSession : AudioPlaybackSession {
     override fun stop() {
         stopCalled = true
         _state.value = AudioPlaybackSession.State.Idle
+    }
+
+    override fun seekTo(position: Duration): Boolean {
+        seekCalled = true
+        if (!nativeSeek) return false
+        // Native seek keeps transport state; only updates position at the PlayerState layer.
+        return true
     }
 }
