@@ -1,5 +1,6 @@
 package space.kodio.compose.material3.component
 
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -26,7 +27,9 @@ fun ErrorDialog(error: AudioError, onDismiss: () -> Unit) {
             Text("Audio error")
         },
         text = {
-            Text(error.message ?: "An unknown audio error occurred.")
+            SelectionContainer {
+                Text(error.message ?: "An unknown audio error occurred.")
+            }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
