@@ -12,6 +12,7 @@ import space.kodio.core.io.files.AudioFileWriteError
 import space.kodio.core.io.files.metadata.AudioEncodingInfo
 import space.kodio.core.io.files.metadata.AudioFileMetadata
 import space.kodio.core.io.files.metadata.AudioTags
+import space.kodio.core.io.readExactly
 
 /**
  * Writes a RIFF/WAVE file (PCM-Int or IEEE-Float).
@@ -107,6 +108,7 @@ private data class WavScanResult(
     val sampleRate: Int,
     val bitsPerSample: Int,
     val dataSize: Long,
+    val tags: AudioTags,
     val audioSource: AudioSource?,
 ) {
     fun toFileMetadata(): AudioFileMetadata {
@@ -128,7 +130,7 @@ private data class WavScanResult(
             channels = Channels.fromInt(numChannels),
             encoding = sampleEncoding,
             duration = duration,
-            tags = AudioTags.Empty,
+            tags = tags,
         )
     }
 }
@@ -159,6 +161,7 @@ private fun scanWavHeader(from: Source, loadData: Boolean): WavScanResult {
     var sampleRate = -1
     var bitsPerSample = -1
     var fmtFound = false
+    var tags = AudioTags.Empty
 
     while (true) {
         val chunkId = try {
@@ -211,12 +214,21 @@ private fun scanWavHeader(from: Source, loadData: Boolean): WavScanResult {
                     sampleRate = sampleRate,
                     bitsPerSample = bitsPerSample,
                     dataSize = chunkSize,
+                    tags = tags,
                     audioSource = audioSource,
                 )
             }
 
+            "LIST" -> {
+                if (chunkSize <= Int.MAX_VALUE) {
+                    val listData = from.readExactly(chunkSize.toInt())
+                    tags = mergeWavTags(tags, parseWavListInfo(listData))
+                } else {
+                    from.skip(chunkSize)
+                }
+            }
+
             else -> {
-                // Skip unknown chunks (LIST, INFO, JUNK, bext, etc.)
                 from.skip(chunkSize)
             }
         }
@@ -252,5 +264,20 @@ private fun wavEncoding(audioFormatCode: Int, bitsPerSample: Int): SampleEncodin
 
     else -> throw AudioFileReadError.UnsupportedFormat(
         "Unsupported WAV audio format code: $audioFormatCode"
+    )
+}
+
+private fun mergeWavTags(existing: AudioTags, parsed: AudioTags): AudioTags {
+    if (parsed == AudioTags.Empty) return existing
+    if (existing == AudioTags.Empty) return parsed
+    return AudioTags(
+        title = existing.title ?: parsed.title,
+        artist = existing.artist ?: parsed.artist,
+        album = existing.album ?: parsed.album,
+        trackNumber = existing.trackNumber ?: parsed.trackNumber,
+        year = existing.year ?: parsed.year,
+        genre = existing.genre ?: parsed.genre,
+        comment = existing.comment ?: parsed.comment,
+        raw = existing.raw + parsed.raw,
     )
 }

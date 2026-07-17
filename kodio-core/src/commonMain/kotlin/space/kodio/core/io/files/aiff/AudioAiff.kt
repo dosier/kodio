@@ -148,6 +148,7 @@ private data class AiffScanResult(
     val bitsPerSample: Int,
     val sampleRate: Int,
     val encoding: SampleEncoding,
+    val tags: AudioTags,
     val audioSource: AudioSource?,
 ) {
     fun toFileMetadata(): AudioFileMetadata {
@@ -167,7 +168,7 @@ private data class AiffScanResult(
             channels = Channels.fromInt(numChannels),
             encoding = sampleEncoding,
             duration = duration,
-            tags = AudioTags.Empty,
+            tags = tags,
         )
     }
 }
@@ -195,6 +196,7 @@ private fun scanAiff(from: Source, loadData: Boolean): AiffScanResult {
     var bitsPerSample = -1
     lateinit var rateBytes: ByteArray
     var compressionType: String? = null
+    val textChunks = mutableMapOf<String, String>()
     var innerRemaining = formSize - 4L
 
     while (innerRemaining >= 8L) {
@@ -301,7 +303,8 @@ private fun scanAiff(from: Source, loadData: Boolean): AiffScanResult {
                     )
                     AudioSource.of(format, Buffer().apply { write(pcmLe) })
                 } else {
-                    from.skipChunkPadded(chunkSize)
+                    from.skip(waveBytes - offset)
+                    if (chunkSize and 1L == 1L) from.skip(1)
                     null
                 }
 
@@ -315,8 +318,23 @@ private fun scanAiff(from: Source, loadData: Boolean): AiffScanResult {
                     bitsPerSample = bitsPerSample,
                     sampleRate = sampleRate,
                     encoding = encoding,
+                    tags = aiffTextToTags(textChunks),
                     audioSource = audioSource,
                 )
+            }
+            "NAME", "AUTH", "ANNO" -> {
+                if (chunkSize <= Int.MAX_VALUE) {
+                    val data = from.readExactly(chunkSize.toInt())
+                    val text = parseAiffTextChunk(data).trim()
+                    if (text.isNotEmpty()) {
+                        textChunks[chunkId] = text
+                    }
+                    if (chunkSize and 1L == 1L) from.skip(1)
+                } else {
+                    from.skipChunkPadded(chunkSize)
+                }
+                innerRemaining -= chunkSize
+                if (chunkSize and 1L == 1L) innerRemaining -= 1L
             }
             else -> {
                 try {
