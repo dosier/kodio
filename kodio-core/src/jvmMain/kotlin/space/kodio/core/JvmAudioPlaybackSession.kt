@@ -1,40 +1,34 @@
 package space.kodio.core
 
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.first
-import space.kodio.core.io.collectToByteArray
+import space.kodio.core.transport.AudioSink
+import space.kodio.core.transport.TransportController
 import space.kodio.core.util.namedLogger
-import java.util.concurrent.atomic.AtomicInteger
 import javax.sound.sampled.SourceDataLine
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 private val logger = namedLogger("JvmPlayback")
 
 /**
- * JVM implementation for [AudioPlaybackSession] using JavaSound [SourceDataLine].
+ * JVM playback via JavaSound [SourceDataLine], fed by [PlaybackBuffer] transport.
  *
- * Known-finite PCM ([AudioFlow.isKnownFinite]) is materialized once so [onSeek]
- * can reposition a frame-aligned read cursor. Live/unbounded flows stream chunk
- * by chunk and return [SeekResult.Unsupported] for seek — never drained fully.
+ * Seek moves the software cursor and [flush]es the line (never [drain]).
+ * Published position uses `mediaBase + (lineFrames - lineFramesAtSeekBase)` because
+ * [SourceDataLine.getLongFramePosition] is not reset by flush.
  *
- * @param device The output device to play to.
+ * Hot/live flows stream into a ring; they are never fully collected before play.
  */
 class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : BaseAudioPlaybackSession() {
 
-    private val isPaused = MutableStateFlow(false)
-
     private var dataLine: SourceDataLine? = null
+    private var preparedFormat: AudioFormat? = null
+    private var lineFramesAtSeekBase: Long = 0L
+    private var sink: JavaSoundSink? = null
 
-    private var pcmData: ByteArray? = null
-    private var pcmFormat: AudioFormat? = null
-
-    /** Frame-aligned byte offset for the next write (and for pre-play seeks). */
-    private val seekOffsetBytes = AtomicInteger(0)
-
-    /** Bumped on each seek so the write loop restarts from [seekOffsetBytes]. */
-    private val seekEpoch = AtomicInteger(0)
+    override fun useTransportPlayback(): Boolean = true
 
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
+        closeLine()
         val mixer = getMixer(device)
         val playbackFormat = format
             .takeIf { mixer.isSupported<SourceDataLine>(it) }
@@ -42,118 +36,106 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : BaseAudi
         val line = mixer.getLine<SourceDataLine>(playbackFormat)
         line.open(playbackFormat)
         line.start()
-        this.dataLine = line
+        dataLine = line
+        preparedFormat = playbackFormat
+        lineFramesAtSeekBase = line.longFramePosition
+        logger.debug { "preparePlayback: opened SourceDataLine format=$playbackFormat" }
         return playbackFormat
     }
 
+    override fun createAudioSink(format: AudioFormat): AudioSink {
+        val created = JavaSoundSink()
+        sink = created
+        return created
+    }
+
     override suspend fun playBlocking(audioFlow: AudioFlow) {
-        val line = dataLine ?: return
-        if (audioFlow.isKnownFinite) {
-            playBuffered(line, audioFlow)
-        } else {
-            // Live / unbounded: stream without materializing.
-            pcmData = null
-            pcmFormat = null
-            audioFlow.collect { buffer ->
-                isPaused.first { !it }
-                line.write(buffer, 0, buffer.size)
-            }
-            line.drain()
-            line.stop()
-            line.close()
-            dataLine = null
+        // Transport path never calls this.
+        error("JvmAudioPlaybackSession uses transport playback")
+    }
+
+    override fun readDeviceMediaPosition(
+        mediaBase: Duration,
+        transport: TransportController,
+    ): Duration {
+        val line = dataLine ?: return mediaBase
+        val framesSinceSeek = (line.longFramePosition - lineFramesAtSeekBase).coerceAtLeast(0L)
+        val rate = preparedFormat?.sampleRate ?: transport.buffer.format.sampleRate
+        if (rate <= 0) return mediaBase
+        return mediaBase + (framesSinceSeek.toDouble() / rate).seconds
+    }
+
+    override fun onTransportSeekApplied(position: Duration) {
+        val line = dataLine
+        // flush already requested via sink; refresh baseline after seek.
+        lineFramesAtSeekBase = line?.longFramePosition ?: lineFramesAtSeekBase
+        logger.debug {
+            "onTransportSeekApplied pos=$position lineFramesAtSeekBase=$lineFramesAtSeekBase"
         }
     }
 
-    private suspend fun playBuffered(line: SourceDataLine, audioFlow: AudioFlow) {
-        val data = pcmData?.takeIf { pcmFormat == audioFlow.format }
-            ?: audioFlow.collectToByteArray().also {
-                pcmData = it
-                pcmFormat = audioFlow.format
-            }
-
-        var epoch = seekEpoch.get()
-        var offset = seekOffsetBytes.get().coerceIn(0, data.size)
-
-        while (offset < data.size) {
-            isPaused.first { !it }
-            val currentEpoch = seekEpoch.get()
-            if (currentEpoch != epoch) {
-                epoch = currentEpoch
-                offset = seekOffsetBytes.get().coerceIn(0, data.size)
-                runCatching { line.flush() }
-                continue
-            }
-
-            val remaining = data.size - offset
-            if (remaining <= 0) break
-
-            // Write in modest chunks; keep frame alignment when possible.
-            val bpf = audioFlow.format.bytesPerFrame.coerceAtLeast(1)
-            var chunk = minOf(4096, remaining)
-            chunk -= chunk % bpf
-            if (chunk <= 0) chunk = remaining
-
-            val written = line.write(data, offset, chunk)
-            if (written <= 0) break
-            offset += written
-        }
-
-        // Only drain when we naturally reached the end (not mid-seek stop).
-        if (seekEpoch.get() == epoch && offset >= data.size) {
-            line.drain()
-        }
-        line.stop()
-        line.close()
-        dataLine = null
-    }
-
-    override fun onSeek(position: Duration): SeekResult {
-        val format = pcmFormat ?: audioFlow.value?.format
-        if (format == null) return SeekResult.Unsupported
-
-        val data = pcmData
-        val loadedFlow = audioFlow.value
-        // Buffer-backed seek only for known-finite content (cached or about to be).
-        if (data == null && loadedFlow?.isKnownFinite != true) {
-            return SeekResult.Unsupported
-        }
-
-        val offset = if (data != null) {
-            pcmSeekByteOffset(position, format, data.size)
-        } else {
-            // Pre-buffer seek on known-finite content; apply when playBuffered runs.
-            val frames = position.toSampleFrame(format.sampleRate)
-            val bpf = format.bytesPerFrame
-            if (bpf <= 0) 0 else (frames * bpf).toInt().coerceAtLeast(0)
-        }
-
-        seekOffsetBytes.set(offset)
-        seekEpoch.incrementAndGet()
-        logger.debug { "onSeek(position=$position) -> byteOffset=$offset (buffered=${data != null})" }
-        runCatching { dataLine?.flush() }
-        return SeekResult.Applied
-    }
-
-    override fun onPause() {
+    override fun onTransportPaused() {
         dataLine?.stop()
-        isPaused.value = true
     }
 
-    override fun onResume() {
-        isPaused.value = false
+    override fun onTransportResumed() {
         dataLine?.start()
     }
 
-    override fun onStop() {
-        isPaused.value = false
-        seekEpoch.incrementAndGet()
-        seekOffsetBytes.set(0)
-        pcmData = null
-        pcmFormat = null
-        dataLine?.stop()
-        dataLine?.flush()
-        dataLine?.close()
+    override fun onTransportStopped() {
+        closeLine()
+        sink = null
+    }
+
+    override suspend fun ensureDeviceReadyForTransport(format: AudioFormat): AudioFormat {
+        if (dataLine?.isOpen == true) return preparedFormat ?: format
+        return preparePlayback(format)
+    }
+
+    override fun onPause() = onTransportPaused()
+    override fun onResume() = onTransportResumed()
+    override fun onStop() = onTransportStopped()
+
+    private fun closeLine() {
+        val line = dataLine ?: return
+        runCatching { line.stop() }
+        runCatching { line.flush() }
+        runCatching { line.close() }
         dataLine = null
+        preparedFormat = null
+        lineFramesAtSeekBase = 0L
+    }
+
+    private inner class JavaSoundSink : AudioSink {
+        override fun write(
+            data: ByteArray,
+            offset: Int,
+            length: Int,
+            seekEpoch: Long,
+            mediaByteOffset: Long,
+        ) {
+            val line = dataLine ?: return
+            var written = 0
+            while (written < length) {
+                // Cooperative pause: wait without holding a device lock forever.
+                // Transport feed loop also awaits pause; this covers blocking write splits.
+                val n = line.write(data, offset + written, length - written)
+                if (n <= 0) break
+                written += n
+            }
+        }
+
+        override fun flush(seekEpoch: Long) {
+            val line = dataLine ?: return
+            val wasRunning = line.isRunning || line.isActive
+            runCatching { line.stop() }
+            runCatching { line.flush() }
+            lineFramesAtSeekBase = line.longFramePosition
+            // Resume only if session still wants playback (seek while paused stays stopped).
+            if (wasRunning && state.value is AudioPlaybackSession.State.Playing) {
+                runCatching { line.start() }
+            }
+            logger.debug { "JavaSoundSink.flush epoch=$seekEpoch wasRunning=$wasRunning" }
+        }
     }
 }

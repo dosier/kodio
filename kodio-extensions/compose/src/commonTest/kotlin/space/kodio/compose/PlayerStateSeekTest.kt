@@ -165,6 +165,29 @@ class PlayerStateSeekTest {
         assertTrue(state.isPlaying)
     }
 
+    @Test
+    fun appliedNativeSeek_neverLoadsPcmWindow() = runTest(UnconfinedTestDispatcher()) {
+        val session = ControllablePlaybackSession(nativeSeek = true)
+        val state = playerState(session)
+        val recording = testRecording()
+
+        state.loadAsync(recording)
+        state.playAsync()
+        val loadsBefore = session.loadCount
+        session.resetPlayFlags()
+
+        state.seekToAsync(0.4f)
+        state.seekToAsync(0.6f)
+
+        assertTrue(session.seekCalled)
+        assertFalse(session.stopCalled)
+        assertEquals(
+            loadsBefore,
+            session.loadCount,
+            "Applied transport seek must not reload a clipped PCM window",
+        )
+    }
+
     private fun TestScope.playerState(session: ControllablePlaybackSession): PlayerState {
         return PlayerState(
             scope = backgroundScope,
@@ -202,6 +225,8 @@ private class ControllablePlaybackSession(
         private set
     var seekCalled = false
         private set
+    var loadCount = 0
+        private set
 
     /** When set, [load] suspends until the deferred completes (seek mid-gap). */
     var loadGate: CompletableDeferred<Unit>? = null
@@ -218,6 +243,7 @@ private class ControllablePlaybackSession(
 
     override suspend fun load(audioFlow: AudioFlow) {
         loadGate?.await()
+        loadCount++
         _audioFlow.value = audioFlow
         _state.value = AudioPlaybackSession.State.Ready
     }

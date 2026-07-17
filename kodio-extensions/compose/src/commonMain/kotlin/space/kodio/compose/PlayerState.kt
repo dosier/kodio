@@ -686,14 +686,24 @@ class PlayerState internal constructor(
         val totalMs = duration.inWholeMilliseconds
         if (totalMs <= 0L) return
 
+        val player = _player
         val startProgress = _progress.floatValue
         val mark = TimeSource.Monotonic.markNow()
         progressJob = scope.launch {
             while (_isPlaying.value) {
-                val elapsedMs = mark.elapsedNow().inWholeMilliseconds
-                val next = (startProgress + elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
-                _progress.floatValue = next
-                if (next >= 1f) break
+                val range = player?.bufferedRange?.value
+                if (range != null && !range.isEmpty) {
+                    // Transport session: drive scrubber from published media time.
+                    val posMs = player.position.value.inWholeMilliseconds
+                    _progress.floatValue =
+                        (posMs.toFloat() / totalMs.toFloat()).coerceIn(0f, 1f)
+                } else {
+                    // Unmigrated session: wall-clock estimate from last scrub point.
+                    val elapsedMs = mark.elapsedNow().inWholeMilliseconds
+                    _progress.floatValue =
+                        (startProgress + elapsedMs.toFloat() / totalMs).coerceIn(0f, 1f)
+                }
+                if (_progress.floatValue >= 1f) break
                 delay(50)
             }
         }

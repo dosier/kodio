@@ -1,6 +1,7 @@
 package space.kodio.core
 
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.DurationUnit
 
 /**
@@ -71,4 +72,17 @@ fun pcmSeekOffsetSeconds(
     val seconds = if (position.isNegative()) 0.0 else position.toDouble(DurationUnit.SECONDS)
     if (durationSeconds <= 0.0) return seconds.coerceAtLeast(0.0)
     return seconds.coerceIn(0.0, durationSeconds)
+}
+
+/**
+ * Media duration corresponding to an absolute PCM [byteOffset] in [format].
+ * Frame-aligned; partial trailing frames are ignored.
+ */
+fun AudioFormat.durationOfByteOffset(byteOffset: Long): Duration {
+    val bpf = bytesPerFrame
+    if (bpf <= 0 || sampleRate <= 0 || byteOffset <= 0L) return Duration.ZERO
+    val frames = byteOffset / bpf
+    // Avoid floating Duration construction for long recordings.
+    val nanos = frames * 1_000_000_000L / sampleRate
+    return nanos.nanoseconds
 }

@@ -82,6 +82,19 @@ class Player(
         get() = session.state.value is AudioPlaybackSession.State.Finished
 
     /**
+     * Transport media time, best-effort while playing.
+     * Frozen at [Duration.ZERO] on sessions that have not migrated to transport.
+     */
+    val position: StateFlow<Duration>
+        get() = session.position
+
+    /**
+     * Currently retained seekable window. Empty if nothing buffered.
+     */
+    val bufferedRange: StateFlow<BufferedRange>
+        get() = session.bufferedRange
+
+    /**
      * Loads an [AudioRecording] for playback.
      */
     suspend fun load(recording: AudioRecording) {
