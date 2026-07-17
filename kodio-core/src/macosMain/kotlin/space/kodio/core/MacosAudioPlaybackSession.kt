@@ -110,7 +110,8 @@ class MacosAudioPlaybackSession(
                         dst += bytesPerSample * 2
                     }
                     stereo
-                }
+                },
+                knownByteCount = audioFlow.knownByteCount?.times(2),
             )
         } else {
             audioFlow

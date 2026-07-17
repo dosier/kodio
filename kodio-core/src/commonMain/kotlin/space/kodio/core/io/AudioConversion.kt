@@ -29,10 +29,16 @@ fun AudioFlow.convertAudio(
     val sourceFormat = this.format
     if (sourceFormat == targetFormat) return this
 
+    val mappedKnownBytes = mapKnownByteCount(targetFormat)
+
     // Fast path: same rate + same channels + PcmInt → PcmFloat(F32)
     fastPcmIntToFloat32(sourceFormat, targetFormat)?.let { converter ->
         logger.debug { "Using fast PCM Int → Float32 path" }
-        return AudioFlow(targetFormat, transform { chunk -> emit(converter(chunk)) })
+        return AudioFlow(
+            format = targetFormat,
+            data = transform { chunk -> emit(converter(chunk)) },
+            knownByteCount = mappedKnownBytes,
+        )
     }
 
     fun resample(
@@ -135,31 +141,55 @@ fun AudioFlow.convertAudio(
         return buffer.readByteArray()
     }
 
-    return AudioFlow(targetFormat, transform { chunk ->
-        logger.trace { "Processing chunk of ${chunk.size} bytes" }
-        
-        // 1) Bytes -> normalized samples [-1, 1]
-        val normalized = decode(chunk, sourceFormat)
-        logger.trace { "Decoded to ${normalized.size} samples" }
+    return AudioFlow(
+        format = targetFormat,
+        data = transform { chunk ->
+            logger.trace { "Processing chunk of ${chunk.size} bytes" }
 
-        // 2) Resample if needed (per-channel, linear)
-        val resampled = resample(
-            samples = normalized,
-            sourceRate = sourceFormat.sampleRate,
-            targetRate = targetFormat.sampleRate,
-            channels = sourceFormat.channels.count
-        )
-        logger.trace { "Resampled to ${resampled.size} samples" }
+            // 1) Bytes -> normalized samples [-1, 1]
+            val normalized = decode(chunk, sourceFormat)
+            logger.trace { "Decoded to ${normalized.size} samples" }
 
-        // 3) Channel convert if needed
-        val channelConverted = convertChannels(resampled, sourceFormat.channels, targetFormat.channels)
-        logger.trace { "Channel converted to ${channelConverted.size} samples" }
+            // 2) Resample if needed (per-channel, linear)
+            val resampled = resample(
+                samples = normalized,
+                sourceRate = sourceFormat.sampleRate,
+                targetRate = targetFormat.sampleRate,
+                channels = sourceFormat.channels.count
+            )
+            logger.trace { "Resampled to ${resampled.size} samples" }
 
-        // 4) Encode into target bytes
-        val encoded = encode(channelConverted, targetFormat)
-        logger.trace { "Encoded to ${encoded.size} bytes" }
-        emit(encoded)
-    })
+            // 3) Channel convert if needed
+            val channelConverted = convertChannels(resampled, sourceFormat.channels, targetFormat.channels)
+            logger.trace { "Channel converted to ${channelConverted.size} samples" }
+
+            // 4) Encode into target bytes
+            val encoded = encode(channelConverted, targetFormat)
+            logger.trace { "Encoded to ${encoded.size} bytes" }
+            emit(encoded)
+        },
+        knownByteCount = mappedKnownBytes,
+    )
+}
+
+/**
+ * Maps a finite source [AudioFlow.knownByteCount] into the target format.
+ * Result is approximate after resampling; used as a finiteness signal for seek.
+ */
+private fun AudioFlow.mapKnownByteCount(targetFormat: AudioFormat): Long? {
+    val known = knownByteCount ?: return null
+    val srcBpf = format.bytesPerFrame
+    val dstBpf = targetFormat.bytesPerFrame
+    if (srcBpf <= 0 || dstBpf <= 0 || format.sampleRate <= 0 || targetFormat.sampleRate <= 0) {
+        return null
+    }
+    val srcFrames = known / srcBpf
+    val dstFrames = if (format.sampleRate == targetFormat.sampleRate) {
+        srcFrames
+    } else {
+        srcFrames * targetFormat.sampleRate / format.sampleRate
+    }
+    return dstFrames * dstBpf
 }
 
 /* ===================== ENCODERS ===================== */

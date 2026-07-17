@@ -10,7 +10,9 @@ import kotlin.time.Duration
  *
  * [seekTo] is an optional native transport capability. The default implementation
  * returns [SeekResult.Unsupported]. Platforms that can reposition playback without
- * reloading audio override it and return [SeekResult.Applied].
+ * reloading audio override it and return [SeekResult.Applied], but only for
+ * known-finite content ([AudioFlow.isKnownFinite]). Live/unbounded flows must
+ * never be fully collected for seek.
  *
  * When [seekTo] returns [SeekResult.Unsupported], higher layers should fall back
  * to a portable approach (Compose [space.kodio.compose.PlayerState] reloads a

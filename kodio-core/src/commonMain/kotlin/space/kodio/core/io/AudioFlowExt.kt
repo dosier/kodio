@@ -10,10 +10,13 @@ import space.kodio.core.AudioFormat
  * [format].
  *
  * All vararg elements are concatenated into one [ByteArray] emission.
+ * The result is marked [AudioFlow.isKnownFinite] for buffer-backed seek.
  */
-fun audioFlowOf(format: AudioFormat, vararg bytes: Byte) = AudioFlow(format, flow {
-    emit(bytes)
-})
+fun audioFlowOf(format: AudioFormat, vararg bytes: Byte) = AudioFlow(
+    format = format,
+    data = flow { emit(bytes) },
+    knownByteCount = bytes.size.toLong(),
+)
 
 /**
  * Collects every chunk from this flow into one contiguous PCM buffer wrapped

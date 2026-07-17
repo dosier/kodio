@@ -216,12 +216,13 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
 
             if (captured.isNotEmpty() && format != null) {
                 // 3. Create a new COLD, replayable flow from the captured data.
-                val coldFlow = AudioFlow(format, captured.asFlow())
+                val knownBytes = captured.sumOf { it.size.toLong() }
+                val coldFlow = AudioFlow(format, captured.asFlow(), knownByteCount = knownBytes)
 
                 // 4. Update the public audioFlow to the new cold flow.
                 _audioFlow.value = coldFlow
                 _state.value = State.Stopped
-                logger.debug { "Created cold flow, state=Stopped" }
+                logger.debug { "Created cold flow, state=Stopped, knownByteCount=$knownBytes" }
             } else {
                 _state.value = State.Stopped // Or an error state if appropriate
                 logger.warn { "No recorded data available!" }

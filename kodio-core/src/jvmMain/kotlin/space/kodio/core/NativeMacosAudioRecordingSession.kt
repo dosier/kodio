@@ -204,9 +204,11 @@ internal class NativeMacosAudioRecordingSession(
         NativeMacosLib.macos_recording_session_stop.invokeExact(nativeMemSeq)
         val format = audioFlow.value?.format
         if (format != null) {
-            val coldFlow = AudioFlow(format, recordedChunks.toList().asFlow())
+            val chunks = recordedChunks.toList()
+            val knownBytes = chunks.sumOf { it.size.toLong() }
+            val coldFlow = AudioFlow(format, chunks.asFlow(), knownByteCount = knownBytes)
             _audioFlowHolder.value = coldFlow
-            logger.debug { "Created cold flow with ${recordedChunks.size} chunks" }
+            logger.debug { "Created cold flow with ${chunks.size} chunks, knownByteCount=$knownBytes" }
         }
         _state.value = AudioRecordingSession.State.Stopped
         started = false

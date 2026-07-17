@@ -13,8 +13,9 @@ private val logger = namedLogger("JvmPlayback")
 /**
  * JVM implementation for [AudioPlaybackSession] using JavaSound [SourceDataLine].
  *
- * Finite PCM is materialized once per [playBlocking] so [onSeek] can reposition
- * a frame-aligned read cursor and flush the line without Compose-level window reloads.
+ * Known-finite PCM ([AudioFlow.isKnownFinite]) is materialized once so [onSeek]
+ * can reposition a frame-aligned read cursor. Live/unbounded flows stream chunk
+ * by chunk and return [SeekResult.Unsupported] for seek — never drained fully.
  *
  * @param device The output device to play to.
  */
@@ -47,9 +48,29 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : BaseAudi
 
     override suspend fun playBlocking(audioFlow: AudioFlow) {
         val line = dataLine ?: return
-        val data = audioFlow.collectToByteArray()
-        pcmData = data
-        pcmFormat = audioFlow.format
+        if (audioFlow.isKnownFinite) {
+            playBuffered(line, audioFlow)
+        } else {
+            // Live / unbounded: stream without materializing.
+            pcmData = null
+            pcmFormat = null
+            audioFlow.collect { buffer ->
+                isPaused.first { !it }
+                line.write(buffer, 0, buffer.size)
+            }
+            line.drain()
+            line.stop()
+            line.close()
+            dataLine = null
+        }
+    }
+
+    private suspend fun playBuffered(line: SourceDataLine, audioFlow: AudioFlow) {
+        val data = pcmData?.takeIf { pcmFormat == audioFlow.format }
+            ?: audioFlow.collectToByteArray().also {
+                pcmData = it
+                pcmFormat = audioFlow.format
+            }
 
         var epoch = seekEpoch.get()
         var offset = seekOffsetBytes.get().coerceIn(0, data.size)
@@ -92,11 +113,16 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : BaseAudi
         if (format == null) return SeekResult.Unsupported
 
         val data = pcmData
-        val byteCount = data?.size ?: 0
+        val loadedFlow = audioFlow.value
+        // Buffer-backed seek only for known-finite content (cached or about to be).
+        if (data == null && loadedFlow?.isKnownFinite != true) {
+            return SeekResult.Unsupported
+        }
+
         val offset = if (data != null) {
-            pcmSeekByteOffset(position, format, byteCount)
+            pcmSeekByteOffset(position, format, data.size)
         } else {
-            // Pre-buffer seek: convert duration using format; apply when playBlocking runs.
+            // Pre-buffer seek on known-finite content; apply when playBuffered runs.
             val frames = position.toSampleFrame(format.sampleRate)
             val bpf = format.bytesPerFrame
             if (bpf <= 0) 0 else (frames * bpf).toInt().coerceAtLeast(0)

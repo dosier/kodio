@@ -107,8 +107,12 @@ class AudioRecording private constructor(
 
     /**
      * Returns the audio data as an [AudioFlow] for compatibility with existing APIs.
+     *
+     * Sets [AudioFlow.knownByteCount] so playback sessions may materialize once
+     * for buffer-backed seek without treating live/unbounded flows the same way.
      */
-    fun asAudioFlow(): AudioFlow = AudioFlow(format, asFlow(defensiveCopy = true))
+    fun asAudioFlow(): AudioFlow =
+        AudioFlow(format, asFlow(defensiveCopy = true), knownByteCount = sizeInBytes)
 
     /**
      * Collects all chunks into a single byte array.

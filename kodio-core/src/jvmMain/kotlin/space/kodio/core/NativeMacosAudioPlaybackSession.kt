@@ -60,14 +60,30 @@ internal class NativeMacosAudioPlaybackSession(
     private val playEpoch = MutableStateFlow(0)
 
     /**
-     * Streaming playback (feeding audio incrementally) is deferred. The native
-     * library only exposes a whole-buffer [NativeMacosLib.macos_playback_session_load]
-     * entry point, so streaming would require a new native enqueue export and
-     * rebuilding kodio-native, which is out of scope. This method therefore
-     * collects the full recording into a single buffer by design.
+     * The native library only exposes a whole-buffer
+     * [NativeMacosLib.macos_playback_session_load] entry point.
+     *
+     * Known-finite flows ([AudioFlow.isKnownFinite]) are collected once into
+     * [fullPcm] for seek slices. Live/unbounded flows are never drained —
+     * load stays Ready without native buffers; [play] no-ops and [seekTo]
+     * returns [SeekResult.Unsupported] until a finite recording is loaded.
      */
     override suspend fun load(audioFlow: AudioFlow) {
         _audioFlowHolder.value = audioFlow
+
+        if (!audioFlow.isKnownFinite) {
+            logger.info {
+                "load(): skipping full collect for non-finite AudioFlow " +
+                    "(native playback requires knownByteCount)"
+            }
+            fullPcm = null
+            playbackFormat = null
+            encodedFormat = null
+            loaded = false
+            closePreviousArena()
+            _state.value = AudioPlaybackSession.State.Ready
+            return
+        }
 
         val nativeFlow = normalizeForPlayback(audioFlow)
         val formatData = nativeFlow.format.encodeToByteArray()

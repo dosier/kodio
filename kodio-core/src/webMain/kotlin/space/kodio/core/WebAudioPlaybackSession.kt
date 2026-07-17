@@ -1,23 +1,30 @@
 package space.kodio.core
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.lastOrNull
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import space.kodio.core.AudioPlaybackSession.State
 import space.kodio.core.io.collectToByteArray
 import space.kodio.core.util.namedLogger
 import web.audio.*
 import web.events.EventHandler
+import kotlin.coroutines.coroutineContext
 import kotlin.time.Duration
 
 private val logger = namedLogger("WebPlayback")
 
 /**
- * Web playback session backed by a single cached [AudioBuffer] for seekable
- * playback of finite PCM (typical [AudioRecording] loads).
+ * Web playback session.
  *
- * Seek uses [AudioBufferSourceNode.start] with a buffer offset so scrubbing does
- * not tear down the session or reload clipped PCM windows. Output device
- * selection via [AudioContext.setSinkId] remains deferred (Chrome/Edge-only).
+ * Known-finite PCM ([AudioFlow.isKnownFinite]) is collected into one
+ * [AudioBuffer] so seek can use [AudioBufferSourceNode.start] offsets.
+ * Live/unbounded flows keep chunked [AudioBufferSourceNode] scheduling and
+ * return [SeekResult.Unsupported] for seek — never drained fully.
+ *
+ * Output device selection via [AudioContext.setSinkId] remains deferred
+ * (Chrome/Edge-only).
  */
 class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
 
@@ -70,9 +77,15 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         val context = audioContext ?: return
         ensureContextRunning(context)
 
-        // Finite recordings are collected into one buffer so seek can use
-        // AudioBufferSourceNode offset starts. Live/unbounded streams would
-        // block here; Player loads AudioRecording (finite) in practice.
+        if (audioFlow.isKnownFinite) {
+            playBuffered(context, audioFlow)
+        } else {
+            audioBuffer = null
+            playStreaming(context, audioFlow)
+        }
+    }
+
+    private suspend fun playBuffered(context: AudioContext, audioFlow: AudioFlow) {
         val data = audioFlow.collectToByteArray()
         val buffer = context.createBufferFrom(
             format = audioFlow.format,
@@ -88,19 +101,63 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
     }
 
     /**
+     * Chunk-scheduled playback for live/unbounded streams. Does not wait for
+     * the flow to complete before starting audio.
+     */
+    private suspend fun playStreaming(context: AudioContext, audioFlow: AudioFlow) {
+        @Suppress("MISSING_DEPENDENCY_SUPERCLASS_IN_TYPE_ARGUMENT")
+        val audioFormat = audioFlow.format
+        var nextStartTime = context.currentTime
+        val lastCompletable = audioFlow.map { audioData ->
+            val jsAudioBufferFinishedIndicator = CompletableDeferred<Unit>()
+
+            // Ensure context is not closed and we are still playing
+            if (context.state != AudioContextState.running || state.value != State.Playing) {
+                jsAudioBufferFinishedIndicator.complete(Unit)
+                coroutineContext.cancel()
+                return@map jsAudioBufferFinishedIndicator
+            }
+
+            val chunkBuffer = context.createBufferFrom(
+                format = audioFormat,
+                data = audioData,
+            )
+            val source = context.createBufferSource()
+            source.buffer = chunkBuffer
+            source.onended = EventHandler {
+                jsAudioBufferFinishedIndicator.complete(Unit)
+            }
+            source.connect(context.destination)
+
+            val scheduleTime =
+                if (nextStartTime < context.currentTime) context.currentTime else nextStartTime
+            source.start(scheduleTime)
+            nextStartTime = scheduleTime + chunkBuffer.duration
+
+            jsAudioBufferFinishedIndicator
+        }.lastOrNull()
+        lastCompletable?.await()
+    }
+
+    /**
      * Buffer-backed seek via [AudioBufferSourceNode.start] offset.
-     * Remembers [position] even before the first buffer is materialized so
-     * pre-play seeks apply on the subsequent start.
+     * Only for known-finite content (cached [audioBuffer] or pending materialization).
      */
     override fun onSeek(position: Duration): SeekResult {
         val buffer = audioBuffer
+        val canSeek = buffer != null || audioFlow.value?.isKnownFinite == true
+        if (!canSeek) {
+            logger.debug { "onSeek(position=$position) -> Unsupported (not buffered)" }
+            return SeekResult.Unsupported
+        }
+
         val durationSec = buffer?.duration?.toDouble() ?: Double.POSITIVE_INFINITY
         val offsetSec = pcmSeekOffsetSeconds(position, durationSec)
         pendingOffsetSec = offsetSec
         logger.debug { "onSeek(position=$position) -> offsetSec=$offsetSec (buffered=${buffer != null})" }
 
         if (buffer == null) {
-            // Offset is remembered for the next playBlocking start.
+            // Offset is remembered for the next playBuffered start.
             return SeekResult.Applied
         }
 
