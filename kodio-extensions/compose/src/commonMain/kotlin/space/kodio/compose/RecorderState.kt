@@ -77,7 +77,9 @@ class RecorderState internal constructor(
     private var _isProcessing = mutableStateOf(false)
     private var _error = mutableStateOf<AudioError?>(null)
     private var _liveAmplitudes = mutableStateOf<List<Float>>(emptyList())
-    private var _permissionState = mutableStateOf(AudioPermissionManager.State.Unknown)
+    // Seed from the shared permission manager so recreating this holder
+    // (e.g. quality/device change) does not briefly report Unknown.
+    private var _permissionState = mutableStateOf(Kodio.microphonePermission.state.value)
     private var _isInitialized = mutableStateOf(false)
     
     // Job for amplitude collection - tracked for proper cancellation

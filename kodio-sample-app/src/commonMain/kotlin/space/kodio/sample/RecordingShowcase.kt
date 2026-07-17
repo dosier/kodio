@@ -2,6 +2,7 @@ package space.kodio.sample
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,8 +49,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import space.kodio.compose.AudioWaveform
 import space.kodio.compose.RecorderState
@@ -61,6 +64,9 @@ import space.kodio.core.AudioQuality
 import space.kodio.core.AudioRecording
 import space.kodio.core.Kodio
 import space.kodio.sample.icons.SampleIcons
+
+/** Grace before treating unsettled permission as "Needs permission" in the showcase UI. */
+private const val PermissionUiGraceMs = 250L
 
 @Composable
 fun RecordingShowcase() {
@@ -238,14 +244,26 @@ private fun CaptureControls(
     onSelectQuality: (AudioQuality) -> Unit,
     recorderActive: Boolean,
 ) {
+    // Debounce "needs permission" UI so brief Unknown/re-init after quality change
+    // does not flash the red pill or Grant button.
+    var showPermissionUi by remember { mutableStateOf(false) }
+    LaunchedEffect(recorderState, recorderState.needsPermission) {
+        if (!recorderState.needsPermission) {
+            showPermissionUi = false
+            return@LaunchedEffect
+        }
+        delay(PermissionUiGraceMs)
+        showPermissionUi = recorderState.needsPermission
+    }
+
     val statusLabel = when {
-        recorderState.needsPermission -> "Needs permission"
+        showPermissionUi -> "Needs permission"
         recorderState.isPaused -> "Paused"
         recorderState.isRecording -> "Recording"
         recorderState.error != null -> "Error"
         else -> "Idle"
     }
-    val statusError = recorderState.error != null
+    val statusError = recorderState.error != null || showPermissionUi
     val statusActive = recorderState.isRecording || recorderState.isPaused
 
     SamplePanel {
@@ -260,7 +278,7 @@ private fun CaptureControls(
                 emphasized = statusActive && !statusError,
                 isError = statusError,
             )
-            if (!recorderState.needsPermission && recorderState.error == null) {
+            if (!showPermissionUi && recorderState.error == null) {
                 SampleStatusPill(text = selectedQuality.name)
             }
         }
@@ -269,8 +287,19 @@ private fun CaptureControls(
             SampleErrorBanner(message)
         }
 
-        if (recorderState.needsPermission) {
-            Button(onClick = { recorderState.requestPermission() }) {
+        // Reserved slot above the capture cluster so Grant appearing/disappearing
+        // never shifts device / quality / record controls.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Button(
+                onClick = { recorderState.requestPermission() },
+                enabled = showPermissionUi,
+                modifier = Modifier.alpha(if (showPermissionUi) 1f else 0f),
+            ) {
                 Text("Grant permission")
             }
         }
