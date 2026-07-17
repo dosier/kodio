@@ -1,16 +1,34 @@
 package space.kodio.sample
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.vinceglb.filekit.name
@@ -116,30 +135,6 @@ private fun encodingChoiceToSampleEncoding(
         EncodingChoice.PcmFloat32 ->
             SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
     }
-}
-
-private fun formatSampleRate(rate: Int): String = when {
-    rate >= 1000 -> "${formatDecimal(rate / 1000.0, 1)} kHz"
-    else -> "$rate Hz"
-}
-
-private fun formatDurationSeconds(duration: kotlin.time.Duration): String {
-    val totalMs = duration.inWholeMilliseconds
-    val seconds = totalMs / 1000
-    val ms = totalMs % 1000
-    return if (seconds > 0) "${seconds}.${(ms / 100)}s" else "${ms}ms"
-}
-
-private fun formatFileSize(bytes: Long): String = when {
-    bytes >= 1_048_576 -> "${formatDecimal(bytes / 1_048_576.0, 1)} MB"
-    bytes >= 1024 -> "${formatDecimal(bytes / 1024.0, 1)} KB"
-    else -> "$bytes B"
-}
-
-private fun encodingDescription(encoding: SampleEncoding): String = when (encoding) {
-    is SampleEncoding.PcmInt -> "${encoding.bitDepth.bits}-bit PCM"
-    is SampleEncoding.PcmFloat ->
-        "${if (encoding.precision == FloatPrecision.F32) "32" else "64"}-bit Float"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -248,429 +243,548 @@ fun ConversionShowcase() {
         return trackedSource.convertAudio(targetAudioFormat)
     }
 
-    LazyColumn(
+    fun pickAndLoad() {
+        if (isPicking) return
+        isPicking = true
+        scope.launch {
+            try {
+                val file = pickFile(AudioPickerExtensions)
+                if (file != null) {
+                    isLoadingFile = true
+                    loadError = null
+                    statusError = null
+                    fileName = file.name
+                    val bytes = file.readBytes()
+                    val metadata = AudioFileReader.readMetadata(bytes, file.name)
+                    loadedContainer = metadata.container
+                    sourceRecording = AudioRecording.fromBytes(bytes, fileName = file.name)
+                }
+            } catch (e: AudioFileReadError.InvalidFile) {
+                loadError = "Invalid audio file: ${e.message}"
+                sourceRecording = null
+                loadedContainer = null
+            } catch (e: AudioFileReadError.UnsupportedFormat) {
+                loadError = "Unsupported format: ${e.message}"
+                sourceRecording = null
+                loadedContainer = null
+            } catch (e: Exception) {
+                loadError = "Failed to load: ${e.message}"
+                sourceRecording = null
+                loadedContainer = null
+            } finally {
+                isLoadingFile = false
+                isPicking = false
+            }
+        }
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(
+                horizontal = SampleDimens.ScreenPaddingH,
+                vertical = SampleDimens.ScreenPaddingV,
+            ),
     ) {
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-            ) {
-                Column(
+        val wide = maxWidth >= SampleDimens.WideBreakpoint
+        val scroll = rememberScrollState()
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (!wide) Modifier.verticalScroll(scroll) else Modifier),
+            verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap),
+        ) {
+            SampleScreenHeader(
+                title = "Conversion",
+                subtitle = "Resample / re-encode PCM and export WAV, AIFF, or AU.",
+            )
+
+            loadError?.let { SampleErrorBanner(it) }
+            statusError?.let { SampleErrorBanner(it) }
+
+            if (wide) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text("Load", style = MaterialTheme.typography.titleSmall)
-                    if (isLoadingFile) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            CircularProgressIndicator(Modifier.size(28.dp))
-                            Text(
-                                "Loading…",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    } else {
-                        Text(
-                            fileName ?: "No file selected",
-                            style = MaterialTheme.typography.bodyLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Button(onClick = {
-                            if (!isPicking) {
-                                isPicking = true
-                                scope.launch {
-                                    try {
-                                        val file = pickFile(AudioPickerExtensions)
-                                        if (file != null) {
-                                            isLoadingFile = true
-                                            loadError = null
-                                            statusError = null
-                                            fileName = file.name
-                                            val bytes = file.readBytes()
-                                            val metadata = AudioFileReader.readMetadata(bytes, file.name)
-                                            loadedContainer = metadata.container
-                                            sourceRecording = AudioRecording.fromBytes(
-                                                bytes,
-                                                fileName = file.name,
-                                            )
-                                        }
-                                    } catch (e: AudioFileReadError.InvalidFile) {
-                                        loadError = "Invalid audio file: ${e.message}"
-                                        sourceRecording = null
-                                        loadedContainer = null
-                                    } catch (e: AudioFileReadError.UnsupportedFormat) {
-                                        loadError = "Unsupported format: ${e.message}"
-                                        sourceRecording = null
-                                        loadedContainer = null
-                                    } catch (e: Exception) {
-                                        loadError = "Failed to load: ${e.message}"
-                                        sourceRecording = null
-                                        loadedContainer = null
-                                    } finally {
-                                        isLoadingFile = false
-                                        isPicking = false
-                                    }
-                                }
-                            }
-                        }, enabled = !isPicking) {
-                            Text(if (isPicking) "Picking…" else "Choose audio file")
-                        }
-
-                        sourceRecording?.let { rec ->
-                            Spacer(Modifier.height(8.dp))
-                            loadedContainer?.let {
-                                Text(
-                                    "Container: ${containerLabel(it)}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            Text(
-                                "${formatSampleRate(rec.format.sampleRate)}, " +
-                                    "${if (rec.format.channels == Channels.Mono) "Mono" else "Stereo"}, " +
-                                    encodingDescription(rec.format.encoding),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text(
-                                    "Duration: ${formatDurationSeconds(rec.calculatedDuration)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text(
-                                    "PCM size: ${formatFileSize(rec.sizeInBytes)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        sourceRecording?.let {
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap),
                     ) {
-                        Text("Target format", style = MaterialTheme.typography.titleSmall)
-
-                        Text("File format", style = MaterialTheme.typography.labelMedium)
-                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                            encodableFileFormats.forEachIndexed { index, fmt ->
-                                SegmentedButton(
-                                    selected = targetFileFormat == fmt,
-                                    onClick = { targetFileFormat = fmt },
-                                    shape = SegmentedButtonDefaults.itemShape(
-                                        index = index,
-                                        count = encodableFileFormats.size,
-                                    ),
-                                ) {
-                                    Text(containerLabel(fmt), maxLines = 1)
-                                }
-                            }
-                        }
-
-                        Text("Sample rate", style = MaterialTheme.typography.labelMedium)
-                        ExposedDropdownMenuBox(
-                            expanded = sampleRateMenuExpanded,
-                            onExpandedChange = { sampleRateMenuExpanded = it },
-                        ) {
-                            OutlinedTextField(
-                                value = "$targetSampleRate Hz",
-                                onValueChange = {},
-                                readOnly = true,
-                                trailingIcon = {
-                                    ExposedDropdownMenuDefaults.TrailingIcon(sampleRateMenuExpanded)
-                                },
-                                modifier = Modifier
-                                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                                    .fillMaxWidth(),
-                                singleLine = true,
-                            )
-                            ExposedDropdownMenu(
-                                expanded = sampleRateMenuExpanded,
-                                onDismissRequest = { sampleRateMenuExpanded = false },
-                            ) {
-                                sampleRateOptions.forEach { rate ->
-                                    DropdownMenuItem(
-                                        text = { Text("$rate Hz") },
-                                        onClick = {
-                                            targetSampleRate = rate
-                                            previewParamsKey = null
-                                            sampleRateMenuExpanded = false
-                                        },
-                                    )
-                                }
-                            }
-                        }
-
-                        Text("Encoding", style = MaterialTheme.typography.labelMedium)
-                        ExposedDropdownMenuBox(
-                            expanded = encodingMenuExpanded,
-                            onExpandedChange = { encodingMenuExpanded = it },
-                        ) {
-                            OutlinedTextField(
-                                value = targetEncodingChoice.label,
-                                onValueChange = {},
-                                readOnly = true,
-                                trailingIcon = {
-                                    ExposedDropdownMenuDefaults.TrailingIcon(encodingMenuExpanded)
-                                },
-                                modifier = Modifier
-                                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                                    .fillMaxWidth(),
-                                singleLine = true,
-                            )
-                            ExposedDropdownMenu(
-                                expanded = encodingMenuExpanded,
-                                onDismissRequest = { encodingMenuExpanded = false },
-                            ) {
-                                EncodingChoice.entries.forEach { enc ->
-                                    DropdownMenuItem(
-                                        text = { Text(enc.label) },
-                                        onClick = {
-                                            targetEncodingChoice = enc
-                                            previewParamsKey = null
-                                            encodingMenuExpanded = false
-                                        },
-                                    )
-                                }
-                            }
-                        }
-
-                        Text("Channels", style = MaterialTheme.typography.labelMedium)
-                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                            listOf(Channels.Mono, Channels.Stereo).forEachIndexed { index, ch ->
-                                SegmentedButton(
-                                    selected = targetChannels == ch,
-                                    onClick = {
-                                        targetChannels = ch
-                                        previewParamsKey = null
-                                    },
-                                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
-                                ) {
-                                    Text(if (ch == Channels.Mono) "Mono" else "Stereo", maxLines = 1)
-                                }
-                            }
-                        }
-
-                        if (aiffFloatBlocked) {
-                            Text(
-                                "AIFF export does not support IEEE float. Choose another encoding or WAV/AU.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                }
-            }
-
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text("Output", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            "${containerLabel(targetFileFormat)} • ${formatSampleRate(targetSampleRate)}, " +
-                                "${if (targetChannels == Channels.Mono) "Mono" else "Stereo"}, " +
-                                targetEncodingChoice.label,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        SourcePanel(
+                            fileName = fileName,
+                            isLoadingFile = isLoadingFile,
+                            isPicking = isPicking,
+                            sourceRecording = sourceRecording,
+                            loadedContainer = loadedContainer,
+                            onPick = ::pickAndLoad,
                         )
-                        Text(
-                            "Estimated PCM size: ${formatFileSize(estimatedPcmBytes)} " +
-                                "(plus container overhead)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-
-                        if (isConverting) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                LinearProgressIndicator(
-                                    progress = { conversionProgress },
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                Text(
-                                    "Converting… ${(conversionProgress * 100).toInt()}%",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            IconButton(
-                                onClick = { playerState.stop() },
-                                enabled = playerState.isPlaying || playerState.isPaused,
-                            ) {
-                                Icon(SampleIcons.Stop, contentDescription = "Stop")
-                            }
-                            Spacer(Modifier.size(8.dp))
-                            FilledIconButton(
-                                onClick = {
-                                    scope.launch {
-                                        statusError = null
-                                        if (previewParamsKey == currentParamsKey &&
-                                            (playerState.isReady || playerState.isPaused || playerState.isPlaying)
-                                        ) {
-                                            playerState.toggle()
-                                            return@launch
-                                        }
-                                        conversionProgress = 0f
-                                        isConverting = true
-                                        try {
-                                            val converted = withContext(Dispatchers.Default) {
-                                                AudioRecording.fromAudioFlow(buildConvertedFlow())
-                                            }
-                                            playerState.loadAsync(converted)
-                                            playerState.playAsync()
-                                            previewParamsKey = currentParamsKey
-                                        } catch (e: Exception) {
-                                            statusError = "Conversion failed: ${e.message}"
-                                            previewParamsKey = null
-                                        } finally {
-                                            isConverting = false
-                                        }
-                                    }
-                                },
-                                enabled = !isConverting,
-                                modifier = Modifier.size(56.dp),
-                            ) {
-                                Icon(
-                                    imageVector = if (playerState.isPlaying) SampleIcons.Pause
-                                    else SampleIcons.PlayArrow,
-                                    contentDescription = "Preview",
-                                )
-                            }
-                            Spacer(Modifier.size(16.dp))
-                            Text(
-                                when {
-                                    playerState.isLoading -> "Loading…"
-                                    playerState.isPlaying -> "Playing"
-                                    playerState.isPaused -> "Paused"
-                                    playerState.isFinished -> "Finished"
-                                    playerState.hasError -> "Error"
-                                    else -> "Ready"
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (playerState.hasError) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-
-                        playerState.error?.let { err ->
-                            Text(
-                                err.message ?: "Playback error",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    statusError = null
-                                    if (aiffFloatBlocked) return@launch
-                                    conversionProgress = 0f
-                                    isConverting = true
-                                    try {
-                                        val flow = buildConvertedFlow()
-                                        saveAudioWithFilePicker(
-                                            audioFlow = AudioFlow(
-                                                flow.format,
-                                                flow.flowOn(Dispatchers.Default),
-                                            ),
-                                            fileFormat = targetFileFormat,
-                                            suggestedName = "converted",
-                                        )
-                                    } catch (e: Exception) {
-                                        statusError = "Export failed: ${e.message}"
-                                    } finally {
-                                        isConverting = false
-                                    }
-                                }
+                        TargetFormatPanel(
+                            targetFileFormat = targetFileFormat,
+                            onFileFormat = { targetFileFormat = it },
+                            targetSampleRate = targetSampleRate,
+                            onSampleRate = {
+                                targetSampleRate = it
+                                previewParamsKey = null
                             },
-                            enabled = !isConverting && !aiffFloatBlocked,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text("Export…")
-                        }
+                            sampleRateMenuExpanded = sampleRateMenuExpanded,
+                            onSampleRateMenu = { sampleRateMenuExpanded = it },
+                            targetEncodingChoice = targetEncodingChoice,
+                            onEncoding = {
+                                targetEncodingChoice = it
+                                previewParamsKey = null
+                            },
+                            encodingMenuExpanded = encodingMenuExpanded,
+                            onEncodingMenu = { encodingMenuExpanded = it },
+                            targetChannels = targetChannels,
+                            onChannels = {
+                                targetChannels = it
+                                previewParamsKey = null
+                            },
+                            aiffFloatBlocked = aiffFloatBlocked,
+                        )
                     }
+                    OutputPanel(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        expand = true,
+                        targetFileFormat = targetFileFormat,
+                        targetSampleRate = targetSampleRate,
+                        targetChannels = targetChannels,
+                        targetEncodingChoice = targetEncodingChoice,
+                        estimatedPcmBytes = estimatedPcmBytes,
+                        isConverting = isConverting,
+                        conversionProgress = conversionProgress,
+                        playerState = playerState,
+                        aiffFloatBlocked = aiffFloatBlocked,
+                        hasSource = sourceRecording != null,
+                        onPreview = {
+                            scope.launch {
+                                statusError = null
+                                if (previewParamsKey == currentParamsKey &&
+                                    (playerState.isReady || playerState.isPaused || playerState.isPlaying)
+                                ) {
+                                    playerState.toggle()
+                                    return@launch
+                                }
+                                conversionProgress = 0f
+                                isConverting = true
+                                try {
+                                    val converted = withContext(Dispatchers.Default) {
+                                        AudioRecording.fromAudioFlow(buildConvertedFlow())
+                                    }
+                                    playerState.loadAsync(converted)
+                                    playerState.playAsync()
+                                    previewParamsKey = currentParamsKey
+                                } catch (e: Exception) {
+                                    statusError = "Conversion failed: ${e.message}"
+                                    previewParamsKey = null
+                                } finally {
+                                    isConverting = false
+                                }
+                            }
+                        },
+                        onStop = { playerState.stop() },
+                        onExport = {
+                            scope.launch {
+                                statusError = null
+                                if (aiffFloatBlocked) return@launch
+                                conversionProgress = 0f
+                                isConverting = true
+                                try {
+                                    val flow = buildConvertedFlow()
+                                    saveAudioWithFilePicker(
+                                        audioFlow = AudioFlow(
+                                            flow.format,
+                                            flow.flowOn(Dispatchers.Default),
+                                        ),
+                                        fileFormat = targetFileFormat,
+                                        suggestedName = "converted",
+                                    )
+                                } catch (e: Exception) {
+                                    statusError = "Export failed: ${e.message}"
+                                } finally {
+                                    isConverting = false
+                                }
+                            }
+                        },
+                    )
+                }
+            } else {
+                SourcePanel(
+                    fileName = fileName,
+                    isLoadingFile = isLoadingFile,
+                    isPicking = isPicking,
+                    sourceRecording = sourceRecording,
+                    loadedContainer = loadedContainer,
+                    onPick = ::pickAndLoad,
+                )
+                if (sourceRecording != null) {
+                    TargetFormatPanel(
+                        targetFileFormat = targetFileFormat,
+                        onFileFormat = { targetFileFormat = it },
+                        targetSampleRate = targetSampleRate,
+                        onSampleRate = {
+                            targetSampleRate = it
+                            previewParamsKey = null
+                        },
+                        sampleRateMenuExpanded = sampleRateMenuExpanded,
+                        onSampleRateMenu = { sampleRateMenuExpanded = it },
+                        targetEncodingChoice = targetEncodingChoice,
+                        onEncoding = {
+                            targetEncodingChoice = it
+                            previewParamsKey = null
+                        },
+                        encodingMenuExpanded = encodingMenuExpanded,
+                        onEncodingMenu = { encodingMenuExpanded = it },
+                        targetChannels = targetChannels,
+                        onChannels = {
+                            targetChannels = it
+                            previewParamsKey = null
+                        },
+                        aiffFloatBlocked = aiffFloatBlocked,
+                    )
+                    OutputPanel(
+                        modifier = Modifier.fillMaxWidth(),
+                        expand = false,
+                        targetFileFormat = targetFileFormat,
+                        targetSampleRate = targetSampleRate,
+                        targetChannels = targetChannels,
+                        targetEncodingChoice = targetEncodingChoice,
+                        estimatedPcmBytes = estimatedPcmBytes,
+                        isConverting = isConverting,
+                        conversionProgress = conversionProgress,
+                        playerState = playerState,
+                        aiffFloatBlocked = aiffFloatBlocked,
+                        hasSource = true,
+                        onPreview = {
+                            scope.launch {
+                                statusError = null
+                                if (previewParamsKey == currentParamsKey &&
+                                    (playerState.isReady || playerState.isPaused || playerState.isPlaying)
+                                ) {
+                                    playerState.toggle()
+                                    return@launch
+                                }
+                                conversionProgress = 0f
+                                isConverting = true
+                                try {
+                                    val converted = withContext(Dispatchers.Default) {
+                                        AudioRecording.fromAudioFlow(buildConvertedFlow())
+                                    }
+                                    playerState.loadAsync(converted)
+                                    playerState.playAsync()
+                                    previewParamsKey = currentParamsKey
+                                } catch (e: Exception) {
+                                    statusError = "Conversion failed: ${e.message}"
+                                    previewParamsKey = null
+                                } finally {
+                                    isConverting = false
+                                }
+                            }
+                        },
+                        onStop = { playerState.stop() },
+                        onExport = {
+                            scope.launch {
+                                statusError = null
+                                if (aiffFloatBlocked) return@launch
+                                conversionProgress = 0f
+                                isConverting = true
+                                try {
+                                    val flow = buildConvertedFlow()
+                                    saveAudioWithFilePicker(
+                                        audioFlow = AudioFlow(
+                                            flow.format,
+                                            flow.flowOn(Dispatchers.Default),
+                                        ),
+                                        fileFormat = targetFileFormat,
+                                        suggestedName = "converted",
+                                    )
+                                } catch (e: Exception) {
+                                    statusError = "Export failed: ${e.message}"
+                                } finally {
+                                    isConverting = false
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourcePanel(
+    fileName: String?,
+    isLoadingFile: Boolean,
+    isPicking: Boolean,
+    sourceRecording: AudioRecording?,
+    loadedContainer: AudioFileFormat?,
+    onPick: () -> Unit,
+) {
+    SamplePanel {
+        SamplePanelLabel("Source")
+        if (isLoadingFile) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                SampleStatusText("Reading file…")
+            }
+        } else {
+            Text(
+                fileName ?: "No file selected",
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Button(onClick = onPick, enabled = !isPicking) {
+                Text(if (isPicking) "Picking…" else "Choose file")
+            }
+            sourceRecording?.let { rec ->
+                loadedContainer?.let {
+                    SampleMetaRow("container", containerLabel(it))
+                }
+                SampleMetaRow("sample_rate", formatSampleRate(rec.format.sampleRate))
+                SampleMetaRow(
+                    "channels",
+                    if (rec.format.channels == Channels.Mono) "mono" else "stereo",
+                )
+                SampleMetaRow("encoding", encodingDescription(rec.format.encoding))
+                SampleMetaRow("duration", formatDurationShort(rec.calculatedDuration))
+                SampleMetaRow("pcm_size", formatFileSize(rec.sizeInBytes))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TargetFormatPanel(
+    targetFileFormat: AudioFileFormat,
+    onFileFormat: (AudioFileFormat) -> Unit,
+    targetSampleRate: Int,
+    onSampleRate: (Int) -> Unit,
+    sampleRateMenuExpanded: Boolean,
+    onSampleRateMenu: (Boolean) -> Unit,
+    targetEncodingChoice: EncodingChoice,
+    onEncoding: (EncodingChoice) -> Unit,
+    encodingMenuExpanded: Boolean,
+    onEncodingMenu: (Boolean) -> Unit,
+    targetChannels: Channels,
+    onChannels: (Channels) -> Unit,
+    aiffFloatBlocked: Boolean,
+) {
+    SamplePanel {
+        SamplePanelLabel("Target format")
+
+        Text("File format", style = MaterialTheme.typography.labelMedium)
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            encodableFileFormats.forEachIndexed { index, fmt ->
+                SegmentedButton(
+                    selected = targetFileFormat == fmt,
+                    onClick = { onFileFormat(fmt) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = encodableFileFormats.size,
+                    ),
+                ) {
+                    Text(containerLabel(fmt), maxLines = 1)
                 }
             }
         }
 
-        loadError?.let { msg ->
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                ) {
-                    Text(
-                        msg,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(16.dp),
+        Text("Sample rate", style = MaterialTheme.typography.labelMedium)
+        ExposedDropdownMenuBox(
+            expanded = sampleRateMenuExpanded,
+            onExpandedChange = onSampleRateMenu,
+        ) {
+            OutlinedTextField(
+                value = "$targetSampleRate Hz",
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(sampleRateMenuExpanded)
+                },
+                modifier = Modifier
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth(),
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+            )
+            ExposedDropdownMenu(
+                expanded = sampleRateMenuExpanded,
+                onDismissRequest = { onSampleRateMenu(false) },
+            ) {
+                sampleRateOptions.forEach { rate ->
+                    DropdownMenuItem(
+                        text = { Text("$rate Hz") },
+                        onClick = {
+                            onSampleRate(rate)
+                            onSampleRateMenu(false)
+                        },
                     )
                 }
             }
         }
 
-        statusError?.let { msg ->
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                ) {
-                    Text(
-                        msg,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(16.dp),
+        Text("Encoding", style = MaterialTheme.typography.labelMedium)
+        ExposedDropdownMenuBox(
+            expanded = encodingMenuExpanded,
+            onExpandedChange = onEncodingMenu,
+        ) {
+            OutlinedTextField(
+                value = targetEncodingChoice.label,
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = {
+                    ExposedDropdownMenuDefaults.TrailingIcon(encodingMenuExpanded)
+                },
+                modifier = Modifier
+                    .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                    .fillMaxWidth(),
+                singleLine = true,
+            )
+            ExposedDropdownMenu(
+                expanded = encodingMenuExpanded,
+                onDismissRequest = { onEncodingMenu(false) },
+            ) {
+                EncodingChoice.entries.forEach { enc ->
+                    DropdownMenuItem(
+                        text = { Text(enc.label) },
+                        onClick = {
+                            onEncoding(enc)
+                            onEncodingMenu(false)
+                        },
                     )
                 }
             }
         }
 
-        item { Spacer(Modifier.height(8.dp)) }
+        Text("Channels", style = MaterialTheme.typography.labelMedium)
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            listOf(Channels.Mono, Channels.Stereo).forEachIndexed { index, ch ->
+                SegmentedButton(
+                    selected = targetChannels == ch,
+                    onClick = { onChannels(ch) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                ) {
+                    Text(if (ch == Channels.Mono) "Mono" else "Stereo", maxLines = 1)
+                }
+            }
+        }
+
+        if (aiffFloatBlocked) {
+            Text(
+                "AIFF export does not support IEEE float. Choose another encoding or WAV/AU.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OutputPanel(
+    modifier: Modifier = Modifier,
+    expand: Boolean = false,
+    targetFileFormat: AudioFileFormat,
+    targetSampleRate: Int,
+    targetChannels: Channels,
+    targetEncodingChoice: EncodingChoice,
+    estimatedPcmBytes: Long,
+    isConverting: Boolean,
+    conversionProgress: Float,
+    playerState: space.kodio.compose.PlayerState,
+    aiffFloatBlocked: Boolean,
+    hasSource: Boolean,
+    onPreview: () -> Unit,
+    onStop: () -> Unit,
+    onExport: () -> Unit,
+) {
+    SamplePanel(modifier = modifier, fillMaxHeight = expand) {
+        SamplePanelLabel("Output")
+        if (!hasSource) {
+            SampleStatusText("Load a source file to preview and export.")
+            return@SamplePanel
+        }
+
+        SampleMetaRow("container", containerLabel(targetFileFormat))
+        SampleMetaRow("sample_rate", formatSampleRate(targetSampleRate))
+        SampleMetaRow(
+            "channels",
+            if (targetChannels == Channels.Mono) "mono" else "stereo",
+        )
+        SampleMetaRow("encoding", targetEncodingChoice.label)
+        SampleMetaRow("est_pcm", formatFileSize(estimatedPcmBytes))
+
+        if (isConverting) {
+            LinearProgressIndicator(
+                progress = { conversionProgress },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            SampleStatusText("Converting… ${(conversionProgress * 100).toInt()}%")
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = onStop,
+                enabled = playerState.isPlaying || playerState.isPaused,
+            ) {
+                Icon(SampleIcons.Stop, contentDescription = "Stop")
+            }
+            Spacer(Modifier.size(8.dp))
+            FilledIconButton(
+                onClick = onPreview,
+                enabled = !isConverting,
+                modifier = Modifier.size(52.dp),
+            ) {
+                Icon(
+                    imageVector = if (playerState.isPlaying) SampleIcons.Pause else SampleIcons.PlayArrow,
+                    contentDescription = "Preview",
+                )
+            }
+            Spacer(Modifier.size(12.dp))
+            SampleStatusText(
+                text = when {
+                    playerState.isLoading -> "Loading"
+                    playerState.isPlaying -> "Playing"
+                    playerState.isPaused -> "Paused"
+                    playerState.isFinished -> "Finished"
+                    playerState.hasError -> "Error"
+                    else -> "Ready"
+                },
+                isError = playerState.hasError,
+            )
+        }
+
+        playerState.error?.let { err ->
+            Text(
+                err.message ?: "Playback error",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        Button(
+            onClick = onExport,
+            enabled = !isConverting && !aiffFloatBlocked,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Export…")
+        }
     }
 }

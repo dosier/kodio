@@ -1,100 +1,151 @@
 package space.kodio.sample
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import org.jetbrains.compose.ui.tooling.preview.Preview
-import space.kodio.compose.AudioWaveform
-import space.kodio.compose.PlayerState
-import space.kodio.compose.RecorderState
-import space.kodio.compose.WaveformColors
-import space.kodio.compose.WaveformStyle
-import space.kodio.compose.rememberPlayerState
-import space.kodio.compose.rememberRecorderState
-import space.kodio.core.AudioDevice
-import space.kodio.core.AudioFormat
-import space.kodio.core.AudioQuality
-import space.kodio.core.AudioRecording
-import space.kodio.core.Channels
-import space.kodio.core.Kodio
-import space.kodio.core.SampleEncoding
 import space.kodio.sample.icons.SampleIcons
+
+private enum class SampleDestination(val label: String) {
+    Recording("Record"),
+    Playback("Playback"),
+    Conversion("Convert"),
+    Transcription("Transcribe"),
+}
+
+private val SampleDestination.icon: ImageVector
+    get() = when (this) {
+        SampleDestination.Recording -> SampleIcons.Mic
+        SampleDestination.Playback -> SampleIcons.PlayArrow
+        SampleDestination.Conversion -> SampleIcons.Folder
+        SampleDestination.Transcription -> SampleIcons.Schedule
+    }
 
 /**
  * Sample app demonstrating Kodio features.
- * 
- * This showcases:
- * - Recording with rememberRecorderState()
- * - Playback with rememberPlayerState()  
- * - AudioWaveform visualization
- * - Real-time transcription with OpenAI Whisper
+ *
+ * Showcases recording, file playback + metadata, format conversion,
+ * and OpenAI Whisper transcription under a shared developer-tool theme.
  */
-
 @Composable
 @Preview
 fun App() {
-    MaterialTheme(colorScheme = darkColorScheme()) {
-        var selectedTab by remember { mutableStateOf(0) }
-        
-        // API Key - try to get from system property first (set via local.properties)
+    SampleTheme {
+        var selectedIndex by remember { mutableIntStateOf(1) }
         var apiKey by remember { mutableStateOf(getOpenAIApiKey()) }
-        var showApiKeyDialog by remember { mutableStateOf(false) }
-        
-        Scaffold(
-            containerColor = MaterialTheme.colorScheme.surface,
-            topBar = {
-                Column(modifier = Modifier.statusBarsPadding()) {
-                    @OptIn(ExperimentalMaterial3Api::class)
-                    PrimaryScrollableTabRow(selectedTabIndex = selectedTab) {
-                        Tab(
-                            selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
-                            text = { Text("Recording") }
-                        )
-                        Tab(
-                            selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
-                            text = { Text("Playback") }
-                        )
-                        Tab(
-                            selected = selectedTab == 2,
-                            onClick = { selectedTab = 2 },
-                            text = { Text("Conversion") }
-                        )
-                        Tab(
-                            selected = selectedTab == 3,
-                            onClick = { selectedTab = 3 },
-                            text = { Text("Transcription") }
-                        )
+
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val wide = maxWidth >= SampleDimens.WideBreakpoint
+            val destinations = SampleDestination.entries
+
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.surface,
+                bottomBar = {
+                    if (!wide) {
+                        NavigationBar {
+                            destinations.forEachIndexed { index, dest ->
+                                NavigationBarItem(
+                                    selected = selectedIndex == index,
+                                    onClick = { selectedIndex = index },
+                                    icon = {
+                                        Icon(
+                                            imageVector = dest.icon,
+                                            contentDescription = dest.label,
+                                        )
+                                    },
+                                    label = { Text(dest.label) },
+                                )
+                            }
+                        }
                     }
-                }
-            }
-        ) { paddingValues ->
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-            ) {
-                when (selectedTab) {
-                    0 -> RecordingDemo()
-                    1 -> PlaybackShowcase()
-                    2 -> ConversionShowcase()
-                    3 -> {
-                        if (apiKey.isBlank()) {
-                            // Show API key input
-                            ApiKeyInputScreen(
-                                onApiKeySubmit = { key ->
-                                    apiKey = key
-                                }
+                },
+            ) { paddingValues ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(paddingValues)
+                        .statusBarsPadding(),
+                ) {
+                    if (wide) {
+                        NavigationRail(
+                            modifier = Modifier.fillMaxHeight(),
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Kodio",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             )
-                        } else {
-                            TranscriptionShowcase(apiKey = apiKey)
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant,
+                            )
+                            destinations.forEachIndexed { index, dest ->
+                                NavigationRailItem(
+                                    selected = selectedIndex == index,
+                                    onClick = { selectedIndex = index },
+                                    icon = {
+                                        Icon(
+                                            imageVector = dest.icon,
+                                            contentDescription = dest.label,
+                                        )
+                                    },
+                                    label = { Text(dest.label) },
+                                )
+                            }
+                        }
+                        VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+
+                    Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                        when (destinations[selectedIndex]) {
+                            SampleDestination.Recording -> RecordingShowcase()
+                            SampleDestination.Playback -> PlaybackShowcase()
+                            SampleDestination.Conversion -> ConversionShowcase()
+                            SampleDestination.Transcription -> {
+                                if (apiKey.isBlank()) {
+                                    ApiKeyInputScreen(onApiKeySubmit = { apiKey = it })
+                                } else {
+                                    TranscriptionShowcase(apiKey = apiKey)
+                                }
+                            }
                         }
                     }
                 }
@@ -103,442 +154,46 @@ fun App() {
     }
 }
 
-/**
- * Screen to input the OpenAI API key.
- */
 @Composable
 private fun ApiKeyInputScreen(
-    onApiKeySubmit: (String) -> Unit
+    onApiKeySubmit: (String) -> Unit,
 ) {
     var inputKey by remember { mutableStateOf("") }
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(
+                horizontal = SampleDimens.ScreenPaddingH,
+                vertical = SampleDimens.ScreenPaddingV,
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Center,
     ) {
-        Text(
-            "OpenAI API Key Required",
-            style = MaterialTheme.typography.headlineSmall
-        )
-        
-        Spacer(Modifier.height(8.dp))
-        
-        Text(
-            "Enter your OpenAI API key to enable transcription.\n" +
-            "Get a key at platform.openai.com",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        
-        Spacer(Modifier.height(24.dp))
-        
-        OutlinedTextField(
-            value = inputKey,
-            onValueChange = { inputKey = it },
-            label = { Text("API Key") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        
-        Spacer(Modifier.height(16.dp))
-        
-        Button(
-            onClick = { onApiKeySubmit(inputKey) },
-            enabled = inputKey.isNotBlank(),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Continue")
-        }
-    }
-}
-
-/**
- * The original recording demo section.
- */
-@Composable
-private fun RecordingDemo() {
-    var recordings by remember { mutableStateOf(listOf<AudioRecording>()) }
-    var selectedRecordings by remember { mutableStateOf<Set<AudioRecording>>(emptySet()) }
-    var selectedQuality by remember { mutableStateOf(AudioQuality.Default) }
-    var inputDevices by remember { mutableStateOf<List<AudioDevice.Input>>(emptyList()) }
-    var selectedInputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
-    var stitchError by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        inputDevices = Kodio.listInputDevices()
-    }
-
-    val recorderState = rememberRecorderState(
-        quality = selectedQuality,
-        device = selectedInputDevice,
-        onRecordingComplete = { recording ->
-            recordings = recordings + recording
-        }
-    )
-    
-    val scope = rememberCoroutineScope()
-    
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        val recorderActive = recorderState.isRecording || recorderState.isPaused
-
-        item {
-            DeviceSelector(
-                label = "Input Device",
-                devices = inputDevices,
-                selected = selectedInputDevice,
-                onSelect = { selectedInputDevice = it },
-                enabled = !recorderActive,
-            )
-        }
-
-        item {
-            QualitySelector(
-                selected = selectedQuality,
-                onSelect = { selectedQuality = it },
-                enabled = !recorderActive,
-            )
-        }
-
-        item {
-            RecordingSection(recorderState, scope)
-        }
-        
-        item {
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Recordings (${recordings.size})",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                TextButton(
-                    enabled = selectedRecordings.size >= 2,
-                    onClick = {
-                        val source = recordings.filter { it in selectedRecordings }
-                        if (source.size < 2) return@TextButton
-                        scope.launch {
-                            stitchError = null
-                            try {
-                                val stitched = AudioRecording.concat(source)
-                                recordings = recordings + stitched
-                                selectedRecordings = emptySet()
-                            } catch (e: Exception) {
-                                stitchError = e.message ?: e::class.simpleName
-                            }
-                        }
-                    },
-                ) {
-                    Text("Stitch selected (${selectedRecordings.size})")
-                }
-            }
-        }
-
-        stitchError?.let { msg ->
-            item {
-                Text(
-                    "Stitch failed: $msg",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-
-        items(recordings) { recording ->
-            RecordingItem(
-                recording = recording,
-                isSelected = recording in selectedRecordings,
-                onSelectedChange = { isSelected ->
-                    selectedRecordings = if (isSelected) {
-                        selectedRecordings + recording
-                    } else {
-                        selectedRecordings - recording
-                    }
-                },
-                onSave = { scope.launch { saveWavFile(recording.asAudioFlow()) } },
-                onDelete = {
-                    recordings = recordings - recording
-                    selectedRecordings = selectedRecordings - recording
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun RecordingSection(
-    recorderState: RecorderState,
-    @Suppress("UNUSED_PARAMETER") scope: kotlinx.coroutines.CoroutineScope
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-    ) {
-        Column(
+        SamplePanel(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .widthIn(max = 480.dp),
         ) {
-            Text(
-                text = when {
-                    recorderState.needsPermission -> "Microphone permission required"
-                    recorderState.isPaused -> "Paused — tap Resume to continue"
-                    recorderState.isRecording -> "Recording..."
-                    recorderState.error != null -> "Error: ${recorderState.error?.message}"
-                    else -> "Ready to record"
-                },
-                style = MaterialTheme.typography.bodyLarge
+            SampleScreenHeader(
+                title = "API key",
+                subtitle = "OpenAI Whisper transcription needs a key from platform.openai.com.",
             )
-
-            if (recorderState.needsPermission) {
-                Button(onClick = { recorderState.requestPermission() }) {
-                    Text("Grant Permission")
-                }
-            }
-
-            if (recorderState.isRecording || recorderState.isPaused) {
-                AudioWaveform(
-                    amplitudes = recorderState.liveAmplitudes,
-                    style = WaveformStyle.Mirrored(),
-                    colors = WaveformColors.GreenGradient,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(80.dp)
-                )
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                when {
-                    recorderState.isPaused -> Button(
-                        onClick = { recorderState.resume() },
-                        enabled = !recorderState.needsPermission,
-                    ) {
-                        Icon(SampleIcons.Mic, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Resume")
-                    }
-                    recorderState.isRecording -> Button(
-                        onClick = { recorderState.pause() },
-                        enabled = !recorderState.needsPermission,
-                    ) {
-                        Icon(SampleIcons.Pause, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Pause")
-                    }
-                    else -> Button(
-                        onClick = { recorderState.start() },
-                        enabled = !recorderState.needsPermission,
-                    ) {
-                        Icon(SampleIcons.Mic, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Record")
-                    }
-                }
-
-                if (recorderState.isRecording || recorderState.isPaused) {
-                    OutlinedButton(
-                        onClick = { recorderState.stop() },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        ),
-                    ) {
-                        Icon(SampleIcons.Stop, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Stop")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun <T : AudioDevice> DeviceSelector(
-    label: String,
-    devices: List<T>,
-    selected: T?,
-    onSelect: (T?) -> Unit,
-    enabled: Boolean = true,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(label, style = MaterialTheme.typography.titleSmall)
-
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { if (enabled) expanded = it }
-            ) {
-                OutlinedTextField(
-                    value = selected?.name ?: "System Default",
-                    onValueChange = {},
-                    readOnly = true,
-                    enabled = enabled,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-                    singleLine = true,
-                )
-
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("System Default") },
-                        onClick = {
-                            onSelect(null)
-                            expanded = false
-                        }
-                    )
-                    devices.forEach { device ->
-                        DropdownMenuItem(
-                            text = { Text(device.name) },
-                            onClick = {
-                                onSelect(device)
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun QualitySelector(
-    selected: AudioQuality,
-    onSelect: (AudioQuality) -> Unit,
-    enabled: Boolean,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text("Audio Quality", style = MaterialTheme.typography.titleSmall)
-
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                AudioQuality.entries.forEachIndexed { index, quality ->
-                    SegmentedButton(
-                        selected = quality == selected,
-                        onClick = { onSelect(quality) },
-                        enabled = enabled,
-                        shape = SegmentedButtonDefaults.itemShape(
-                            index = index,
-                            count = AudioQuality.entries.size
-                        ),
-                    ) {
-                        Text(quality.name, maxLines = 1)
-                    }
-                }
-            }
-
-            Text(
-                text = selected.format.label,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            OutlinedTextField(
+                value = inputKey,
+                onValueChange = { inputKey = it },
+                label = { Text("sk-…") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             )
-        }
-    }
-}
-
-@Composable
-private fun RecordingItem(
-    recording: AudioRecording,
-    isSelected: Boolean,
-    onSelectedChange: (Boolean) -> Unit,
-    onSave: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val playerState = rememberPlayerState(recording)
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Button(
+                onClick = { onApiKeySubmit(inputKey.trim()) },
+                enabled = inputKey.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = onSelectedChange,
-                )
-
-                IconButton(onClick = { playerState.toggle() }) {
-                    Icon(
-                        imageVector = if (playerState.isPlaying) SampleIcons.Pause else SampleIcons.PlayArrow,
-                        contentDescription = if (playerState.isPlaying) "Pause" else "Play"
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Duration: ${recording.calculatedDuration}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        recording.format.label,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        formatBytes(recording.sizeInBytes),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                TextButton(onClick = onSave) { Text("Save") }
-                IconButton(onClick = onDelete) { Icon(SampleIcons.Delete, contentDescription = "Delete") }
+                Text("Continue")
             }
         }
     }
-}
-
-private val AudioFormat.label: String
-    get() = buildString {
-        append("${sampleRate / 1000.0}kHz")
-        append(" / ")
-        append(if (channels == Channels.Mono) "Mono" else "Stereo")
-        append(" / ")
-        when (val enc = encoding) {
-            is SampleEncoding.PcmInt -> append("${enc.bitDepth.bits}-bit int")
-            is SampleEncoding.PcmFloat -> append("${if (enc.precision == space.kodio.core.FloatPrecision.F32) "32" else "64"}-bit float")
-        }
-    }
-
-private fun formatBytes(bytes: Long): String = when {
-    bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> "${formatDecimal(bytes / 1024.0, 1)} KB"
-    else -> "${formatDecimal(bytes / (1024.0 * 1024.0), 2)} MB"
 }

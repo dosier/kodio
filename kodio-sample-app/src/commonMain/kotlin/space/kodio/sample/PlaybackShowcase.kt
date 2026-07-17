@@ -37,7 +37,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,9 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
@@ -63,7 +60,6 @@ import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readBytes
 import kotlinx.coroutines.launch
 import space.kodio.compose.AudioWaveform
-import space.kodio.compose.WaveformColors
 import space.kodio.compose.WaveformStyle
 import space.kodio.compose.rememberPlayerState
 import space.kodio.core.AudioDevice
@@ -73,7 +69,6 @@ import space.kodio.core.Endianness
 import space.kodio.core.FloatPrecision
 import space.kodio.core.Kodio
 import space.kodio.core.SampleEncoding
-import space.kodio.core.io.files.AudioFileFormat
 import space.kodio.core.io.files.AudioFileReadError
 import space.kodio.core.io.files.AudioFileReader
 import space.kodio.core.io.files.fromBytes
@@ -88,9 +83,6 @@ import kotlin.time.Duration
 /** Supported picker extensions for decode + metadata. */
 internal val AudioPickerExtensions = listOf("wav", "wave", "aiff", "aif", "au", "snd", "mp3")
 
-private val KodAccent = Color(0xFF7C5CDB)
-private val WideBreakpoint = 840.dp
-
 private data class LoadedAudioFile(
     val fileName: String,
     val recording: AudioRecording,
@@ -99,21 +91,7 @@ private data class LoadedAudioFile(
 
 @Composable
 fun PlaybackShowcase() {
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = KodAccent,
-            secondary = KodAccent,
-            tertiary = KodAccent,
-            primaryContainer = Color(0xFF2A2340),
-            onPrimaryContainer = Color(0xFFE8E0FF),
-            surface = Color(0xFF121218),
-            surfaceVariant = Color(0xFF1C1C24),
-            outline = Color(0xFF3A3A48),
-            outlineVariant = Color(0xFF2A2A36),
-        )
-    ) {
-        PlaybackShowcaseContent()
-    }
+    PlaybackShowcaseContent()
 }
 
 @Composable
@@ -182,10 +160,16 @@ private fun PlaybackShowcaseContent() {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(
+                horizontal = SampleDimens.ScreenPaddingH,
+                vertical = SampleDimens.ScreenPaddingV,
+            ),
+        verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap),
     ) {
-        PlaybackHeader()
+        SampleScreenHeader(
+            title = "File playback",
+            subtitle = "Decode WAV / AIFF / AU / MP3 and inspect container metadata.",
+        )
 
         DeviceSelector(
             label = "Output device",
@@ -194,27 +178,14 @@ private fun PlaybackShowcaseContent() {
             onSelect = { selectedOutputDevice = it },
         )
 
-        error?.let { msg ->
-            Surface(
-                color = MaterialTheme.colorScheme.errorContainer,
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = msg,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                )
-            }
-        }
+        error?.let { msg -> SampleErrorBanner(msg) }
 
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            val wide = maxWidth >= WideBreakpoint
+            val wide = maxWidth >= SampleDimens.WideBreakpoint
             val current = loaded
 
             when {
@@ -229,7 +200,7 @@ private fun PlaybackShowcaseContent() {
                 wide -> {
                     Row(
                         modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         PreviewPane(
                             loaded = current,
@@ -260,7 +231,7 @@ private fun PlaybackShowcaseContent() {
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap),
                     ) {
                         PreviewPane(
                             loaded = current,
@@ -283,28 +254,6 @@ private fun PlaybackShowcaseContent() {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PlaybackHeader() {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            text = "Kodio",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = "File playback",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Medium,
-        )
-        Text(
-            text = "Decode WAV / AIFF / AU / MP3 and inspect container metadata.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -343,16 +292,16 @@ private fun EmptyDropPane(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(SampleDimens.PanelRadius),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(32.dp),
+                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
             ) {
                 Text(
                     "Open an audio file",
@@ -363,7 +312,6 @@ private fun EmptyDropPane(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(4.dp))
                 Button(
                     onClick = onPickFile,
                     enabled = !isPicking,
@@ -401,15 +349,15 @@ private fun PreviewPane(
     ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(SampleDimens.PanelRadius),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(SampleDimens.PanelPadding),
+                verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -417,11 +365,7 @@ private fun PreviewPane(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Preview",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        SamplePanelLabel("Preview")
                         Text(
                             text = loaded.fileName,
                             style = MaterialTheme.typography.titleMedium,
@@ -467,21 +411,17 @@ private fun PlaybackControls(
     val waveform = remember(recording) { generateStaticWaveform(recording) }
     val canScrub = playerState.duration > Duration.ZERO && !playerState.isLoading
 
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap)) {
         AudioWaveform(
             amplitudes = waveform,
             style = WaveformStyle.Bar(width = 3.dp, spacing = 1.dp),
-            colors = WaveformColors(
-                waveColor = SolidColor(KodAccent.copy(alpha = 0.35f)),
-                progressColor = SolidColor(KodAccent),
-                inactiveColor = SolidColor(KodAccent.copy(alpha = 0.35f)),
-            ),
+            colors = sampleWaveformColors(),
             progress = playerState.progress,
             onProgressChange = if (canScrub) { p -> playerState.seekTo(p) } else null,
             animate = false,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(120.dp),
+                .height(100.dp),
         )
 
         Row(
@@ -660,23 +600,19 @@ private fun MetadataPane(
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(SampleDimens.PanelRadius),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp)
+                .padding(SampleDimens.PanelPadding)
                 .animateContentSize(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(SampleDimens.SectionGap),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "Metadata",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SamplePanelLabel("Metadata")
                 Text(
                     text = "AudioFileReader.readMetadata()",
                     style = MaterialTheme.typography.bodySmall,
@@ -746,28 +682,28 @@ private fun TechnicalBlock(
             text = "Technical",
             style = MaterialTheme.typography.titleSmall,
         )
-        MetaRow("container", containerLabel(metadata.container))
-        MetaRow("encoding", encodingLabel(metadata.encoding))
-        MetaRow("sample_rate", formatSampleRate(metadata.sampleRate))
-        MetaRow(
+        SampleMetaRow("container", containerLabel(metadata.container))
+        SampleMetaRow("encoding", encodingLabel(metadata.encoding))
+        SampleMetaRow("sample_rate", formatSampleRate(metadata.sampleRate))
+        SampleMetaRow(
             "channels",
             when (metadata.channels) {
                 Channels.Mono -> "mono"
                 Channels.Stereo -> "stereo"
             },
         )
-        MetaRow("duration", formatDuration(metadata.duration))
+        SampleMetaRow("duration", formatDurationShort(metadata.duration))
         when (val enc = metadata.encoding) {
             is AudioEncodingInfo.Compressed.Mp3 -> {
-                MetaRow(
+                SampleMetaRow(
                     "bitrate",
                     enc.bitrate?.let { "${it / 1000} kbps" } ?: "unknown",
                 )
-                MetaRow("vbr", if (enc.vbr) "true" else "false")
-                MetaRow("mpeg", "MPEG-${enc.mpegVersion} L${enc.layer}")
+                SampleMetaRow("vbr", if (enc.vbr) "true" else "false")
+                SampleMetaRow("mpeg", "MPEG-${enc.mpegVersion} L${enc.layer}")
             }
             is AudioEncodingInfo.Pcm -> {
-                MetaRow("pcm_size", formatFileSize(pcmBytes))
+                SampleMetaRow("pcm_size", formatFileSize(pcmBytes))
             }
         }
     }
@@ -776,36 +712,13 @@ private fun TechnicalBlock(
 @Composable
 private fun TagsDetail(tags: AudioTags) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        tags.trackNumber?.let { MetaRow("track", it.toString()) }
-        tags.year?.let { MetaRow("year", it.toString()) }
-        tags.genre?.takeIf { it.isNotBlank() }?.let { MetaRow("genre", it) }
-        tags.comment?.takeIf { it.isNotBlank() }?.let { MetaRow("comment", it) }
+        tags.trackNumber?.let { SampleMetaRow("track", it.toString()) }
+        tags.year?.let { SampleMetaRow("year", it.toString()) }
+        tags.genre?.takeIf { it.isNotBlank() }?.let { SampleMetaRow("genre", it) }
+        tags.comment?.takeIf { it.isNotBlank() }?.let { SampleMetaRow("comment", it) }
         tags.raw.toList().sortedBy { it.first }.forEach { (key, value) ->
-            MetaRow(key, value)
+            SampleMetaRow(key, value)
         }
-    }
-}
-
-@Composable
-private fun MetaRow(key: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Text(
-            text = key,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(110.dp),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.weight(1f),
-        )
     }
 }
 
@@ -849,22 +762,6 @@ private fun hasSecondaryTags(tags: AudioTags): Boolean =
         tags.year != null ||
         !tags.genre.isNullOrBlank() ||
         !tags.comment.isNullOrBlank()
-
-internal fun containerLabel(format: AudioFileFormat): String = when (format) {
-    is AudioFileFormat.Wav -> "WAV"
-    is AudioFileFormat.Aiff -> "AIFF"
-    is AudioFileFormat.Au -> "AU"
-    is AudioFileFormat.Mp3 -> "MP3"
-}
-
-private fun encodingLabel(encoding: AudioEncodingInfo): String = when (encoding) {
-    is AudioEncodingInfo.Pcm -> when (val pcm = encoding.encoding) {
-        is SampleEncoding.PcmInt -> "${pcm.bitDepth.bits}-bit PCM"
-        is SampleEncoding.PcmFloat ->
-            "${if (pcm.precision == FloatPrecision.F32) "32" else "64"}-bit float"
-    }
-    is AudioEncodingInfo.Compressed.Mp3 -> "MP3"
-}
 
 /**
  * Builds a static peak waveform for [recording].
@@ -974,35 +871,3 @@ private fun readInt64Le(bytes: ByteArray, offset: Int): Long {
     return value
 }
 
-private fun formatPlaybackTime(duration: Duration): String {
-    if (duration <= Duration.ZERO) return "0:00"
-    val totalMs = duration.inWholeMilliseconds.coerceAtLeast(0)
-    val totalSeconds = totalMs / 1000
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
-    val tenths = (totalMs % 1000) / 100
-    return if (minutes >= 10) {
-        "$minutes:${seconds.toString().padStart(2, '0')}"
-    } else {
-        "$minutes:${seconds.toString().padStart(2, '0')}.$tenths"
-    }
-}
-
-private fun formatSampleRate(rate: Int): String = when {
-    rate >= 1000 -> "${formatDecimal(rate / 1000.0, 1)} kHz"
-    else -> "$rate Hz"
-}
-
-private fun formatDuration(duration: Duration?): String {
-    if (duration == null) return "—"
-    val totalMs = duration.inWholeMilliseconds
-    val seconds = totalMs / 1000
-    val ms = totalMs % 1000
-    return if (seconds > 0) "${seconds}.${(ms / 100)}s" else "${ms}ms"
-}
-
-private fun formatFileSize(bytes: Long): String = when {
-    bytes >= 1_048_576 -> "${formatDecimal(bytes / 1_048_576.0, 1)} MB"
-    bytes >= 1024 -> "${formatDecimal(bytes / 1024.0, 1)} KB"
-    else -> "$bytes B"
-}
