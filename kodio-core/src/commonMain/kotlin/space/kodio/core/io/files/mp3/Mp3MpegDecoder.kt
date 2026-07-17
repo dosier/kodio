@@ -32,13 +32,11 @@ private val logger = namedLogger("Mp3Decoder")
  */
 @Suppress(
     "UNUSED_PARAMETER",
-    "KotlinConstantConditions",
     "CascadeIf",
     "LiftReturnOrAssignment",
     "UNUSED_CHANGED_VALUE",
     "NAME_SHADOWING",
     "UNUSED_VARIABLE",
-    "UnnecessaryVariable",
     "ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE",
     "UNUSED_VALUE",
 )
@@ -346,13 +344,33 @@ internal object Mp3MpegDecoder {
       }
     }
     
-    mainDataReader.array.copyInto(mainDataReader.array, 0, mainDataReader.top - mainDataBegin, mainDataReader.top - mainDataBegin + mainDataBegin);
-    
+    // First frames (or after seek) may advertise a reservoir larger than we have yet.
+    // Keep as much history as exists; never copy with a negative source index.
+    val effectiveBegin = minOf(mainDataBegin, mainDataReader.top).coerceAtLeast(0)
+    if (effectiveBegin > 0) {
+      val reservoirStart = mainDataReader.top - effectiveBegin
+      mainDataReader.array.copyInto(
+        destination = mainDataReader.array,
+        destinationOffset = 0,
+        startIndex = reservoirStart,
+        endIndex = reservoirStart + effectiveBegin,
+      )
+    }
+
     var mainDataSize = frameSize - (if (stereo == 2) 32 else 17) - 4;
-    readInto(buffer, mainDataReader.array, mainDataBegin, mainDataSize);
+    if (mainDataSize < 0) {
+      throw IllegalStateException("Invalid Layer III frame size $frameSize")
+    }
+    if (effectiveBegin + mainDataSize > mainDataReader.array.size) {
+      throw IllegalStateException(
+        "Layer III main data exceeds reservoir buffer " +
+          "(begin=$effectiveBegin size=$mainDataSize capacity=${mainDataReader.array.size})"
+      )
+    }
+    readInto(buffer, mainDataReader.array, effectiveBegin, mainDataSize);
     mainDataReader.index = 0;
     mainDataReader.current = 0;
-    mainDataReader.top = mainDataBegin + mainDataSize;
+    mainDataReader.top = effectiveBegin + mainDataSize;
     
     for (gr in 0 until 2) {
       for (ch in 0 until stereo) {
@@ -1227,7 +1245,7 @@ internal object Mp3MpegDecoder {
               fraction = -1f;
             }
             fraction += (read and ((0b1 shl n) - 1)).toFloat() / (0b1 shl n) + 1f / (0b1 shl n).toFloat();
-            sampleDecoded[ch * 32 * 12 + sb * 12 + s] = SCALEFACTORS[scalefactorChannel[ch * 32 + sb]] * PRE_FRACTOR_LAYER_I[n + 1] * fraction;
+            sampleDecoded[ch * 32 * 12 + sb * 12 + s] = SCALEFACTORS[scalefactorChannel[ch * 32 + sb].coerceIn(0, SCALEFACTORS.lastIndex)] * PRE_FRACTOR_LAYER_I[n + 1] * fraction;
           }
         }
       }
@@ -1243,7 +1261,7 @@ internal object Mp3MpegDecoder {
           }
           fraction += (read and ((0b1 shl n) - 1)).toFloat() / (0b1 shl n) + 1f / (0b1 shl n).toFloat();
           for (ch in 0 until 2) {
-            sampleDecoded[ch * 32 * 12 + sb * 12 + s] = SCALEFACTORS[scalefactorChannel[ch * 32 + sb]] * PRE_FRACTOR_LAYER_I[n + 1] * fraction;
+            sampleDecoded[ch * 32 * 12 + sb * 12 + s] = SCALEFACTORS[scalefactorChannel[ch * 32 + sb].coerceIn(0, SCALEFACTORS.lastIndex)] * PRE_FRACTOR_LAYER_I[n + 1] * fraction;
           }
         }
       }

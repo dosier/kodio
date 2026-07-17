@@ -10,7 +10,7 @@ private val logger = namedLogger("Mp3Decoder")
  * Output is interleaved signed 16-bit little-endian PCM.
  */
 internal object Mp3Decoder {
-    data class Result(
+    class Result(
         val pcm: ByteArray,
         val sampleRate: Int,
         val channels: Int,
@@ -26,8 +26,15 @@ internal object Mp3Decoder {
         val out = ArrayList<Byte>()
         // First frame already decoded by init()
         appendSamples(out, soundData.samplesBuffer)
-        while (Mp3MpegDecoder.decodeFrame(soundData)) {
-            appendSamples(out, soundData.samplesBuffer)
+        try {
+            while (Mp3MpegDecoder.decodeFrame(soundData)) {
+                appendSamples(out, soundData.samplesBuffer)
+            }
+        } catch (e: Exception) {
+            // Truncated / non-conformant bitstreams may throw mid-stream after valid frames.
+            // Keep PCM decoded so far when we already have samples.
+            if (out.isEmpty()) throw e
+            logger.warn(e) { "MP3 decode stopped early after ${out.size} PCM bytes: ${e.message}" }
         }
         if (out.isEmpty()) {
             throw IllegalArgumentException("MP3 decode produced no PCM samples")
