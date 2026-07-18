@@ -136,18 +136,30 @@ internal class NativeMacosAudioPlaybackSession(
 
         // Ingest on IO: never materialize the whole flow on the JVM heap.
         ingestJob = completionScope.launch {
+            var chunks = 0
+            var bytesFed = 0L
             runCatching {
                 normalized.collect { chunk ->
                     ensureActive()
                     appendNative(chunk)
+                    chunks++
+                    bytesFed += chunk.size
+                    if (chunks == 1 || chunks % 32 == 0) {
+                        logger.debug {
+                            "ingest progress chunks=$chunks bytesFed=$bytesFed " +
+                                "lastChunk=${chunk.size}"
+                        }
+                    }
                 }
                 endNativeStream()
                 ingestComplete = true
+                logger.info { "native ingest complete chunks=$chunks bytesFed=$bytesFed" }
             }.onFailure {
-                logger.error(it) { "native ingest failed: ${it.message}" }
+                logger.error(it) { "native ingest failed after chunks=$chunks bytesFed=$bytesFed: ${it.message}" }
             }
         }
 
+        logger.debug { "calling native play() epoch=$epoch" }
         NativeMacosLib.macos_playback_session_play.invokeExact(nativeMemSeq)
 
         if (!isCurrentPlay(epoch)) {
@@ -174,14 +186,22 @@ internal class NativeMacosAudioPlaybackSession(
 
     private fun watchCompletion(epoch: Int) {
         completionJob = completionScope.launch {
+            logger.debug { "await_completion started epoch=$epoch" }
             val result = NativeMacosLib.macos_playback_session_await_completion
                 .invokeExact(nativeMemSeq) as Int
             ensureActive()
-            if (!isCurrentPlay(epoch)) return@launch
+            if (!isCurrentPlay(epoch)) {
+                logger.debug { "await_completion ignored stale epoch=$epoch result=$result" }
+                return@launch
+            }
             _state.value = when (result) {
                 0 -> AudioPlaybackSession.State.Finished
                 1 -> AudioPlaybackSession.State.Error(RuntimeException("Native playback error"))
                 else -> AudioPlaybackSession.State.Idle
+            }
+            logger.info {
+                "native playback terminal result=$result state=${_state.value} " +
+                    "ingestComplete=$ingestComplete position=${_position.value}"
             }
             if (result == 0) wantPlaying.value = false
             stopPositionPolling()
@@ -274,25 +294,24 @@ internal class NativeMacosAudioPlaybackSession(
 
     private fun appendNative(chunk: ByteArray) {
         if (chunk.isEmpty()) return
-        // Native append copies via readBytes; do not retain chunk memory across calls.
+        // Native append copies via readBytes and blocks until the ingest channel
+        // accepts the chunk (no drop under back-pressure).
         Arena.ofConfined().use { arena ->
             val dataSeq = arena.allocate(chunk.size.toLong())
             dataSeq.asSlice(0, chunk.size.toLong()).copyFrom(MemorySegment.ofArray(chunk))
-            var attempts = 0
-            while (attempts++ < 64) {
-                val ok = NativeMacosLib.macos_playback_session_append.invokeExact(
-                    nativeMemSeq,
-                    chunk.size,
-                    dataSeq,
-                ) as Int
-                if (ok == 1) return@use
-                Thread.sleep(1) // back-pressure when native ingest channel is full
+            val ok = NativeMacosLib.macos_playback_session_append.invokeExact(
+                nativeMemSeq,
+                chunk.size,
+                dataSeq,
+            ) as Int
+            if (ok != 1) {
+                logger.warn { "appendNative rejected ${chunk.size} bytes (ingest channel closed)" }
             }
-            logger.warn { "appendNative dropped ${chunk.size} bytes after back-pressure retries" }
         }
     }
 
     private fun endNativeStream() {
+        logger.debug { "endNativeStream()" }
         NativeMacosLib.macos_playback_session_end_stream.invokeExact(nativeMemSeq)
     }
 

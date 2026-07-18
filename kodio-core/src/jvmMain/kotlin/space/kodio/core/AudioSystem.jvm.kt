@@ -20,18 +20,21 @@ private val logger = namedLogger("AudioSystem")
  *
  * On other platforms (Windows, Linux), uses javax.sound.sampled directly.
  * 
- * Set system property `kodio.useJavaSound=true` on the **application** JVM to
- * force JavaSound on macOS. For the desktop sample use
- * `-Pkodio.useJavaSound=true` (forwarded into the app process); a bare Gradle
- * `-D` does not always reach this process.
+ * Force JavaSound on macOS with any of:
+ * - application system property `kodio.useJavaSound=true`
+ * - environment variable `KODIO_USE_JAVA_SOUND=true`
+ *
+ * For the desktop sample, prefer `-Pkodio.useJavaSound=true` (forwarded into the
+ * app process) or the env var. A bare Gradle `-D` on the daemon does not always
+ * reach the application JVM.
  */
 actual val SystemAudioSystem: AudioSystem = run {
     val osName = System.getProperty("os.name").lowercase()
     val isMacOS = "mac" in osName
-    val forceJavaSound = System.getProperty("kodio.useJavaSound")?.toBoolean() == true
+    val forceJavaSound = isJavaSoundForced()
 
     if (forceJavaSound) {
-        logger.info { "Using JavaSound audio system (forced via kodio.useJavaSound=true)" }
+        logger.info { "Using JavaSound audio system (forced via kodio.useJavaSound / KODIO_USE_JAVA_SOUND)" }
         JvmAudioSystem
     } else if (isMacOS && NativeMacosAudioSystem.isAvailable) {
         logger.info { "Using native macOS audio system (CoreAudio via FFI)" }
@@ -42,6 +45,13 @@ actual val SystemAudioSystem: AudioSystem = run {
         }
         JvmAudioSystem
     }
+}
+
+/** True when the app JVM or environment requests JavaSound instead of native macOS. */
+internal fun isJavaSoundForced(): Boolean {
+    val raw = System.getProperty("kodio.useJavaSound")
+        ?: System.getenv("KODIO_USE_JAVA_SOUND")
+    return raw.equals("true", ignoreCase = true)
 }
 
 /**

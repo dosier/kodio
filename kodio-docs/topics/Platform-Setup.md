@@ -224,13 +224,17 @@ Or via command line:
 java -Dkodio.useJavaSound=true -jar your-app.jar
 ```
 
-For the desktop sample, pass a Gradle project property (recommended) or `-D` so it is forwarded into the app JVM:
+For the desktop sample, pass a Gradle project property (recommended), an environment variable, or `-D` so it is forwarded into the app JVM:
 
 ```bash
 ./gradlew :kodio-sample-app:desktopRun -Pkodio.useJavaSound=true
+# or
+KODIO_USE_JAVA_SOUND=true ./gradlew :kodio-sample-app:desktopRun
 ```
 
-Plain `./gradlew … -Dkodio.useJavaSound=true` only works if that property is visible on the Gradle configuration JVM; `-P` is reliable from the CLI and most IDE run configs.
+**IDE (`desktopRun`):** put `-Pkodio.useJavaSound=true` in the run configuration **Gradle script parameters** (or Arguments), or set env `KODIO_USE_JAVA_SOUND=true`. Putting only `-Dkodio.useJavaSound=true` under Gradle **VM options** affects the daemon, not the Compose application process, unless the sample's `build.gradle.kts` forwarding sees that property at configuration time.
+
+The library also honors `KODIO_USE_JAVA_SOUND=true` directly on the application process via [System.getenv].
 
 ## Web (JS / Wasm) {id="web"}
 

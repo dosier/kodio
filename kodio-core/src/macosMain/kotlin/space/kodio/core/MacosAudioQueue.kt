@@ -6,6 +6,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.onFailure
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import platform.AudioToolbox.*
 import platform.CoreAudioTypes.AudioStreamBasicDescription
 import platform.darwin.OSStatus
@@ -117,6 +119,43 @@ sealed class MacosAudioQueue<S : Any>(
                 // Soft-fail DuringReset: return buffer to pool.
                 state.availableBuffers.trySend(bufferRef)
                 return 0
+            }
+            return written
+        }
+
+        /**
+         * Block until [length] bytes from [src] are enqueued (or the queue stops).
+         *
+         * Transport [AudioSink.write] must not return early while the soft cursor
+         * still advances: a non-blocking prime that only fills the free pool
+         * (~devicePrimeDuration) causes the feed loop to race through the whole
+         * PCM and leave only the first note audible.
+         */
+        fun enqueueBlocking(src: ByteArray, offset: Int, length: Int): Int {
+            if (length <= 0) return 0
+            var written = 0
+            val state = stateRef.get()
+            while (written < length && state.running) {
+                if (!state.enqueueEnabled) {
+                    // Seek quiesce: wait for Stop to return buffers / re-enable.
+                    runBlocking { delay(1) }
+                    continue
+                }
+                val bufferRef = runBlocking {
+                    state.availableBuffers.receiveCatching().getOrNull()
+                } ?: return written
+                val buffer = bufferRef.pointed
+                val n = buffer.write(src, offset + written, length - written)
+                if (n <= 0) {
+                    state.availableBuffers.trySend(bufferRef)
+                    return written
+                }
+                if (!aqRef.tryEnqueueBuffer(bufferRef)) {
+                    state.availableBuffers.trySend(bufferRef)
+                    runBlocking { delay(1) }
+                    continue
+                }
+                written += n
             }
             return written
         }
@@ -386,7 +425,8 @@ sealed class MacosAudioQueue<S : Any>(
                     }
                 }
 
-            val stateRef = StableRef.create(ReadOnly.State(true, Channel(Channel.BUFFERED)))
+            // Unlimited: input callbacks must not drop PCM (trySend failure → audible distortion).
+            val stateRef = StableRef.create(ReadOnly.State(true, Channel(Channel.UNLIMITED)))
             val aqRefVar: AudioQueueRefVar = nativeHeap.alloc()
             val asbd: AudioStreamBasicDescription = nativeHeap.allocASBD(format)
             return runCatching {

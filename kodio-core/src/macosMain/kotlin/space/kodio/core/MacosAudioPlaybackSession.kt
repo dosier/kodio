@@ -125,21 +125,26 @@ class MacosAudioPlaybackSession(
             mediaByteOffset: Long,
         ) {
             if (!::audioQueue.isInitialized || length <= 0) return
-            val transport = currentTransport()
-            if (transport != null && transport.seekEpoch != seekEpoch) return
-
+            // Must block for AudioQueue buffer availability. Transport advances the
+            // soft cursor by [length] after write returns; non-blocking primes that
+            // only fill the free pool skip the rest of the PCM (first-note-only bug).
             var written = 0
-            var attempts = 0
-            while (written < length && attempts++ < 32) {
-                val n = audioQueue.tryPrimeBuffer(data, offset + written, length - written)
-                if (n <= 0) break
+            while (written < length) {
+                val transport = currentTransport()
+                if (transport != null && transport.seekEpoch != seekEpoch) return
+
+                val n = audioQueue.enqueueBlocking(data, offset + written, length - written)
+                if (n <= 0) return
                 written += n
-            }
-            if (!queueStarted && written > 0) {
-                runCatching {
-                    audioQueue.start()
-                    queueStarted = true
+                if (!queueStarted) {
+                    runCatching {
+                        audioQueue.start()
+                        queueStarted = true
+                    }
                 }
+            }
+            logger.trace {
+                "AudioQueueSink.write enqueued=$written mediaOffset=$mediaByteOffset epoch=$seekEpoch"
             }
         }
 

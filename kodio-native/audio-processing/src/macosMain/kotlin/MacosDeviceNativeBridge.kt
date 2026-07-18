@@ -251,7 +251,12 @@ fun macos_playback_session_begin_stream(
     runBlocking { handle.session.load(audioFlow) }
 }
 
-/** Append one PCM chunk into the open ingest stream (copies bytes). */
+/**
+ * Append one PCM chunk into the open ingest stream (copies bytes).
+ *
+ * Blocks until the ingest channel accepts the chunk so JVM Panama feed cannot
+ * drop PCM under back-pressure (trySend + short retry left only the first note).
+ */
 @CName("macos_playback_session_append")
 fun macos_playback_session_append(
     sessionPtr: COpaquePointer,
@@ -262,7 +267,12 @@ fun macos_playback_session_append(
     val channel = handle.ingestChannel ?: return 0
     if (audioDataSize <= 0) return 1
     val audioData = audioDataPtr.readBytes(audioDataSize)
-    return if (channel.trySend(audioData).isSuccess) 1 else 0
+    return try {
+        runBlocking { channel.send(audioData) }
+        1
+    } catch (_: kotlinx.coroutines.channels.ClosedSendChannelException) {
+        0
+    }
 }
 
 /** Close the ingest stream so the transport can finish after draining. */

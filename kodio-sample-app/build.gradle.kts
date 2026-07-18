@@ -168,15 +168,18 @@ compose.desktop {
 
         // Forward selected flags to the application JVM. Compose `desktopRun` /
         // `run` spawn a separate process that does not inherit Gradle's -D flags.
-        // Prefer -P (project property) so it works even when the IDE/Gradle
-        // daemon does not surface -D on System.getProperty during configuration:
+        // Prefer -P (project property), env KODIO_USE_JAVA_SOUND, or -D visible
+        // on the configuration JVM:
         //   ./gradlew :kodio-sample-app:desktopRun -Pkodio.useJavaSound=true
-        //   ./gradlew :kodio-sample-app:desktopRun -Dkodio.useJavaSound=true
+        //   KODIO_USE_JAVA_SOUND=true ./gradlew :kodio-sample-app:desktopRun
+        // IDE: set Gradle script parameters `-Pkodio.useJavaSound=true`, or env
+        // `KODIO_USE_JAVA_SOUND=true` on the run configuration (not only Gradle VM options).
         listOf(
             "kodio.useJavaSound",
         ).forEach { key ->
             val value = System.getProperty(key)
                 ?: (findProperty(key) as String?)
+                ?: System.getenv("KODIO_USE_JAVA_SOUND")
             if (value != null) {
                 jvmArgs("-D$key=$value")
             }
