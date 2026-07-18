@@ -259,12 +259,16 @@ internal class NativeMacosAudioPlaybackSession(
             val formatDataSeq = arena.allocate(formatData.size.toLong())
             formatDataSeq.asSlice(0, formatData.size.toLong()).copyFrom(MemorySegment.ofArray(formatData))
             val known = audioFlow.knownByteCount ?: -1L
+            // invokeExact must be a statement (void call site). As the last
+            // expression of this lambda it would be typed as returning Object and
+            // throw WrongMethodTypeException against the void downcall handle.
             NativeMacosLib.macos_playback_session_begin_stream.invokeExact(
                 nativeMemSeq,
                 formatData.size,
                 formatDataSeq,
                 known,
             )
+            Unit
         }
     }
 

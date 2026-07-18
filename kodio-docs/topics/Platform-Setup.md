@@ -224,6 +224,14 @@ Or via command line:
 java -Dkodio.useJavaSound=true -jar your-app.jar
 ```
 
+For the desktop sample, pass a Gradle project property (recommended) or `-D` so it is forwarded into the app JVM:
+
+```bash
+./gradlew :kodio-sample-app:desktopRun -Pkodio.useJavaSound=true
+```
+
+Plain `./gradlew … -Dkodio.useJavaSound=true` only works if that property is visible on the Gradle configuration JVM; `-P` is reliable from the CLI and most IDE run configs.
+
 ## Web (JS / Wasm) {id="web"}
 
 Web platforms require HTTPS and browser permission prompts.

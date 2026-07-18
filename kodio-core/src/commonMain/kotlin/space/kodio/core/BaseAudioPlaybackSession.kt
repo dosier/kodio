@@ -266,6 +266,7 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
             _state.value = State.Playing
             playbackJob = scope.launch {
                 runCatching {
+                    @Suppress("DEPRECATION")
                     playBlocking(playbackAudioFlow)
                     if (isCurrentPlay(epoch)) {
                         _state.value = State.Finished

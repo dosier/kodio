@@ -20,7 +20,10 @@ private val logger = namedLogger("AudioSystem")
  *
  * On other platforms (Windows, Linux), uses javax.sound.sampled directly.
  * 
- * Set system property `kodio.useJavaSound=true` to force JavaSound on macOS.
+ * Set system property `kodio.useJavaSound=true` on the **application** JVM to
+ * force JavaSound on macOS. For the desktop sample use
+ * `-Pkodio.useJavaSound=true` (forwarded into the app process); a bare Gradle
+ * `-D` does not always reach this process.
  */
 actual val SystemAudioSystem: AudioSystem = run {
     val osName = System.getProperty("os.name").lowercase()

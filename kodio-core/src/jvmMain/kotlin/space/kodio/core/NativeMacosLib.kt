@@ -10,6 +10,10 @@ import java.lang.invoke.MethodHandle
 
 /**
  * Native library bindings for macOS audio via Panama FFI.
+ *
+ * Void downcalls use [FunctionDescriptor.ofVoid]. Call [MethodHandle.invokeExact]
+ * only as a **statement** (not as the last expression of a Kotlin lambda): otherwise
+ * the call site is typed as returning `Object` and throws [WrongMethodTypeException].
  */
 internal object NativeMacosLib {
 

@@ -166,14 +166,20 @@ compose.desktop {
         // Pass API key as system property
         jvmArgs("-Dopenai.api.key=$openaiApiKey")
 
-        // Forward selected system properties from the Gradle invocation to the
-        // application JVM (the `:run` task spawns a separate JVM which does not
-        // inherit Gradle's -D flags). Lets you do e.g.:
-        //   ./gradlew :kodio-sample-app:run -Dkodio.useJavaSound=true
+        // Forward selected flags to the application JVM. Compose `desktopRun` /
+        // `run` spawn a separate process that does not inherit Gradle's -D flags.
+        // Prefer -P (project property) so it works even when the IDE/Gradle
+        // daemon does not surface -D on System.getProperty during configuration:
+        //   ./gradlew :kodio-sample-app:desktopRun -Pkodio.useJavaSound=true
+        //   ./gradlew :kodio-sample-app:desktopRun -Dkodio.useJavaSound=true
         listOf(
             "kodio.useJavaSound",
         ).forEach { key ->
-            System.getProperty(key)?.let { jvmArgs("-D$key=$it") }
+            val value = System.getProperty(key)
+                ?: (findProperty(key) as String?)
+            if (value != null) {
+                jvmArgs("-D$key=$value")
+            }
         }
 
         nativeDistributions {
