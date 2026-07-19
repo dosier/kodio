@@ -41,6 +41,16 @@ fun AudioFlow.convertAudio(
         )
     }
 
+    // Fast path: same rate + PCM Int16 LE signed mono↔stereo (avoid BigDecimal upmix).
+    fastPcm16ChannelConvert(sourceFormat, targetFormat)?.let { converter ->
+        logger.debug { "Using fast PCM16 channel convert path" }
+        return AudioFlow(
+            format = targetFormat,
+            data = transform { chunk -> emit(converter(chunk)) },
+            knownByteCount = mappedKnownBytes,
+        )
+    }
+
     fun resample(
         samples: Array<BigDecimal>,
         sourceRate: Int,
@@ -299,6 +309,58 @@ private fun fastPcmIntToFloat32(
             dst += 4
         }
         out
+    }
+}
+
+/**
+ * Same-rate PCM16 LE signed mono↔stereo without BigDecimal.
+ * Returns null when the conversion is not a pure channel remap of Int16 LE.
+ */
+private fun fastPcm16ChannelConvert(
+    source: AudioFormat,
+    target: AudioFormat,
+): ((ByteArray) -> ByteArray)? {
+    if (source.sampleRate != target.sampleRate) return null
+    val srcEnc = source.encoding as? PcmInt ?: return null
+    val tgtEnc = target.encoding as? PcmInt ?: return null
+    if (srcEnc != tgtEnc) return null
+    if (srcEnc.bitDepth != IntBitDepth.Sixteen || !srcEnc.signed) return null
+    if (srcEnc.endianness != Endianness.Little || srcEnc.layout != SampleLayout.Interleaved) return null
+    if (source.channels == target.channels) return null
+
+    return when {
+        source.channels == Channels.Mono && target.channels == Channels.Stereo -> { chunk ->
+            val frames = chunk.size / 2
+            val out = ByteArray(frames * 4)
+            var s = 0
+            var d = 0
+            repeat(frames) {
+                val b0 = chunk[s]
+                val b1 = chunk[s + 1]
+                s += 2
+                out[d] = b0; out[d + 1] = b1
+                out[d + 2] = b0; out[d + 3] = b1
+                d += 4
+            }
+            out
+        }
+        source.channels == Channels.Stereo && target.channels == Channels.Mono -> { chunk ->
+            val frames = chunk.size / 4
+            val out = ByteArray(frames * 2)
+            var s = 0
+            var d = 0
+            repeat(frames) {
+                val l = (chunk[s].toInt() and 0xFF) or (chunk[s + 1].toInt() shl 8)
+                val r = (chunk[s + 2].toInt() and 0xFF) or (chunk[s + 3].toInt() shl 8)
+                s += 4
+                val m = ((l + r) / 2).toShort().toInt()
+                out[d] = (m and 0xFF).toByte()
+                out[d + 1] = ((m ushr 8) and 0xFF).toByte()
+                d += 2
+            }
+            out
+        }
+        else -> null
     }
 }
 

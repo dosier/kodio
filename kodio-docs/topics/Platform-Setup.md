@@ -224,15 +224,25 @@ Or via command line:
 java -Dkodio.useJavaSound=true -jar your-app.jar
 ```
 
-For the desktop sample, pass a Gradle project property (recommended), an environment variable, or `-D` so it is forwarded into the app JVM:
+For the desktop sample, any of these reach the application JVM (the sample forwards them onto both Compose `run` and KMP `desktopRun`):
 
 ```bash
 ./gradlew :kodio-sample-app:desktopRun -Pkodio.useJavaSound=true
 # or
 KODIO_USE_JAVA_SOUND=true ./gradlew :kodio-sample-app:desktopRun
+# or (Gradle VM -D is forwarded into desktopRun by build.gradle.kts)
+./gradlew :kodio-sample-app:desktopRun -Dkodio.useJavaSound=true
 ```
 
-**IDE (`desktopRun`):** put `-Pkodio.useJavaSound=true` in the run configuration **Gradle script parameters** (or Arguments), or set env `KODIO_USE_JAVA_SOUND=true`. Putting only `-Dkodio.useJavaSound=true` under Gradle **VM options** affects the daemon, not the Compose application process, unless the sample's `build.gradle.kts` forwarding sees that property at configuration time.
+You can also set `kodio.useJavaSound=true` in the project `gradle.properties`.
+
+**IDE (`desktopRun`):** the IDE launches the KMP `desktopRun` task (not Compose `run`). Use any of:
+
+- Gradle **VM options**: `-Dkodio.useJavaSound=true` (forwarded into the app JVM)
+- Gradle **script parameters** / arguments: `-Pkodio.useJavaSound=true`
+- Environment variable: `KODIO_USE_JAVA_SOUND=true`
+
+Confirm in logs: `Using JavaSound audio system (forced via kodio.useJavaSound / KODIO_USE_JAVA_SOUND)` rather than `Using native macOS audio system`.
 
 The library also honors `KODIO_USE_JAVA_SOUND=true` directly on the application process via [System.getenv].
 

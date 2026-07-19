@@ -19,8 +19,11 @@ import space.kodio.core.io.decodeAsAudioFormat
 import space.kodio.core.io.encodeToByteArray
 import space.kodio.core.io.readAudioDevice
 import space.kodio.core.io.writeAudioDevice
+import space.kodio.core.logging.kodioLogger
 import kotlin.experimental.ExperimentalNativeApi
 import kotlin.time.Duration.Companion.nanoseconds
+
+private val playbackBridgeLogger = kodioLogger("MacosPlaybackBridge")
 
 @CName("macos_free")
 fun macos_free(ptr: NativePtr): Unit =
@@ -198,6 +201,8 @@ fun macos_recording_session_release(ptr: COpaquePointer) =
 private class PlaybackNativeHandle(
     val session: AudioPlaybackSession,
     var ingestChannel: Channel<ByteArray>? = null,
+    /** Last native playback error message for Panama diagnostics. */
+    var lastError: String? = null,
 )
 
 private fun COpaquePointer.playbackHandle(): PlaybackNativeHandle =
@@ -325,10 +330,14 @@ private const val COMPLETION_IDLE = 2
 /**
  * Blocks until the session reaches a terminal state (Finished, Error, or Idle).
  * Returns 0 for Finished, 1 for Error, 2 for Idle (stopped externally).
+ *
+ * Call only after [macos_playback_session_play] returns so a prior generation's
+ * terminal state is not observed before the new play transitions.
  */
 @CName("macos_playback_session_await_completion")
 fun macos_playback_session_await_completion(sessionPtr: COpaquePointer): Int {
-    val session = sessionPtr.playbackHandle().session
+    val handle = sessionPtr.playbackHandle()
+    val session = handle.session
     val terminal = runBlocking {
         session.state.first {
             it is AudioPlaybackSession.State.Finished ||
@@ -337,10 +346,41 @@ fun macos_playback_session_await_completion(sessionPtr: COpaquePointer): Int {
         }
     }
     return when (terminal) {
-        is AudioPlaybackSession.State.Finished -> COMPLETION_FINISHED
-        is AudioPlaybackSession.State.Error -> COMPLETION_ERROR
-        else -> COMPLETION_IDLE
+        is AudioPlaybackSession.State.Finished -> {
+            handle.lastError = null
+            COMPLETION_FINISHED
+        }
+        is AudioPlaybackSession.State.Error -> {
+            val msg = terminal.error.message?.takeIf { it.isNotBlank() }
+                ?: terminal.error.toString()
+            handle.lastError = msg
+            playbackBridgeLogger.error(terminal.error) { "native playback Error: $msg" }
+            COMPLETION_ERROR
+        }
+        else -> {
+            handle.lastError = null
+            COMPLETION_IDLE
+        }
     }
+}
+
+/**
+ * Returns the last playback error message bytes (UTF-8), or null if none.
+ * Caller must [macos_free] the pointer. Writes length into [sizePtr].
+ */
+@CName("macos_playback_session_last_error")
+fun macos_playback_session_last_error(
+    sessionPtr: COpaquePointer,
+    sizePtr: CPointer<LongVar>,
+): CArrayPointer<ByteVar>? {
+    val msg = sessionPtr.playbackHandle().lastError
+    if (msg.isNullOrEmpty()) {
+        sizePtr[0] = 0
+        return null
+    }
+    val bytes = msg.encodeToByteArray()
+    sizePtr[0] = bytes.size.toLong()
+    return nativeHeap.allocArrayOf(bytes)
 }
 
 @CName("macos_playback_session_pause")

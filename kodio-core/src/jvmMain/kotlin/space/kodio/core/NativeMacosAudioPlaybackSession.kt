@@ -73,23 +73,35 @@ internal class NativeMacosAudioPlaybackSession(
         }
     }
 
+    /**
+     * Match [MacosAudioPlaybackSession] device-friendly formats so Panama does not
+     * force PCM24 → float (native AudioQueue accepts packed LE PCM24/32 and float).
+     */
     private fun normalizeForPlayback(audioFlow: AudioFlow): AudioFlow {
         val fmt = audioFlow.format
         val enc = fmt.encoding
         val needsConversion = when (enc) {
-            is SampleEncoding.PcmFloat -> false
+            is SampleEncoding.PcmFloat ->
+                enc.layout != SampleLayout.Interleaved
             is SampleEncoding.PcmInt ->
-                enc.bitDepth != IntBitDepth.Sixteen ||
-                    !enc.signed ||
-                    enc.endianness != Endianness.Little
+                !enc.signed ||
+                    !enc.packed ||
+                    enc.endianness != Endianness.Little ||
+                    enc.layout != SampleLayout.Interleaved ||
+                    (enc.bitDepth != IntBitDepth.Sixteen &&
+                        enc.bitDepth != IntBitDepth.TwentyFour &&
+                        enc.bitDepth != IntBitDepth.ThirtyTwo)
         }
-        if (!needsConversion) return audioFlow
+        if (!needsConversion) {
+            logger.debug { "normalizeForPlayback: passthrough $fmt" }
+            return audioFlow
+        }
         val targetFormat = AudioFormat(
             sampleRate = fmt.sampleRate,
             channels = fmt.channels,
             encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
         )
-        logger.debug { "Normalizing playback format: $fmt -> $targetFormat" }
+        logger.info { "Normalizing playback format: $fmt -> $targetFormat" }
         return audioFlow.convertAudio(targetFormat)
     }
 
@@ -153,7 +165,17 @@ internal class NativeMacosAudioPlaybackSession(
                 }
                 endNativeStream()
                 ingestComplete = true
-                logger.info { "native ingest complete chunks=$chunks bytesFed=$bytesFed" }
+                val known = normalized.knownByteCount
+                logger.info {
+                    "native ingest complete chunks=$chunks bytesFed=$bytesFed " +
+                        "knownByteCount=$known format=${normalized.format}"
+                }
+                if (known != null && bytesFed != known) {
+                    logger.warn {
+                        "ingest bytesFed=$bytesFed diverges from knownByteCount=$known " +
+                            "(delta=${bytesFed - known})"
+                    }
+                }
             }.onFailure {
                 logger.error(it) { "native ingest failed after chunks=$chunks bytesFed=$bytesFed: ${it.message}" }
             }
@@ -194,20 +216,55 @@ internal class NativeMacosAudioPlaybackSession(
                 logger.debug { "await_completion ignored stale epoch=$epoch result=$result" }
                 return@launch
             }
+            val resultMeaning = when (result) {
+                0 -> "Finished"
+                1 -> "Error"
+                2 -> "Idle"
+                else -> "Unknown($result)"
+            }
             _state.value = when (result) {
                 0 -> AudioPlaybackSession.State.Finished
-                1 -> AudioPlaybackSession.State.Error(RuntimeException("Native playback error"))
+                1 -> {
+                    // Force re-begin on next play so a closed ingest channel is replaced.
+                    streamPrepared = false
+                    ingestComplete = false
+                    val detail = readNativeLastError()
+                    AudioPlaybackSession.State.Error(
+                        RuntimeException(
+                            if (detail != null) "Native playback error: $detail"
+                            else "Native playback error",
+                        ),
+                    )
+                }
                 else -> AudioPlaybackSession.State.Idle
             }
             logger.info {
-                "native playback terminal result=$result state=${_state.value} " +
-                    "ingestComplete=$ingestComplete position=${_position.value}"
+                "native playback terminal result=$result ($resultMeaning) state=${_state.value} " +
+                    "ingestComplete=$ingestComplete position=${_position.value} " +
+                    "knownByteCount=${_audioFlowHolder.value?.knownByteCount}"
             }
             if (result == 0) wantPlaying.value = false
             stopPositionPolling()
             pollTransportClocks()
         }
     }
+
+    private fun readNativeLastError(): String? =
+        Arena.ofConfined().use { arena ->
+            val sizeSeg = arena.allocate(ValueLayout.JAVA_LONG)
+            val ptr = NativeMacosLib.macos_playback_session_last_error
+                .invokeExact(nativeMemSeq, sizeSeg) as MemorySegment
+            val size = sizeSeg.get(ValueLayout.JAVA_LONG, 0)
+            if (ptr.address() == 0L || size <= 0L) return@use null
+            try {
+                val bytes = ByteArray(size.toInt())
+                MemorySegment.ofArray(bytes)
+                    .copyFrom(ptr.reinterpret(size).asSlice(0, size))
+                bytes.decodeToString()
+            } finally {
+                run { NativeMacosLib.macos_free.invokeExact(ptr) }
+            }
+        }
 
     override fun pause() {
         wantPlaying.value = false
@@ -273,6 +330,12 @@ internal class NativeMacosAudioPlaybackSession(
     }
 
     private fun beginNativeStream(audioFlow: AudioFlow) {
+        val fmt = audioFlow.format
+        logger.info {
+            "begin_stream format=$fmt sampleRate=${fmt.sampleRate} channels=${fmt.channels} " +
+                "encoding=${fmt.encoding} bpf=${fmt.bytesPerFrame} " +
+                "knownByteCount=${audioFlow.knownByteCount}"
+        }
         // Native bridge copies format bytes synchronously; confine arena to this call.
         Arena.ofConfined().use { arena ->
             val formatData = audioFlow.format.encodeToByteArray()

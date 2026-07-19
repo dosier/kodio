@@ -38,6 +38,10 @@ class MacosAudioPlaybackSession(
 
         val playbackFormat = toDevicePlaybackFormat(format)
         outputFormat = playbackFormat
+        logger.info {
+            "preparePlayback deviceFormat=$playbackFormat " +
+                "bpf=${playbackFormat.bytesPerFrame} from source=$format"
+        }
 
         audioQueue = MacosAudioQueue.createOutput(
             format = playbackFormat,
@@ -49,27 +53,36 @@ class MacosAudioPlaybackSession(
             audioQueue.setPropertyValue(CurrentDevice, requestedDevice.id)
         }
 
-        // Always return the device format so Base convertAudio matches the queue
-        // (including mono→stereo). Transport feeds converted PCM only.
+        // Return the queue format so Base convertAudio matches what AudioQueue expects.
+        // Prefer keeping mono/24-bit/float as-is — forced mono→stereo used the slow
+        // BigDecimal path and caused realtime underruns (audible distortion).
         return playbackFormat
     }
 
-    private fun isDeviceFriendly(format: AudioFormat): Boolean = when (val enc = format.encoding) {
-        is SampleEncoding.PcmFloat -> true
-        is SampleEncoding.PcmInt ->
-            enc.bitDepth == IntBitDepth.Sixteen &&
-                enc.signed &&
-                enc.endianness == Endianness.Little
+    private fun isDeviceFriendly(format: AudioFormat): Boolean {
+        val enc = format.encoding
+        if (enc is SampleEncoding.PcmFloat) {
+            return enc.layout == SampleLayout.Interleaved &&
+                (enc.precision == FloatPrecision.F32 || enc.precision == FloatPrecision.F64)
+        }
+        if (enc is SampleEncoding.PcmInt) {
+            return enc.signed &&
+                enc.packed &&
+                enc.endianness == Endianness.Little &&
+                enc.layout == SampleLayout.Interleaved &&
+                (enc.bitDepth == IntBitDepth.Sixteen ||
+                    enc.bitDepth == IntBitDepth.TwentyFour ||
+                    enc.bitDepth == IntBitDepth.ThirtyTwo)
+        }
+        return false
     }
 
     private fun toDevicePlaybackFormat(format: AudioFormat): AudioFormat {
-        val channels = if (format.channels == Channels.Mono) Channels.Stereo else format.channels
-        if (isDeviceFriendly(format)) {
-            return format.copy(channels = channels)
-        }
+        if (isDeviceFriendly(format)) return format
+        // Fallback: interleaved float32 at the same rate/channel count.
         return AudioFormat(
             sampleRate = format.sampleRate,
-            channels = channels,
+            channels = format.channels,
             encoding = SampleEncoding.PcmFloat(FloatPrecision.F32, SampleLayout.Interleaved)
         )
     }
@@ -140,6 +153,10 @@ class MacosAudioPlaybackSession(
                     runCatching {
                         audioQueue.start()
                         queueStarted = true
+                        logger.debug { "AudioQueueSink started after first enqueue ($written bytes)" }
+                    }.onFailure {
+                        logger.error(it) { "AudioQueueStart failed: ${it.message}" }
+                        throw it
                     }
                 }
             }

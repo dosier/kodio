@@ -15,6 +15,18 @@ import platform.CoreAudioTypes.kAudioFormatLinearPCM
 @OptIn(ExperimentalForeignApi::class)
 fun NativePlacement.allocASBD(format: AudioFormat): AudioStreamBasicDescription {
     val asbd = alloc<AudioStreamBasicDescription>()
+    // AudioQueue reads the whole struct; clear reserved/padding so garbage flags
+    // cannot reject otherwise-valid Linear PCM descriptions.
+    asbd.mSampleRate = 0.0
+    asbd.mFormatID = 0u
+    asbd.mFormatFlags = 0u
+    asbd.mBytesPerPacket = 0u
+    asbd.mFramesPerPacket = 0u
+    asbd.mBytesPerFrame = 0u
+    asbd.mChannelsPerFrame = 0u
+    asbd.mBitsPerChannel = 0u
+    asbd.mReserved = 0u
+
     asbd.mSampleRate = format.sampleRate.toDouble()
     asbd.mFormatID = when (format.encoding) {
         is SampleEncoding.PcmInt,
@@ -22,11 +34,15 @@ fun NativePlacement.allocASBD(format: AudioFormat): AudioStreamBasicDescription 
     }
     when (val e = format.encoding) {
         is SampleEncoding.PcmInt -> {
-            val isLE = (e.endianness == Endianness.Little)
+            // On little-endian hosts NativeEndian==0; big-endian PCM must set IsBigEndian.
+            val endianFlag = when (e.endianness) {
+                Endianness.Little -> kAudioFormatFlagsNativeEndian
+                Endianness.Big -> kAudioFormatFlagIsBigEndian
+            }
             val flags =
                 (if (e.signed) kAudioFormatFlagIsSignedInteger else 0u) or
                         (if (e.packed) kAudioFormatFlagIsPacked else 0u) or
-                        (if (isLE) kAudioFormatFlagsNativeEndian else 0u) or
+                        endianFlag or
                         (if (e.layout == SampleLayout.Planar) kAudioFormatFlagIsNonInterleaved else 0u)
 
             asbd.mFormatFlags = flags
@@ -41,6 +57,7 @@ fun NativePlacement.allocASBD(format: AudioFormat): AudioStreamBasicDescription 
         }
 
         is SampleEncoding.PcmFloat -> {
+            // Common float PCM is little-endian on Apple Silicon; match encodePcmFloat.
             val flags =
                 kAudioFormatFlagIsFloat or
                         kAudioFormatFlagIsPacked or

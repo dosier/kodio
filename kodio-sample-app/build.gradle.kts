@@ -1,5 +1,6 @@
 @file:OptIn(ExperimentalKotlinGradlePluginApi::class)
 
+import org.gradle.api.tasks.JavaExec
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
@@ -159,30 +160,34 @@ val openaiApiKey: String = if (localPropsFile.exists()) {
     props.getProperty("openai.api.key", "")
 } else ""
 
+/**
+ * Resolve flags that must land on the *application* JVM.
+ *
+ * IntelliJ's Gradle run config "VM options" (`-D...`) apply to the Gradle daemon,
+ * not to [desktopRun] / Compose [run]. We forward them here (and onto JavaExec
+ * tasks below). Prefer also `-Pkodio.useJavaSound=true` or env
+ * `KODIO_USE_JAVA_SOUND=true`.
+ */
+fun resolveAppSystemProperty(key: String, envKey: String = key.uppercase().replace('.', '_')): String? =
+    System.getProperty(key)
+        ?: (findProperty(key) as String?)
+        ?: System.getenv(envKey)
+
+val useJavaSoundProp = resolveAppSystemProperty("kodio.useJavaSound", "KODIO_USE_JAVA_SOUND")
+
+fun org.gradle.process.JavaForkOptions.applyKodioSampleJvmArgs() {
+    jvmArgs("-Dopenai.api.key=$openaiApiKey")
+    if (useJavaSoundProp != null) {
+        jvmArgs("-Dkodio.useJavaSound=$useJavaSoundProp")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "space.kodio.sample.MainKt"
-
-        // Pass API key as system property
         jvmArgs("-Dopenai.api.key=$openaiApiKey")
-
-        // Forward selected flags to the application JVM. Compose `desktopRun` /
-        // `run` spawn a separate process that does not inherit Gradle's -D flags.
-        // Prefer -P (project property), env KODIO_USE_JAVA_SOUND, or -D visible
-        // on the configuration JVM:
-        //   ./gradlew :kodio-sample-app:desktopRun -Pkodio.useJavaSound=true
-        //   KODIO_USE_JAVA_SOUND=true ./gradlew :kodio-sample-app:desktopRun
-        // IDE: set Gradle script parameters `-Pkodio.useJavaSound=true`, or env
-        // `KODIO_USE_JAVA_SOUND=true` on the run configuration (not only Gradle VM options).
-        listOf(
-            "kodio.useJavaSound",
-        ).forEach { key ->
-            val value = System.getProperty(key)
-                ?: (findProperty(key) as String?)
-                ?: System.getenv("KODIO_USE_JAVA_SOUND")
-            if (value != null) {
-                jvmArgs("-D$key=$value")
-            }
+        if (useJavaSoundProp != null) {
+            jvmArgs("-Dkodio.useJavaSound=$useJavaSoundProp")
         }
 
         nativeDistributions {
@@ -190,5 +195,17 @@ compose.desktop {
             packageName = "space.kodio.sample"
             packageVersion = "1.0.0"
         }
+    }
+}
+
+// KMP `desktopRun` (KotlinJvmRun) is what the IDE launches — not Compose `run`.
+// compose.desktop { jvmArgs } does not apply to it; configure JavaExec explicitly.
+tasks.withType<JavaExec>().configureEach {
+    if (name == "desktopRun" ||
+        name == "run" ||
+        name.startsWith("hotRun") ||
+        name.startsWith("hotDev")
+    ) {
+        applyKodioSampleJvmArgs()
     }
 }

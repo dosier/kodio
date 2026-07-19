@@ -461,7 +461,10 @@ sealed class MacosAudioQueue<S : Any>(
             bufferCount: Int,
             bufferDurationSec: Double
         ): Writable {
-            logger.debug { "createOutput called: format=$format, bufferCount=$bufferCount, bufferDuration=${bufferDurationSec}s" }
+            logger.info {
+                "createOutput format=$format rate=${format.sampleRate} ch=${format.channels.count} " +
+                    "bpf=${format.bytesPerFrame} buffers=$bufferCount durationSec=$bufferDurationSec"
+            }
             val outputCallBack: AudioQueueOutputCallback =
                 staticCFunction { inUserData,
                                   inAQ,
@@ -495,6 +498,11 @@ sealed class MacosAudioQueue<S : Any>(
             val stateRef = StableRef.create(state)
             val aqRefVar: AudioQueueRefVar = nativeHeap.alloc()
             val asbd: AudioStreamBasicDescription = nativeHeap.allocASBD(format)
+            logger.debug {
+                "ASBD rate=${asbd.mSampleRate} formatID=${asbd.mFormatID} flags=0x${asbd.mFormatFlags.toString(16)} " +
+                    "bits=${asbd.mBitsPerChannel} ch=${asbd.mChannelsPerFrame} " +
+                    "bpf=${asbd.mBytesPerFrame} bpp=${asbd.mBytesPerPacket} fpp=${asbd.mFramesPerPacket}"
+            }
             logger.debug { "Creating AudioQueueNewOutput..." }
             return runCatching {
                 runAndCheckOsStatus {

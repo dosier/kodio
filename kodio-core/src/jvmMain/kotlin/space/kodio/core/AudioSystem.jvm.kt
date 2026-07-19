@@ -24,9 +24,9 @@ private val logger = namedLogger("AudioSystem")
  * - application system property `kodio.useJavaSound=true`
  * - environment variable `KODIO_USE_JAVA_SOUND=true`
  *
- * For the desktop sample, prefer `-Pkodio.useJavaSound=true` (forwarded into the
- * app process) or the env var. A bare Gradle `-D` on the daemon does not always
- * reach the application JVM.
+ * For the desktop sample (`desktopRun`), `-Pkodio.useJavaSound=true`,
+ * `-Dkodio.useJavaSound=true` (Gradle VM options), `gradle.properties`, or
+ * `KODIO_USE_JAVA_SOUND=true` are forwarded onto the application JVM.
  */
 actual val SystemAudioSystem: AudioSystem = run {
     val osName = System.getProperty("os.name").lowercase()

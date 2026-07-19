@@ -51,6 +51,7 @@ internal object NativeMacosLib {
     val macos_playback_session_end_stream: MethodHandle
     val macos_playback_session_play: MethodHandle
     val macos_playback_session_await_completion: MethodHandle
+    val macos_playback_session_last_error: MethodHandle
     val macos_playback_session_pause: MethodHandle
     val macos_playback_session_resume: MethodHandle
     val macos_playback_session_stop: MethodHandle
@@ -173,6 +174,12 @@ internal object NativeMacosLib {
             name = "macos_playback_session_await_completion",
             res = ValueLayout.JAVA_INT,
             ValueLayout.ADDRESS // session
+        )
+        macos_playback_session_last_error = lookupMethod(
+            name = "macos_playback_session_last_error",
+            res = ValueLayout.ADDRESS,
+            ValueLayout.ADDRESS, // session
+            ValueLayout.ADDRESS, // sizePtr (Long*)
         )
 
         macos_playback_session_pause = lookupMethodVoid(
