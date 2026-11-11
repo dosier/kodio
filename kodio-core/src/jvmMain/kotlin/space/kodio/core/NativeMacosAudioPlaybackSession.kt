@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import space.kodio.core.io.convertAudio
 import space.kodio.core.io.encodeToByteArray
 import space.kodio.core.util.namedLogger
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.nanoseconds
@@ -52,6 +54,10 @@ internal class NativeMacosAudioPlaybackSession(
 
     private var streamPrepared = false
     private var ingestComplete = false
+
+    /** Set when ingest ended with an error; the native stream was ended early. */
+    @Volatile
+    private var ingestFailure: Throwable? = null
     private var completionJob: Job? = null
     private var ingestJob: Job? = null
     private var positionJob: Job? = null
@@ -64,6 +70,7 @@ internal class NativeMacosAudioPlaybackSession(
         _audioFlowHolder.value = audioFlow
         streamPrepared = false
         ingestComplete = false
+        ingestFailure = null
         _position.value = Duration.ZERO
         _bufferedRange.value = BufferedRange.Empty
         _state.value = AudioPlaybackSession.State.Ready
@@ -147,6 +154,7 @@ internal class NativeMacosAudioPlaybackSession(
         startPositionPolling()
 
         // Ingest on IO: never materialize the whole flow on the JVM heap.
+        ingestFailure = null
         ingestJob = completionScope.launch {
             var chunks = 0
             var bytesFed = 0L
@@ -177,7 +185,13 @@ internal class NativeMacosAudioPlaybackSession(
                     }
                 }
             }.onFailure {
+                if (it is CancellationException) return@onFailure
                 logger.error(it) { "native ingest failed after chunks=$chunks bytesFed=$bytesFed: ${it.message}" }
+                // End the native stream so the already-fed PCM plays out and
+                // await_completion returns; otherwise playback waits forever.
+                ingestFailure = it
+                runCatching { endNativeStream() }
+                    .onFailure { e -> logger.warn(e) { "endNativeStream after ingest failure failed" } }
             }
         }
 
@@ -222,7 +236,14 @@ internal class NativeMacosAudioPlaybackSession(
                 2 -> "Idle"
                 else -> "Unknown($result)"
             }
+            val failure = ingestFailure
             _state.value = when (result) {
+                0 if failure != null -> {
+                    // Truncated stream: not replayable, re-begin on next play.
+                    streamPrepared = false
+                    ingestComplete = false
+                    AudioPlaybackSession.State.Error(failure)
+                }
                 0 -> AudioPlaybackSession.State.Finished
                 1 -> {
                     // Force re-begin on next play so a closed ingest channel is replaced.
@@ -293,8 +314,14 @@ internal class NativeMacosAudioPlaybackSession(
         _state.value = AudioPlaybackSession.State.Idle
         streamPrepared = false
         ingestComplete = false
+        ingestFailure = null
         _position.value = Duration.ZERO
         _bufferedRange.value = BufferedRange.Empty
+    }
+
+    override fun release() {
+        stop()
+        completionScope.cancel()
     }
 
     override fun seekTo(position: Duration): SeekResult {

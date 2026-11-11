@@ -8,6 +8,7 @@ import space.kodio.core.pcmSeekByteOffset
 import space.kodio.core.util.namedLogger
 import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.fetchAndIncrement
 import kotlin.time.Duration
@@ -44,6 +45,7 @@ internal class TransportController(
     private val underrunCountAtomic = AtomicLong(0L)
     private val ingestCompleteAtomic = AtomicBoolean(false)
     private val finishedAtomic = AtomicBoolean(false)
+    private val ingestFailureRef = AtomicReference<Throwable?>(null)
 
     private val feedScratch: ByteArray =
         ByteArray(
@@ -72,6 +74,14 @@ internal class TransportController(
         get() = knownByteCount != null
 
     /**
+     * Non-null when ingest ended with an error. The buffer then holds only the
+     * PCM decoded before the failure; [feed] plays it out and reports EOS so the
+     * session can surface the error instead of waiting for data that never comes.
+     */
+    val ingestFailure: Throwable?
+        get() = ingestFailureRef.load()
+
+    /**
      * Append converted PCM (ingest path). Does not move the read cursor.
      */
     fun append(chunk: ByteArray) {
@@ -89,6 +99,15 @@ internal class TransportController(
             readCursorAtomic.store(wp)
         }
         maybeFinish()
+    }
+
+    /**
+     * Ingest stopped with [cause] (e.g. a decode error mid-stream). Treated as a
+     * truncated end of stream: retained PCM still plays, then [feed] returns `-1`.
+     */
+    fun markIngestFailed(cause: Throwable) {
+        ingestFailureRef.store(cause)
+        markIngestComplete()
     }
 
     /**

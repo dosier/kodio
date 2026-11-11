@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -296,7 +297,10 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
         val existing = transport
         // Seek-after-finish / replay from retained buffer: do not re-ingest a cold flow.
         val retainedFormat = transportFormat
-        if (existing != null && existing.isIngestComplete && retainedFormat != null) {
+        // A buffer truncated by an ingest failure is not replayable: re-ingest instead.
+        if (existing != null && existing.isIngestComplete && existing.ingestFailure == null &&
+            retainedFormat != null
+        ) {
             val epoch = playEpoch.value + 1
             playEpoch.value = epoch
             wantPlaying.value = true
@@ -390,6 +394,9 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                 }.onFailure {
                     if (it is CancellationException) throw it
                     log.error(it) { "ingest failed: ${it.message}" }
+                    // Without this the feed loop waits forever for data that never
+                    // arrives (state stuck at Playing, awaitComplete() never returns).
+                    controller.markIngestFailed(it)
                 }
             }
 
@@ -426,14 +433,19 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                 n < 0 -> {
                     // EOS: ingest complete AND cursor at end.
                     if (isCurrentPlay(epoch)) {
-                        _state.value = State.Finished
+                        val failure = controller.ingestFailure
+                        _state.value = if (failure != null) State.Error(failure) else State.Finished
                         wantPlaying.value = false
                         _transportPaused.value = true
                         _position.value = mediaBase.coerceAtLeast(
                             controller.buffer.format.durationOfByteOffset(controller.readCursor)
                         )
                         publishBufferedRange(controller)
-                        log.info { "Transport playback finished" }
+                        if (failure != null) {
+                            log.error(failure) { "Transport playback ended early: ingest failed" }
+                        } else {
+                            log.info { "Transport playback finished" }
+                        }
                     }
                     return
                 }
@@ -540,6 +552,12 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
             ingestJob = null
             discardTransport()
         }
+    }
+
+    /** Stops playback and cancels [scope]; the session is unusable afterwards. */
+    override fun release() {
+        stop()
+        scope.cancel()
     }
 
     private fun applyPendingSeek(controller: TransportController) {

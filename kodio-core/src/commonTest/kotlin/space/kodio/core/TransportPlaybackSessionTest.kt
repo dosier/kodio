@@ -1,7 +1,9 @@
 package space.kodio.core
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
@@ -181,6 +183,78 @@ class TransportPlaybackSessionTest {
         )
         session.stop()
     }
+
+    @Test
+    fun ingestFailure_playsDecodedPcmThenErrors() = runBlocking {
+        val session = FakeTransportSession()
+        val pcm = ByteArray(format.bytesPerFrame * 160) { 6 } // 10ms decoded before the failure
+        val decodeError = IllegalStateException("corrupt frame")
+        session.load(
+            AudioFlow(
+                format,
+                flow {
+                    emit(pcm)
+                    throw decodeError
+                },
+                knownByteCount = pcm.size * 10L, // promised more than was delivered
+            ),
+        )
+        session.play()
+
+        val terminal = withTimeout(5_000) {
+            session.state.first { it is AudioPlaybackSession.State.Error || it is AudioPlaybackSession.State.Finished }
+        }
+        val error = assertIs<AudioPlaybackSession.State.Error>(terminal)
+        assertEquals(decodeError.message, error.error.message)
+        assertEquals(pcm.size, session.sink.writes.sumOf { it.bytes.size })
+        session.release()
+    }
+
+    @Test
+    fun playAfterIngestFailure_reingestsInsteadOfReplayingTruncatedBuffer() = runBlocking {
+        val session = FakeTransportSession()
+        val pcm = ByteArray(format.bytesPerFrame * 160) { 7 }
+        var collections = 0
+        session.load(
+            AudioFlow(
+                format,
+                flow {
+                    collections++
+                    emit(pcm)
+                    if (collections == 1) throw IllegalStateException("transient")
+                },
+                knownByteCount = pcm.size.toLong(),
+            ),
+        )
+        session.play()
+        withTimeout(5_000) { session.state.first { it is AudioPlaybackSession.State.Error } }
+
+        session.play()
+        withTimeout(5_000) { session.state.first { it is AudioPlaybackSession.State.Finished } }
+        assertEquals(2, collections)
+        session.release()
+    }
+
+    @Test
+    fun release_cancelsSessionScope() = runBlocking {
+        val session = FakeTransportSession()
+        session.load(
+            AudioFlow(
+                format,
+                flow {
+                    emit(ByteArray(format.bytesPerFrame * 16) { 8 })
+                    kotlinx.coroutines.awaitCancellation()
+                },
+            ),
+        )
+        session.play()
+        withTimeout(2_000) { session.firstWrite.await() }
+
+        session.release()
+
+        assertIs<AudioPlaybackSession.State.Idle>(session.state.value)
+        assertTrue(session.scopeJob.isCancelled)
+    }
 }
 
 private class FakeTransportSession(
@@ -191,6 +265,7 @@ private class FakeTransportSession(
     val sink = FakeAudioSink(clock)
     val firstWrite = CompletableDeferred<Unit>()
     val ingestStarted = CompletableDeferred<Unit>()
+    val scopeJob: Job get() = scope.coroutineContext[Job]!!
 
     override fun useTransportPlayback(): Boolean = true
 

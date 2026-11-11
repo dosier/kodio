@@ -194,7 +194,7 @@ class Player(
      * The player should not be used after calling this method.
      */
     fun release() {
-        session.stop()
+        session.release()
     }
 
     /**

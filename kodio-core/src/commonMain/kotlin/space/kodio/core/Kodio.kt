@@ -2,6 +2,7 @@ package space.kodio.core
 
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration
 
 /**
@@ -145,6 +146,8 @@ object Kodio {
                 requestedFormat = quality.format,
             )
             Recorder(session, quality)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw AudioError.from(e)
         }
@@ -175,6 +178,8 @@ object Kodio {
         return try {
             val session = SystemAudioSystem.createPlaybackSession(device)
             Player(session)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw AudioError.from(e)
         }
@@ -237,6 +242,8 @@ object Kodio {
         val recorder = recorder(quality = quality, device = device)
         return try {
             block(recorder)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw AudioError.from(e)
         } finally {
@@ -281,6 +288,8 @@ object Kodio {
         return try {
             player.load(recording)
             block(player)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw AudioError.from(e)
         } finally {
@@ -304,6 +313,8 @@ object Kodio {
             player.loadAudioFlow(audioFlow)
             player.start()
             player.awaitComplete()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw AudioError.from(e)
         } finally {

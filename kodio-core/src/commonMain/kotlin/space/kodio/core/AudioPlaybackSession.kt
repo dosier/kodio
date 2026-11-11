@@ -82,6 +82,14 @@ interface AudioPlaybackSession {
     fun stop()
 
     /**
+     * Stops playback and frees the session's resources (background coroutines,
+     * device handles). The session must not be used afterwards.
+     *
+     * Defaults to [stop] for implementations that hold nothing beyond it.
+     */
+    fun release() = stop()
+
+    /**
      * Move the transport read cursor.
      *
      * Does not stop ingest. Flushes/restarts device feed as needed.
