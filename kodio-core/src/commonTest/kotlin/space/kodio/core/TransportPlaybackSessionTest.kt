@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import space.kodio.core.transport.AudioSink
 import space.kodio.core.transport.FakeAudioSink
@@ -25,7 +24,7 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Base-session transport wiring: ingest ⊥ feed, seek semantics, hot-flow guard.
  *
- * Uses [runBlocking] (not runTest virtual time) because [BaseAudioPlaybackSession]
+ * Uses [runRealTimeTest] (not runTest virtual time) because [BaseAudioPlaybackSession]
  * schedules ingest/feed on [Dispatchers.Default].
  */
 class TransportPlaybackSessionTest {
@@ -42,7 +41,7 @@ class TransportPlaybackSessionTest {
     )
 
     @Test
-    fun finiteSeek_zeroMidEnd_applied() = runBlocking {
+    fun finiteSeek_zeroMidEnd_applied() = runRealTimeTest {
         val frames = 1600
         val pcm = ByteArray(frames * format.bytesPerFrame) { 1 }
         val session = FakeTransportSession(bufferConfig = PlaybackBufferConfig(maxBytes = 1L shl 20))
@@ -60,7 +59,7 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
-    fun finiteSeek_beforePlay_appliedAsPendingCursor() = runBlocking {
+    fun finiteSeek_beforePlay_appliedAsPendingCursor() = runRealTimeTest {
         val frames = 1600
         val pcm = ByteArray(frames * format.bytesPerFrame) { 1 }
         val session = FakeTransportSession(bufferConfig = PlaybackBufferConfig(maxBytes = 1L shl 20))
@@ -85,7 +84,7 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
-    fun liveSeek_insideWindow_applied_pastEdge_unsupported() = runBlocking {
+    fun liveSeek_insideWindow_applied_pastEdge_unsupported() = runRealTimeTest {
         val config = PlaybackBufferConfig(
             maxBytes = format.bytesForDuration(10.seconds),
             maxDuration = 10.seconds,
@@ -118,7 +117,7 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
-    fun hotFlow_neverDrainedBeforePlaybackStarts() = runBlocking {
+    fun hotFlow_neverDrainedBeforePlaybackStarts() = runRealTimeTest {
         val session = FakeTransportSession()
         val started = CompletableDeferred<Unit>()
         val neverCompletes = AudioFlow(
@@ -138,7 +137,7 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
-    fun seekAfterFinish_retainsBuffer_applied() = runBlocking {
+    fun seekAfterFinish_retainsBuffer_applied() = runRealTimeTest {
         val pcm = ByteArray(format.bytesPerFrame * 80) { 4 }
         val session = FakeTransportSession()
         session.load(AudioFlow(format, flowOf(pcm), knownByteCount = pcm.size.toLong()))
@@ -155,7 +154,7 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
-    fun pendingCursor_finiteAheadOfIngest_applied() = runBlocking {
+    fun pendingCursor_finiteAheadOfIngest_applied() = runRealTimeTest {
         val session = FakeTransportSession()
         val gate = CompletableDeferred<Unit>()
         val pcm = ByteArray(format.bytesPerFrame * 160) { 5 } // 10ms
@@ -185,7 +184,7 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
-    fun ingestFailure_playsDecodedPcmThenErrors() = runBlocking {
+    fun ingestFailure_playsDecodedPcmThenErrors() = runRealTimeTest {
         val session = FakeTransportSession()
         val pcm = ByteArray(format.bytesPerFrame * 160) { 6 } // 10ms decoded before the failure
         val decodeError = IllegalStateException("corrupt frame")
@@ -211,7 +210,7 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
-    fun playAfterIngestFailure_reingestsInsteadOfReplayingTruncatedBuffer() = runBlocking {
+    fun playAfterIngestFailure_reingestsInsteadOfReplayingTruncatedBuffer() = runRealTimeTest {
         val session = FakeTransportSession()
         val pcm = ByteArray(format.bytesPerFrame * 160) { 7 }
         var collections = 0
@@ -236,7 +235,7 @@ class TransportPlaybackSessionTest {
     }
 
     @Test
-    fun release_cancelsSessionScope() = runBlocking {
+    fun release_cancelsSessionScope() = runRealTimeTest {
         val session = FakeTransportSession()
         session.load(
             AudioFlow(

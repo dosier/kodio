@@ -6,7 +6,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -148,7 +147,7 @@ class SeekGatingSessionTest {
     }
 
     @Test
-    fun play_streamsHotFlowWithoutFullCollect() = runBlocking {
+    fun play_streamsHotFlowWithoutFullCollect() = runRealTimeTest {
         val session = GatingSeekSession()
         val hot = MutableSharedFlow<ByteArray>(extraBufferCapacity = 8)
         session.load(AudioFlow(format, hot.asSharedFlow()))
