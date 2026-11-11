@@ -56,9 +56,13 @@ actual fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int?, chan
         channelCount = channelCount,
     )
 
+// Browsers enable call-style voice processing (echo cancellation, noise
+// suppression, auto gain) by default, which audibly degrades recordings
+// (muffled, pumping levels). Request the raw mic signal, matching Kodio's
+// native platforms. Plain booleans: unsupported keys are simply ignored.
 @Suppress("UNUSED_PARAMETER")
 private fun newMediaTrackConstraints(deviceId: String?, sampleRate: Int?, channelCount: Int?): MediaTrackConstraints =
-    js("var c = {}; if (deviceId != null) c.deviceId = { exact: deviceId }; if (sampleRate != null) c.sampleRate = { ideal: sampleRate }; if (channelCount != null) c.channelCount = { ideal: channelCount }; return c;")
+    js("var c = { echoCancellation: false, noiseSuppression: false, autoGainControl: false }; if (deviceId != null) c.deviceId = { exact: deviceId }; if (sampleRate != null) c.sampleRate = { ideal: sampleRate }; if (channelCount != null) c.channelCount = { ideal: channelCount }; return c;")
 
 actual val microphonePermissionDescriptor: PermissionDescriptor =
     PermissionDescriptor(PermissionName.microphone)

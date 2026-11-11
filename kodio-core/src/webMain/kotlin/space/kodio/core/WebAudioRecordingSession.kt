@@ -51,7 +51,9 @@ class WebAudioRecordingSession(
             "Track ready: id=${inputTrack.id}, label='${inputTrack.label}', " +
                 "readyState=${inputTrack.readyState}, enabled=${inputTrack.enabled}, muted=${inputTrack.muted}, " +
                 "settings.deviceId=${settings.deviceId?.take(12)}, rate=${settings.sampleRate}, " +
-                "channels=${settings.channelCount}, sampleSize=${settings.sampleSize}"
+                "channels=${settings.channelCount}, sampleSize=${settings.sampleSize}, " +
+                "echoCancellation=${settings.echoCancellation}, noiseSuppression=${settings.noiseSuppression}, " +
+                "autoGainControl=${settings.autoGainControl}"
         }
         if (!inputTrack.enabled) {
             logger.warn { "Audio track is disabled; enabling before capture" }
