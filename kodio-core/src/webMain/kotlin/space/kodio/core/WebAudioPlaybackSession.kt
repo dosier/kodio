@@ -37,6 +37,15 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
     private var useFiniteAudioBuffer: Boolean = false
     private var finiteSourcePlaying: Boolean = false
 
+    /**
+     * Transport seek epoch the finite source was last started for. The feed loop
+     * keeps writing after the source is running (its soft cursor is paced with
+     * delay() and lags real audio), so writes must not start it again: doing so
+     * replayed the whole recording from the start once the source had ended.
+     * Only a seek (new epoch) or an explicit restart may start a new source.
+     */
+    private var finiteStartedForEpoch: Long = NO_EPOCH
+
     override fun useTransportPlayback(): Boolean = true
 
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
@@ -53,6 +62,7 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         nextSliceStartTime = 0.0
         useFiniteAudioBuffer = false
         finiteSourcePlaying = false
+        finiteStartedForEpoch = NO_EPOCH
         pendingOffsetSec = 0.0
         return toWebPlaybackFormat(format)
     }
@@ -89,9 +99,15 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
 
     override fun onTransportSeekApplied(position: Duration) {
         pendingOffsetSec = position.toDouble(DurationUnit.SECONDS)
+        val epoch = currentTransport()?.seekEpoch ?: NO_EPOCH
+        finiteStartedForEpoch = NO_EPOCH
         if (useFiniteAudioBuffer && audioBuffer != null) {
             when (state.value) {
-                is State.Playing, is State.Paused -> startFiniteSourceAt(pendingOffsetSec)
+                is State.Playing, is State.Paused -> {
+                    startFiniteSourceAt(pendingOffsetSec)
+                    finiteStartedForEpoch = epoch
+                }
+                // e.g. seek after Finished: the next write starts it at this epoch.
                 else -> Unit
             }
         }
@@ -103,12 +119,12 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
     }
 
     override fun onTransportResumed() {
+        // AudioContext.suspend()/resume() keeps every source at its position, so
+        // resuming must not restart the finite source (that jumped back to the
+        // last seek / start). Sources that ended are restarted by writes or seeks.
         scope.launch {
             val context = audioContext ?: return@launch
             ensureContextRunning(context)
-            if (useFiniteAudioBuffer && audioBuffer != null && state.value is State.Playing) {
-                startFiniteSourceAt(pendingOffsetSec)
-            }
         }
     }
 
@@ -119,6 +135,7 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         pendingOffsetSec = 0.0
         useFiniteAudioBuffer = false
         finiteSourcePlaying = false
+        finiteStartedForEpoch = NO_EPOCH
         closeContext()
     }
 
@@ -220,6 +237,10 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         }
     }
 
+    private companion object {
+        const val NO_EPOCH = -1L
+    }
+
     private inner class WebAudioSink(
         private val format: AudioFormat,
     ) : AudioSink {
@@ -236,15 +257,21 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
 
             if (useFiniteAudioBuffer) {
                 val transport = currentTransport()
+                // Stale write from before a seek: drop it (as scheduleSlice does).
+                if (transport != null && transport.seekEpoch != seekEpoch) return
                 if (transport?.isIngestComplete == true) {
                     // Full growable buffer is ready: one AudioBuffer + offset seeks.
                     // Stop any interim slices from the pre-complete streaming phase.
                     if (scheduledSources.isNotEmpty()) {
                         stopStreamingSlicesOnly()
                     }
-                    rebuildFiniteAudioBuffer(context)
-                    if (!finiteSourcePlaying && state.value is State.Playing) {
-                        startFiniteSourceAt(pendingOffsetSec)
+                    // Ingest is complete, so the PCM is final: build the buffer once
+                    // (rebuilding on every write copied the whole recording each time).
+                    if (audioBuffer == null) rebuildFiniteAudioBuffer(context)
+                    if (finiteStartedForEpoch != seekEpoch && state.value is State.Playing) {
+                        // Start where the transport actually is, not at the last seek.
+                        startFiniteSourceAt(format.durationOfByteOffset(mediaByteOffset).toDouble(DurationUnit.SECONDS))
+                        finiteStartedForEpoch = seekEpoch
                     }
                 } else {
                     // Do not start an AudioBufferSourceNode on partial ingest —
