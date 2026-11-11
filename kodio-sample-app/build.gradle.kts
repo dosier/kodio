@@ -65,7 +65,13 @@ kotlin {
     }
 
     
-    jvm("desktop")
+    jvm("desktop") {
+        // Lets `desktopRun` work outside the IDE (the IDE passes the main class itself).
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        mainRun {
+            mainClass.set("space.kodio.sample.MainKt")
+        }
+    }
 
     js {
         outputModuleName.set(jsAppName)
@@ -182,9 +188,19 @@ fun org.gradle.process.JavaForkOptions.applyKodioSampleJvmArgs() {
     }
 }
 
+// kodio-core targets JDK 22 (Panama FFM for the native macOS audio path), so the
+// desktop app must run on a 22+ JVM even when Gradle itself runs on an older JDK.
+// Otherwise launching fails with UnsupportedClassVersionError (class file 66).
+val desktopMainClass = "space.kodio.sample.MainKt"
+val desktopJavaLauncher = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(22)
+}
+
 compose.desktop {
     application {
-        mainClass = "space.kodio.sample.MainKt"
+        mainClass = desktopMainClass
+        // Used by Compose `run` and the packaging tasks (bundled runtime).
+        javaHome = desktopJavaLauncher.get().metadata.installationPath.asFile.absolutePath
         jvmArgs("-Dopenai.api.key=$openaiApiKey")
         if (useJavaSoundProp != null) {
             jvmArgs("-Dkodio.useJavaSound=$useJavaSoundProp")
@@ -200,6 +216,12 @@ compose.desktop {
 
 // KMP `desktopRun` (KotlinJvmRun) is what the IDE launches — not Compose `run`.
 // compose.desktop { jvmArgs } does not apply to it; configure JavaExec explicitly.
+// KMP `desktopRun` otherwise runs on Gradle's own JDK. (It is registered late,
+// so match lazily instead of tasks.named.) Main class: see jvm("desktop") { mainRun }.
+tasks.withType<JavaExec>().matching { it.name == "desktopRun" }.configureEach {
+    javaLauncher.set(desktopJavaLauncher)
+}
+
 tasks.withType<JavaExec>().configureEach {
     if (name == "desktopRun" ||
         name == "run" ||

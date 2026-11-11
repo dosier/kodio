@@ -19,10 +19,12 @@ This project and everyone participating in it is governed by the [Code of Conduc
 
 ### Prerequisites
 
-- **JDK 21** or newer
+- **JDK 21** or newer to run Gradle, plus a **JDK 22+** for `kodio-core`'s JVM
+  target (it uses the Panama FFM API). Gradle picks the JDK 22 toolchain up
+  automatically if one is installed, or downloads it.
 - **Android SDK** (for Android targets)
 - **Xcode** (for iOS/macOS targets, macOS only)
-- **Gradle 8.x** (wrapper included)
+- **Gradle 9.x** (wrapper included)
 
 ### Getting Started
 
@@ -42,10 +44,19 @@ This project and everyone participating in it is governed by the [Code of Conduc
    ./gradlew build
    ```
 
-4. Run the sample app (Desktop):
+4. Run the sample app:
    ```bash
+   # Desktop (runs on the JDK 22 toolchain)
    ./gradlew :kodio-sample-app:desktopRun
+
+   # Web (Wasm), served at http://localhost:8080
+   ./gradlew :kodio-sample-app:wasmJsBrowserDevelopmentRun
    ```
+
+   Recording uses the system default input device. If it records silence, check
+   that the default input is a real microphone (virtual loopback drivers such as
+   BlackHole are silent unless audio is routed into them), or pick a device in
+   the sample's input selector.
 
 ## Project Structure
 
@@ -76,6 +87,7 @@ kodio/
 | Run tests | `./gradlew check` |
 | Build JVM JAR | `./gradlew :kodio-core:jvmJar` |
 | Run desktop sample | `./gradlew :kodio-sample-app:desktopRun` |
+| Run web sample (Wasm) | `./gradlew :kodio-sample-app:wasmJsBrowserDevelopmentRun` |
 | Clean build | `./gradlew clean build` |
 
 ### Platform-Specific Builds
