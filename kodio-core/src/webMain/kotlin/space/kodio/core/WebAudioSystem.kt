@@ -1,5 +1,6 @@
 package space.kodio.core
 
+import js.array.toList
 import space.kodio.core.security.AudioPermissionDeniedException
 import space.kodio.core.security.AudioPermissionManager
 import space.kodio.core.util.namedLogger

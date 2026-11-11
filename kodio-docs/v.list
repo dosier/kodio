@@ -3,8 +3,8 @@
 <vars>
     <!-- Version numbers -->
     <var name="kodio-version" value="0.2.0"/>
-    <var name="kotlin-version" value="2.4.0"/>
-    <var name="compose-version" value="1.11.1"/>
+    <var name="kotlin-version" value="2.4.21"/>
+    <var name="compose-version" value="1.12.2"/>
     <var name="coroutines-version" value="1.11.0"/>
     
     <!-- Maven coordinates -->

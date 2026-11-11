@@ -2,6 +2,7 @@
 
 package space.kodio.core
 
+import js.array.toJsArray
 import kotlin.js.ExperimentalWasmJsInterop
 import kotlin.js.JsAny
 import kotlin.js.toJsString
@@ -27,7 +28,7 @@ import kotlin.math.min
 actual fun createCodeBlobUrl(code: String): String {
     @Suppress("UNCHECKED_CAST_TO_EXTERNAL_INTERFACE")
     val blob = Blob(
-        blobParts = arrayOf(AUDIO_PROCESSOR_CODE.toJsString()).toJsArray(),
+        blobParts = listOf(AUDIO_PROCESSOR_CODE.toJsString()).toJsArray(),
         options = BlobPropertyBag(type = "application/javascript")
     )
     return URL.createObjectURL(blob)

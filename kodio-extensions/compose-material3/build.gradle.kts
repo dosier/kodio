@@ -93,6 +93,9 @@ kotlin {
 tasks.matching {
     it.name == "jsBrowserTest" ||
         it.name == "wasmJsBrowserTest" ||
+        // CMP 1.12+ pre-flight check for the (disabled) browser UI tests.
+        it.name == "checkComposeUiTestConfigurationForJs" ||
+        it.name == "checkComposeUiTestConfigurationForWasmJs" ||
         it.name == "testDebugUnitTest" ||
         it.name == "testReleaseUnitTest"
 }.configureEach { enabled = false }

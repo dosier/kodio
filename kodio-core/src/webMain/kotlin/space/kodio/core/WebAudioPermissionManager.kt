@@ -1,5 +1,6 @@
 package space.kodio.core
 
+import js.array.toList
 import space.kodio.core.security.AudioPermissionManager
 import web.events.Event
 import web.events.EventHandler
