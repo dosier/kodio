@@ -99,10 +99,12 @@ class TransportControllerConcurrencyTest {
 
         writer.join()
         seeker.join()
+        // Join the reader before draining: the controller is single-reader, so
+        // feeding from here while it still runs would be two concurrent readers.
+        reader.join()
         repeat(20_000) {
             if (transport.feed(256) < 0) return@repeat
         }
-        reader.join()
 
         assertEquals(0, appendErrors)
         assertEquals(0, feedErrors)

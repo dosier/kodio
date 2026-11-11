@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
@@ -29,9 +31,15 @@ private val log = namedLogger("BasePlayback")
  * Shared playback session: prepare → convert once → either legacy [playBlocking]
  * or ingest ⊥ transport ([useTransportPlayback]).
  *
- * [seekEpoch] (inside [TransportController]) is independent of [playEpoch]:
+ * [seekEpoch] (inside [TransportController]) is independent of the play epoch:
  * seeks abandon in-flight device writes without cancelling an in-flight play()
- * handshake. Stop/dispose still bumps [playEpoch] and tears transport down.
+ * handshake. Stop/dispose still bumps the play epoch and tears transport down.
+ *
+ * Play intent is one atomic [PlayIntent] so "is this generation still current"
+ * and "does the user want playback" can never be observed or changed apart.
+ * The epoch identifies a play generation (bumped by play/stop/feed restart);
+ * pause/resume only flip [PlayIntent.wantPlaying], so a paused feed loop parks
+ * instead of exiting.
  */
 abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
 
@@ -51,13 +59,40 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     override val bufferedRange: StateFlow<BufferedRange> = _bufferedRange.asStateFlow()
 
     /**
-     * Desired transport intent. [pause] / [stop] clear this so an in-flight [play]
+     * @property epoch current play generation; work stamped with an older epoch is stale.
+     * @property wantPlaying user intent. [pause] / [stop] clear it so an in-flight [play]
      * that finishes prepare/convert cannot overwrite a later pause with [State.Playing].
      */
-    private val wantPlaying = MutableStateFlow(false)
+    private data class PlayIntent(val epoch: Int, val wantPlaying: Boolean)
 
-    /** Bumped on pause/stop/new play to invalidate in-flight [play] generations. */
-    private val playEpoch = MutableStateFlow(0)
+    private val intent = MutableStateFlow(PlayIntent(epoch = 0, wantPlaying = false))
+
+    /** Starts a new play generation that wants playback; returns its epoch. */
+    private fun beginPlay(): Int =
+        intent.updateAndGet { PlayIntent(epoch = it.epoch + 1, wantPlaying = true) }.epoch
+
+    /** Invalidates every in-flight generation (stop/dispose). */
+    private fun abandonPlay() {
+        intent.update { PlayIntent(epoch = it.epoch + 1, wantPlaying = false) }
+    }
+
+    private fun setWantPlaying(want: Boolean) {
+        intent.update { it.copy(wantPlaying = want) }
+    }
+
+    /**
+     * Atomically ends generation [epoch] if it is still current (paused or not).
+     * Returns `false` when a newer play()/stop() already replaced it; the caller
+     * must then leave [state] alone. This is what keeps a finishing playback from
+     * clearing the intent of a play() that started a moment later.
+     */
+    private fun endPlay(epoch: Int): Boolean {
+        while (true) {
+            val current = intent.value
+            if (current.epoch != epoch) return false
+            if (intent.compareAndSet(current, current.copy(wantPlaying = false))) return true
+        }
+    }
 
     protected val scope = CoroutineScope(Dispatchers.Default) + SupervisorJob()
 
@@ -200,7 +235,7 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                 // Seek after finish: buffer retained → Paused (do not auto-resume).
                 when (_state.value) {
                     is State.Finished -> {
-                        wantPlaying.value = false
+                        setWantPlaying(false)
                         _transportPaused.value = true
                         _state.value = State.Paused
                     }
@@ -241,9 +276,7 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
     }
 
     private suspend fun playViaLegacy(audioFlow: AudioFlow) {
-        val epoch = playEpoch.value + 1
-        playEpoch.value = epoch
-        wantPlaying.value = true
+        val epoch = beginPlay()
 
         playbackJob?.cancel()
         playbackJob = null
@@ -269,26 +302,23 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                 runCatching {
                     @Suppress("DEPRECATION")
                     playBlocking(playbackAudioFlow)
-                    if (isCurrentPlay(epoch)) {
+                    if (endPlay(epoch)) {
                         _state.value = State.Finished
-                        wantPlaying.value = false
                         log.info { "Playback finished" }
                     }
                 }.onFailure {
                     if (it is CancellationException) throw it
-                    if (isCurrentPlay(epoch)) {
+                    if (endPlay(epoch)) {
                         log.error(it) { "Playback failed: ${it.message}" }
                         _state.value = State.Error(it)
-                        wantPlaying.value = false
                     }
                 }
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            if (isCurrentPlay(epoch)) {
+            if (endPlay(epoch)) {
                 log.error(e) { "play() failed during preparation: ${e.message}" }
                 _state.value = State.Error(e)
-                wantPlaying.value = false
             }
         }
     }
@@ -301,9 +331,7 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
         if (existing != null && existing.isIngestComplete && existing.ingestFailure == null &&
             retainedFormat != null
         ) {
-            val epoch = playEpoch.value + 1
-            playEpoch.value = epoch
-            wantPlaying.value = true
+            val epoch = beginPlay()
             _transportPaused.value = false
 
             playbackJob?.cancel()
@@ -322,18 +350,15 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                 playbackJob = scope.launch { runTransportFeedLoop(epoch, existing) }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                if (isCurrentPlay(epoch)) {
+                if (endPlay(epoch)) {
                     log.error(e) { "play() restart from retained buffer failed: ${e.message}" }
                     _state.value = State.Error(e)
-                    wantPlaying.value = false
                 }
             }
             return
         }
 
-        val epoch = playEpoch.value + 1
-        playEpoch.value = epoch
-        wantPlaying.value = true
+        val epoch = beginPlay()
         _transportPaused.value = false
 
         playbackJob?.cancel()
@@ -406,36 +431,34 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                     runTransportFeedLoop(epoch, controller)
                 }.onFailure {
                     if (it is CancellationException) throw it
-                    if (isCurrentPlay(epoch)) {
+                    if (endPlay(epoch)) {
                         log.error(it) { "transport feed failed: ${it.message}" }
                         _state.value = State.Error(it)
-                        wantPlaying.value = false
                     }
                 }
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            if (isCurrentPlay(epoch)) {
+            if (endPlay(epoch)) {
                 log.error(e) { "play() failed during preparation: ${e.message}" }
                 _state.value = State.Error(e)
-                wantPlaying.value = false
             }
         }
     }
 
     private suspend fun runTransportFeedLoop(epoch: Int, controller: TransportController) {
-        while (scope.isActive && isCurrentPlay(epoch)) {
+        // Runs for the whole generation; parks (not exits) while paused.
+        while (scope.isActive && isCurrentGeneration(epoch)) {
             awaitTransportUnpaused()
-            if (!isCurrentPlay(epoch)) break
+            if (!isCurrentGeneration(epoch)) break
 
             val n = controller.feed()
             when {
                 n < 0 -> {
                     // EOS: ingest complete AND cursor at end.
-                    if (isCurrentPlay(epoch)) {
+                    if (endPlay(epoch)) {
                         val failure = controller.ingestFailure
                         _state.value = if (failure != null) State.Error(failure) else State.Finished
-                        wantPlaying.value = false
                         _transportPaused.value = true
                         _position.value = mediaBase.coerceAtLeast(
                             controller.buffer.format.durationOfByteOffset(controller.readCursor)
@@ -487,8 +510,9 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
 
     final override fun pause() {
         log.info { "pause()" }
-        wantPlaying.value = false
-        playEpoch.value = playEpoch.value + 1
+        // Same generation: the feed loop parks on _transportPaused and resume()
+        // wakes it. An in-flight play() sees wantPlaying=false and stays paused.
+        setWantPlaying(false)
         _transportPaused.value = true
         runAndUpdateState(State.Paused) {
             if (useTransportPlayback() && transport != null) {
@@ -501,18 +525,17 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
 
     final override fun resume() {
         log.info { "resume()" }
-        wantPlaying.value = true
+        setWantPlaying(true)
         _transportPaused.value = false
-        // New play epoch so a finished feed loop can be restarted via play(),
-        // but resume while Playing/Paused reuses the existing feed if still alive.
+        // A parked feed loop simply wakes up. Only start a new generation when the
+        // loop has ended (e.g. EOS closed it) so two loops never feed at once.
         runAndUpdateState(State.Playing) {
             if (useTransportPlayback() && transport != null) {
                 onTransportResumed()
                 val t = transport
                 val format = transportFormat
                 if (t != null && playbackJob?.isActive != true && format != null) {
-                    val epoch = playEpoch.value + 1
-                    playEpoch.value = epoch
+                    val epoch = beginPlay()
                     playbackJob = scope.launch {
                         runCatching {
                             // Device may have been closed at EOS.
@@ -521,10 +544,9 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                             runTransportFeedLoop(epoch, t)
                         }.onFailure {
                             if (it is CancellationException) throw it
-                            if (isCurrentPlay(epoch)) {
+                            if (endPlay(epoch)) {
                                 log.error(it) { "resume feed failed: ${it.message}" }
                                 _state.value = State.Error(it)
-                                wantPlaying.value = false
                             }
                         }
                     }
@@ -537,8 +559,7 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
 
     final override fun stop() {
         log.info { "stop()" }
-        wantPlaying.value = false
-        playEpoch.value = playEpoch.value + 1
+        abandonPlay()
         _transportPaused.value = true
         runAndUpdateState(State.Idle) {
             if (useTransportPlayback()) {
@@ -591,11 +612,15 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
         transportSink = null
     }
 
+    /** Generation [epoch] is current and the user still wants playback. */
     private fun isCurrentPlay(epoch: Int): Boolean =
-        wantPlaying.value && playEpoch.value == epoch
+        intent.value == PlayIntent(epoch, wantPlaying = true)
+
+    /** Generation [epoch] has not been replaced by a newer play()/stop(). */
+    private fun isCurrentGeneration(epoch: Int): Boolean = intent.value.epoch == epoch
 
     private fun ensurePausedIfStillDesired() {
-        if (wantPlaying.value) return
+        if (intent.value.wantPlaying) return
         when (_state.value) {
             is State.Idle, is State.Finished, is State.Error -> return
             else -> {

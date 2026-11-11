@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package space.kodio.core
 
 import kotlinx.coroutines.CompletableDeferred
@@ -13,6 +15,8 @@ import space.kodio.core.transport.AudioSink
 import space.kodio.core.transport.FakeAudioSink
 import space.kodio.core.transport.VirtualClock
 import space.kodio.core.transport.bytesForDuration
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.incrementAndFetch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -254,6 +258,41 @@ class TransportPlaybackSessionTest {
         assertIs<AudioPlaybackSession.State.Idle>(session.state.value)
         assertTrue(session.scopeJob.isCancelled)
     }
+
+    /** After pause → resume, newly ingested PCM must keep reaching the device. */
+    @Test
+    fun pauseThenResume_keepsFeedingDevice() = runRealTimeTest {
+        val session = FakeTransportSession()
+        val hot = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
+        session.load(AudioFlow(format, hot.asSharedFlow()))
+        session.play()
+        withTimeout(2_000) { session.ingestStarted.await() }
+
+        val chunk = ByteArray(format.bytesPerFrame * 160) { 9 }
+        withTimeout(2_000) {
+            while (session.writeCount.load() == 0) {
+                hot.tryEmit(chunk)
+                delay(5)
+            }
+        }
+
+        // Immediate resume: the old feed loop may still be alive when resume() runs.
+        repeat(200) {
+            session.pause()
+            session.resume()
+            assertIs<AudioPlaybackSession.State.Playing>(session.state.value)
+
+            // Thread-safe counter: sink.writes is not safe to read while the feed loop runs.
+            val writesAtResume = session.writeCount.load()
+            withTimeout(2_000) {
+                while (session.writeCount.load() <= writesAtResume) {
+                    hot.tryEmit(chunk)
+                    delay(1)
+                }
+            }
+        }
+        session.release()
+    }
 }
 
 private class FakeTransportSession(
@@ -266,6 +305,8 @@ private class FakeTransportSession(
     val ingestStarted = CompletableDeferred<Unit>()
     val scopeJob: Job get() = scope.coroutineContext[Job]!!
 
+    val writeCount = AtomicInt(0)
+
     override fun useTransportPlayback(): Boolean = true
 
     override fun createAudioSink(format: AudioFormat): AudioSink = object : AudioSink {
@@ -277,6 +318,7 @@ private class FakeTransportSession(
             mediaByteOffset: Long,
         ) {
             sink.write(data, offset, length, seekEpoch, mediaByteOffset)
+            writeCount.incrementAndFetch()
             firstWrite.complete(Unit)
         }
 
