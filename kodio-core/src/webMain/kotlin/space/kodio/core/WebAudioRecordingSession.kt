@@ -18,7 +18,8 @@ private val logger = namedLogger("WebRecording")
 
 class WebAudioRecordingSession(
     private val device: AudioDevice.Input?,
-    private val format: AudioFormat = DefaultWebRecordingAudioFormat
+    private val format: AudioFormat = DefaultWebRecordingAudioFormat,
+    private val inputProcessing: InputProcessing = InputProcessing.PlatformDefault,
 ) : BaseAudioRecordingSession() {
 
     private var audioContext: AudioContext? = null
@@ -97,14 +98,16 @@ class WebAudioRecordingSession(
         sampleRate: Int,
         channelCount: Int,
     ): MediaStream {
+        val raw = inputProcessing == InputProcessing.Raw
         val primary = createMediaTrackConstraints(
             deviceId = deviceId,
             sampleRate = sampleRate,
             channelCount = channelCount,
+            raw = raw,
         )
         logger.debug {
             "getUserMedia primary: deviceId=${deviceId?.let { "{exact:${it.take(12)}}" } ?: "<omitted>"}, " +
-                "sampleRate.ideal=$sampleRate, channelCount.ideal=$channelCount"
+                "sampleRate.ideal=$sampleRate, channelCount.ideal=$channelCount, inputProcessing=$inputProcessing"
         }
         return try {
             navigator.mediaDevices.getUserMedia(createMediaStreamConstraints(audio = primary)).also {
@@ -123,6 +126,7 @@ class WebAudioRecordingSession(
                 deviceId = null,
                 sampleRate = sampleRate,
                 channelCount = channelCount,
+                raw = raw,
             )
             try {
                 navigator.mediaDevices.getUserMedia(createMediaStreamConstraints(audio = fallback)).also {

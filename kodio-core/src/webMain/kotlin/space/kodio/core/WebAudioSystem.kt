@@ -41,14 +41,22 @@ open class WebAudioSystem : SystemAudioSystemImpl() {
     override suspend fun createRecordingSession(
         requestedDevice: AudioDevice.Input?,
         requestedFormat: AudioFormat?,
+    ): AudioRecordingSession =
+        createRecordingSession(requestedDevice, requestedFormat, InputProcessing.PlatformDefault)
+
+    override suspend fun createRecordingSession(
+        requestedDevice: AudioDevice.Input?,
+        requestedFormat: AudioFormat?,
+        inputProcessing: InputProcessing,
     ): AudioRecordingSession {
         logger.debug {
             "createRecordingSession device=${requestedDevice?.let { "${it.name}(${it.id.take(12)})" } ?: "<system-default>"}, " +
-                "format=${requestedFormat ?: DefaultWebRecordingAudioFormat}"
+                "format=${requestedFormat ?: DefaultWebRecordingAudioFormat}, inputProcessing=$inputProcessing"
         }
         return WebAudioRecordingSession(
             device = requestedDevice,
             format = requestedFormat ?: DefaultWebRecordingAudioFormat,
+            inputProcessing = inputProcessing,
         )
     }
 

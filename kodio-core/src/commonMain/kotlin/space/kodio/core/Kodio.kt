@@ -133,17 +133,20 @@ object Kodio {
      * 
      * @param quality The audio quality preset (default: Standard)
      * @param device Optional specific input device to use
+     * @param inputProcessing Platform processing of the mic signal (see [InputProcessing])
      * @return A new Recorder ready to start recording
      * @throws AudioError if session creation fails
      */
     suspend fun recorder(
         quality: AudioQuality = AudioQuality.Default,
-        device: AudioDevice.Input? = null
+        device: AudioDevice.Input? = null,
+        inputProcessing: InputProcessing = InputProcessing.PlatformDefault,
     ): Recorder {
         return try {
             val session = SystemAudioSystem.createRecordingSession(
                 requestedDevice = device,
                 requestedFormat = quality.format,
+                inputProcessing = inputProcessing,
             )
             Recorder(session, quality)
         } catch (e: CancellationException) {
@@ -162,7 +165,7 @@ object Kodio {
      */
     suspend fun recorder(config: RecorderConfig.() -> Unit): Recorder {
         val cfg = RecorderConfig().apply(config)
-        return recorder(quality = cfg.quality, device = cfg.device)
+        return recorder(quality = cfg.quality, device = cfg.device, inputProcessing = cfg.inputProcessing)
     }
 
     // ==================== PLAYER CREATION ====================
@@ -207,15 +210,17 @@ object Kodio {
      * @param duration How long to record
      * @param quality The audio quality preset
      * @param device Optional specific input device
+     * @param inputProcessing Platform processing of the mic signal (see [InputProcessing])
      * @return The recorded audio
      * @throws AudioError if recording fails
      */
     suspend fun record(
         duration: Duration,
         quality: AudioQuality = AudioQuality.Default,
-        device: AudioDevice.Input? = null
+        device: AudioDevice.Input? = null,
+        inputProcessing: InputProcessing = InputProcessing.PlatformDefault,
     ): AudioRecording {
-        return record(quality = quality, device = device) { recorder ->
+        return record(quality = quality, device = device, inputProcessing = inputProcessing) { recorder ->
             recorder.start()
             delay(duration)
             recorder.stop()
@@ -230,6 +235,7 @@ object Kodio {
      * 
      * @param quality The audio quality preset
      * @param device Optional specific input device
+     * @param inputProcessing Platform processing of the mic signal (see [InputProcessing])
      * @param block The recording logic
      * @return The result from the block
      * @throws AudioError if recording fails
@@ -237,9 +243,10 @@ object Kodio {
     suspend fun <T> record(
         quality: AudioQuality = AudioQuality.Default,
         device: AudioDevice.Input? = null,
+        inputProcessing: InputProcessing = InputProcessing.PlatformDefault,
         block: suspend (Recorder) -> T
     ): T {
-        val recorder = recorder(quality = quality, device = device)
+        val recorder = recorder(quality = quality, device = device, inputProcessing = inputProcessing)
         return try {
             block(recorder)
         } catch (e: CancellationException) {
@@ -332,6 +339,9 @@ class RecorderConfig {
 
     /** Specific input device to use (null for default) */
     var device: AudioDevice.Input? = null
+
+    /** Platform processing of the mic signal (see [InputProcessing]) */
+    var inputProcessing: InputProcessing = InputProcessing.PlatformDefault
 }
 
 /**

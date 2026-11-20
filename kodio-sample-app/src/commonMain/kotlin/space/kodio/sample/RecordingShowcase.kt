@@ -59,6 +59,7 @@ import space.kodio.compose.RecorderState
 import space.kodio.compose.WaveformStyle
 import space.kodio.compose.rememberPlayerState
 import space.kodio.compose.rememberRecorderState
+import space.kodio.core.InputProcessing
 import space.kodio.core.AudioDevice
 import space.kodio.core.AudioQuality
 import space.kodio.core.AudioRecording
@@ -74,6 +75,7 @@ fun RecordingShowcase() {
     var recordings by remember { mutableStateOf(listOf<AudioRecording>()) }
     var selectedRecordings by remember { mutableStateOf<Set<AudioRecording>>(emptySet()) }
     var selectedQuality by remember { mutableStateOf(AudioQuality.Default) }
+    var rawInput by remember { mutableStateOf(false) }
     var inputDevices by remember { mutableStateOf<List<AudioDevice.Input>>(emptyList()) }
     var selectedInputDevice by remember { mutableStateOf<AudioDevice.Input?>(null) }
     var stitchError by remember { mutableStateOf<String?>(null) }
@@ -81,6 +83,7 @@ fun RecordingShowcase() {
     val recorderState = rememberRecorderState(
         quality = selectedQuality,
         device = selectedInputDevice,
+        inputProcessing = if (rawInput) InputProcessing.Raw else InputProcessing.PlatformDefault,
         onRecordingComplete = { recording ->
             // Newest first so the session list shows the latest take at the top.
             recordings = listOf(recording) + recordings
@@ -138,6 +141,8 @@ fun RecordingShowcase() {
                         onSelectDevice = { selectedInputDevice = it },
                         selectedQuality = selectedQuality,
                         onSelectQuality = { selectedQuality = it },
+                        rawInput = rawInput,
+                        onRawInputChange = { rawInput = it },
                         recorderActive = recorderActive,
                     )
                 }
@@ -201,6 +206,8 @@ fun RecordingShowcase() {
                         onSelectDevice = { selectedInputDevice = it },
                         selectedQuality = selectedQuality,
                         onSelectQuality = { selectedQuality = it },
+                        rawInput = rawInput,
+                        onRawInputChange = { rawInput = it },
                         recorderActive = recorderActive,
                     )
                 }
@@ -254,6 +261,8 @@ private fun CaptureControls(
     onSelectDevice: (AudioDevice.Input?) -> Unit,
     selectedQuality: AudioQuality,
     onSelectQuality: (AudioQuality) -> Unit,
+    rawInput: Boolean,
+    onRawInputChange: (Boolean) -> Unit,
     recorderActive: Boolean,
 ) {
     // Debounce "needs permission" UI so brief Unknown/re-init after quality change
@@ -339,6 +348,23 @@ private fun CaptureControls(
                     onSelect = onSelectQuality,
                     enabled = !recorderActive,
                 )
+                // InputProcessing.Raw: only changes anything on web, where the
+                // browser otherwise applies echo cancellation / noise suppression / AGC.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = rawInput,
+                        onCheckedChange = onRawInputChange,
+                        enabled = !recorderActive,
+                    )
+                    Column {
+                        Text("Raw input", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "No echo cancellation, noise suppression or auto gain (web). Quieter.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

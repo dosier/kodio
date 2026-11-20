@@ -44,7 +44,16 @@ expect fun createMediaStreamConstraints(audio: MediaTrackConstraints): MediaStre
  * soft `ideal` hints. `sampleSize` is intentionally omitted — MediaStreamTrack bit
  * depth is unrelated to our post-worklet PCM encoding.
  */
-expect fun createMediaTrackConstraints(deviceId: String?, sampleRate: Int?, channelCount: Int?): MediaTrackConstraints
+/**
+ * Audio track constraints. [raw] turns off the browser's voice processing (echo
+ * cancellation, noise suppression, auto gain); otherwise the browser defaults apply.
+ */
+expect fun createMediaTrackConstraints(
+    deviceId: String?,
+    sampleRate: Int?,
+    channelCount: Int?,
+    raw: Boolean = false,
+): MediaTrackConstraints
 expect fun createAudioWorkletNode(context: BaseAudioContext, name: String): AudioWorkletNode
 internal expect fun createWorkletFlushMessage(): JsAny
 

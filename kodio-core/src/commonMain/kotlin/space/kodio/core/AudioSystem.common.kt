@@ -35,6 +35,17 @@ public sealed interface AudioSystem {
     ): AudioRecordingSession
 
     /**
+     * Like [createRecordingSession], also choosing how much the platform processes
+     * the captured signal. Platforms without such processing ignore [inputProcessing].
+     */
+    @Throws(AudioPermissionDeniedException::class, CancellationException::class)
+    suspend fun createRecordingSession(
+        requestedDevice: AudioDevice.Input?,
+        requestedFormat: AudioFormat?,
+        inputProcessing: InputProcessing,
+    ): AudioRecordingSession = createRecordingSession(requestedDevice, requestedFormat)
+
+    /**
      * Creates a playback session with the specified output device.
      *
      * @param requestedDevice The requested output device to play to (not all platforms support this).

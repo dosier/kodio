@@ -67,6 +67,7 @@ class RecorderState internal constructor(
     private val scope: CoroutineScope,
     private val quality: AudioQuality,
     private val device: AudioDevice.Input?,
+    private val inputProcessing: InputProcessing = InputProcessing.PlatformDefault,
     private val liveWaveformGain: Float,
     private val getOnRecordingComplete: () -> ((AudioRecording) -> Unit)?
 ) {
@@ -427,7 +428,7 @@ class RecorderState internal constructor(
     }
 
     private suspend fun createRecorder(): Recorder {
-        return Kodio.recorder(quality = quality, device = device)
+        return Kodio.recorder(quality = quality, device = device, inputProcessing = inputProcessing)
     }
 
     private fun startAmplitudeCollection(recorder: Recorder) {
@@ -479,6 +480,7 @@ class RecorderState internal constructor(
  * 
  * @param quality The audio quality preset
  * @param device Optional specific input device
+ * @param inputProcessing Platform processing of the mic signal (see [InputProcessing])
  * @param onRecordingComplete Callback when a recording is completed
  * @return A remembered RecorderState
  */
@@ -487,6 +489,7 @@ fun rememberRecorderState(
     quality: AudioQuality = AudioQuality.Default,
     device: AudioDevice.Input? = null,
     liveWaveformGain: Float = DEFAULT_LIVE_WAVEFORM_GAIN,
+    inputProcessing: InputProcessing = InputProcessing.PlatformDefault,
     onRecordingComplete: ((AudioRecording) -> Unit)? = null
 ): RecorderState {
     val scope = rememberCoroutineScope()
@@ -494,11 +497,12 @@ fun rememberRecorderState(
     // Use rememberUpdatedState to always have the latest callback
     val currentCallback by rememberUpdatedState(onRecordingComplete)
     
-    val state = remember(quality, device) {
+    val state = remember(quality, device, inputProcessing) {
         RecorderState(
             scope = scope,
             quality = quality,
             device = device,
+            inputProcessing = inputProcessing,
             liveWaveformGain = liveWaveformGain,
             getOnRecordingComplete = { currentCallback }
         )
