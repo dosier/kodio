@@ -43,6 +43,14 @@ interface AudioRecordingSession {
     /** Stops the current recording. Sets the state to STOPPED. */
     fun stop()
 
+    /**
+     * Suspends until audio captured before [stop] has been delivered into
+     * [audioFlow]. Some platforms hand over their last buffer shortly after
+     * [stop] returns (e.g. a Web Audio worklet); [Recorder.getRecording] waits on
+     * this so recordings are not cut short. No-op by default.
+     */
+    suspend fun awaitCaptureComplete() = Unit
+
     fun reset()
 
     /**

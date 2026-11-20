@@ -31,6 +31,8 @@ class PcmRecorderProcessor extends AudioWorkletProcessor {
             this.batch = new Float32Array(this.batchSize);
             this.offset = 0;
         }
+        // End marker: an empty batch tells the main thread nothing else follows.
+        this.port.postMessage(new Float32Array(0));
     }
 
     /**

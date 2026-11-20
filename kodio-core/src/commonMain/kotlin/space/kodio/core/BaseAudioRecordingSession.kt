@@ -7,6 +7,7 @@ import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
 import kotlin.concurrent.Volatile
+import kotlin.time.Duration.Companion.milliseconds
 
 private val logger = namedLogger("BaseRecording")
 
@@ -33,6 +34,9 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
 
     private var hotFlowSource: MutableSharedFlow<ByteArray>? = null
     private var recordingAudioFormat: AudioFormat? = null
+
+    /** Appends the platform's late [captureTail] after [stop]; see [awaitCaptureComplete]. */
+    private var captureCompletionJob: Job? = null
 
     /** Ensures platform [cleanup] runs at most once per recording cycle. */
     @Volatile
@@ -214,6 +218,26 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
             val format = recordingAudioFormat
             logger.debug { "Recorded ${captured.size} chunks" }
 
+            // Platforms that deliver their last buffer after stop() (Web worklet)
+            // append it here once it arrives; Recorder.getRecording() waits for it.
+            val tail = captureTail()
+            if (tail != null && format != null) {
+                captureCompletionJob = scope.launch {
+                    val extra = withTimeoutOrNull(CAPTURE_TAIL_TIMEOUT) { tail.await() }
+                        .orEmpty()
+                        .filter { it.isNotEmpty() }
+                    if (extra.isEmpty()) return@launch
+                    recordedChunks.addAll(extra)
+                    val all = captured + extra
+                    _audioFlow.value = AudioFlow(
+                        format,
+                        all.asFlow(),
+                        knownByteCount = all.sumOf { it.size.toLong() },
+                    )
+                    logger.debug { "Appended ${extra.size} late chunk(s) after stop" }
+                }
+            }
+
             if (captured.isNotEmpty() && format != null) {
                 // 3. Create a new COLD, replayable flow from the captured data.
                 val knownBytes = captured.sumOf { it.size.toLong() }
@@ -234,7 +258,20 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
         }
     }
 
+    override suspend fun awaitCaptureComplete() {
+        captureCompletionJob?.join()
+    }
+
+    /**
+     * Audio the platform still holds when [stop] runs and will deliver shortly
+     * afterwards, or `null` if everything is already in [recordedChunks].
+     * Called once per [stop], after [cleanup].
+     */
+    protected open fun captureTail(): Deferred<List<ByteArray>>? = null
+
     override fun reset() {
+        captureCompletionJob?.cancel()
+        captureCompletionJob = null
         _pausedFlow.value = false
         cleanupRecording()
         _audioFlow.value = null
@@ -310,5 +347,9 @@ abstract class BaseAudioRecordingSession : AudioRecordingSession {
         throw UnsupportedOperationException(
             "Override resumeRecording() to support resume on this AudioRecordingSession."
         )
+    }
+
+    private companion object {
+        val CAPTURE_TAIL_TIMEOUT = 500.milliseconds
     }
 }

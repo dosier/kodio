@@ -3,7 +3,9 @@ package space.kodio.core
 import js.array.toList
 import js.typedarrays.Float32Array
 import kotlinx.coroutines.channels.SendChannel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import web.audio.*
 import web.events.EventHandler
@@ -28,6 +30,16 @@ class WebAudioRecordingSession(
     private var audioWorkletNode: AudioWorkletNode? = null // Replaces ScriptProcessorNode
 
     private val blobUrl = createCodeBlobUrl(AUDIO_PROCESSOR_CODE)
+
+    /**
+     * Set when capture stops: the worklet still holds an unsent partial batch
+     * (and batches already posted may still be queued). Everything arriving
+     * after stop goes into [tailChunks] until the worklet's empty end marker.
+     */
+    private var stopTail: CompletableDeferred<List<ByteArray>>? = null
+    private val tailChunks = mutableListOf<ByteArray>()
+
+    override fun captureTail(): Deferred<List<ByteArray>>? = stopTail
 
     override suspend fun prepareRecording(): AudioFormat {
         val requestedDeviceId = device?.id?.takeIf { it.isNotEmpty() }
@@ -145,6 +157,8 @@ class WebAudioRecordingSession(
         val context = audioContext ?: return
         val stream = mediaStream ?: return
         chunkCount = 0
+        stopTail = null
+        tailChunks.clear()
 
         if (context.state != AudioContextState.running) {
             logger.debug { "startRecording: resuming AudioContext from state=${context.state}" }
@@ -155,8 +169,18 @@ class WebAudioRecordingSession(
         workletNode.port.onmessage = EventHandler { event ->
             try {
                 val pcmData = (event as MessageEvent).data as Float32Array<*>
+                val tail = stopTail
+                if (pcmData.length == 0) {
+                    // End marker after the stop flush: hand the tail to the base session.
+                    tail?.complete(tailChunks.toList())
+                    return@EventHandler
+                }
                 chunkCount++
                 val byteData = pcmData.encodeAs16BitPcmByteArray()
+                if (tail != null) {
+                    tailChunks.add(byteData)
+                    return@EventHandler
+                }
                 if (chunkCount <= 5 || chunkCount % 200 == 0) {
                     logger.debug {
                         "Chunk #$chunkCount: samples=${pcmData.length}, bytes=${byteData.size}, " +
@@ -188,9 +212,13 @@ class WebAudioRecordingSession(
         val node = audioWorkletNode
         val stream = mediaStream
         val context = audioContext
+        val tail = CompletableDeferred<List<ByteArray>>()
+        tailChunks.clear()
+        stopTail = if (node != null) tail else null
         node?.port?.postMessage(createWorkletFlushMessage())
         scope.launch {
-            delay(50)
+            // Keep the port open until the worklet's end marker arrives (bounded).
+            if (node != null) withTimeoutOrNull(500) { tail.await() }
             node?.disconnect()
             node?.port?.close()
             stream?.getTracks()?.toList()?.forEach { it.stop() }

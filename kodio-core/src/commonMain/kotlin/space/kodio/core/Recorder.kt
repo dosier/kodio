@@ -108,6 +108,8 @@ class Recorder internal constructor(
      * This is a suspend function to safely collect the audio data.
      */
     suspend fun getRecording(): AudioRecording? {
+        // Let audio handed over just after stop() (e.g. web) land first.
+        session.awaitCaptureComplete()
         val currentState = session.state.value
         val audioFlow = session.audioFlow.value ?: return null
         
