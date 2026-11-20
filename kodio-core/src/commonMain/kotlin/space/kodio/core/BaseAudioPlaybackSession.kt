@@ -351,6 +351,11 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                     ensurePausedIfStillDesired()
                     return
                 }
+                // Play again after Finished (no seek since): restart from the top,
+                // as before transport playback, instead of instantly re-finishing at EOS.
+                if (pendingSeekPosition == null && existing.isFinished) {
+                    pendingSeekPosition = Duration.ZERO
+                }
                 applyPendingSeek(existing)
                 existing.prime()
                 onTransportResumed()

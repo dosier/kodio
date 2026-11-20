@@ -259,6 +259,25 @@ class TransportPlaybackSessionTest {
         assertTrue(session.scopeJob.isCancelled)
     }
 
+    /** play() again after Finished replays from the start (no instant re-finish). */
+    @Test
+    fun playAgainAfterFinish_replaysFromStart() = runRealTimeTest {
+        val session = FakeTransportSession()
+        val pcm = ByteArray(format.bytesPerFrame * 160) { 5 }
+        session.load(AudioFlow(format, flowOf(pcm), knownByteCount = pcm.size.toLong()))
+        session.play()
+        withTimeout(2_000) { session.state.first { it is AudioPlaybackSession.State.Finished } }
+
+        val writesBefore = session.sink.writes.size
+        session.play()
+        withTimeout(2_000) { session.state.first { it is AudioPlaybackSession.State.Finished } }
+        val replayed = session.sink.writes.drop(writesBefore)
+        assertTrue(replayed.isNotEmpty(), "second play() wrote nothing")
+        assertEquals(0L, replayed.first().mediaByteOffset)
+        assertEquals(pcm.size, replayed.sumOf { it.bytes.size })
+        session.release()
+    }
+
     /** Finished waits until the device has played what it holds (no cut-off tail). */
     @Test
     fun finished_waitsForDeviceDrain() = runRealTimeTest {
