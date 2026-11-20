@@ -4,6 +4,42 @@
 
 Guide for upgrading between Kodio versions.
 
+## 0.2.x to 0.3.0 {id="0-2-x-to-0-3-0"}
+
+No source changes are required; these are behavior changes to be aware of.
+
+### Playback {id="0-3-0-playback"}
+
+- All built-in sessions use buffered transport playback with real seeking
+  (`seekTo` returns `SeekResult.Applied`). `BaseAudioPlaybackSession.playBlocking`
+  is deprecated for custom sessions.
+- `State.Finished` is reported once the device has played the audio, not when
+  the last bytes were handed to it. `awaitComplete()` followed by `release()`
+  no longer cuts off the end of a clip.
+- Calling `play()` again after `Finished` replays from the start (unless you
+  seeked since).
+- A failing source (e.g. a corrupt file) ends in `State.Error` after playing
+  what was decoded, instead of staying `Playing`.
+- `Player.release()` / `AudioPlaybackSession.release()` now also cancel the
+  session's background work. Do not reuse a released player.
+
+### Recording {id="0-3-0-recording"}
+
+- `AudioRecording.duration` is computed from the PCM when no duration was
+  supplied, so recordings from `Kodio.record` / `Recorder` are no longer `null`.
+- Web: the browser's voice processing (echo cancellation, noise suppression,
+  auto gain) stays on by default. Pass `inputProcessing = InputProcessing.Raw`
+  to `Kodio.recorder` / `Kodio.record` / `rememberRecorderState` for the
+  unprocessed signal.
+- `Recorder.getRecording()` waits for audio a platform delivers just after
+  `stop()` (new `AudioRecordingSession.awaitCaptureComplete()`), so web
+  recordings keep their last ~40 ms.
+
+### Errors {id="0-3-0-errors"}
+
+`Kodio` helpers (`record`, `play`, `recorder`, `player`) rethrow
+`CancellationException` instead of wrapping it in `AudioError`.
+
 ## 0.1.x to 0.2.0 {id="0-1-x-to-0-2-0"}
 
 ### Compose API consolidation {id="0-2-0-compose"}
