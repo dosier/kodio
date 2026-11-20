@@ -5,7 +5,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import platform.Foundation.NSProcessInfo
 import space.kodio.core.AudioFormat
 import space.kodio.core.AudioRecording
 import space.kodio.core.Channels
@@ -25,23 +24,25 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
-/**
+/*
  * Scripted on-device check of record/playback timing, for testing on a real
- * iPhone without tapping through the UI. Enabled by launching with the
- * environment variable `KODIO_SELFTEST=1`; results are printed to stdout as
- * `SELFTEST ...` lines (visible with `devicectl device process launch --console`).
+ * phone without tapping through the UI. Results are printed to stdout as
+ * `SELFTEST ...` lines.
+ *
+ * - iOS: launch with env `KODIO_SELFTEST=1`
+ *   (`devicectl device process launch --console --environment-variables ...`).
+ * - Android: `adb shell am start -n space.kodio.sample/.MainActivity --es KODIO_SELFTEST 1`,
+ *   then `adb logcat -s System.out`.
  */
-internal fun selfTestRequested(): Boolean =
-    NSProcessInfo.processInfo.environment["KODIO_SELFTEST"] != null
 
-/** Mirrors Kodio logs to stdout (NSLog only reaches the device's system log). */
-internal object StdoutLogWriter : KodioLogWriter {
+/** Mirrors Kodio logs to stdout (iOS NSLog only reaches the device's system log). */
+object StdoutLogWriter : KodioLogWriter {
     override fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?) {
         println("[$level] $tag: $message" + (throwable?.let { " ($it)" } ?: ""))
     }
 }
 
-internal fun launchDeviceSelfTest() {
+fun launchDeviceSelfTest() {
     CoroutineScope(Dispatchers.Default).launch {
         delay(1.seconds) // let the UI come up first
         report("start")

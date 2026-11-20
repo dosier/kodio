@@ -1,6 +1,7 @@
 package space.kodio.sample
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,10 +23,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         FileKit.init(this)
         Kodio.initialize(this)
+        // `adb shell am start ... --es KODIO_SELFTEST 1` runs the scripted device check.
+        val selfTest = intent?.getStringExtra("KODIO_SELFTEST") != null
         Kodio.configureLogging {
             minLevel = LogLevel.Debug
             addWriter(platformLogWriter())
+            if (selfTest) addWriter(StdoutLogWriter)
         }
+        // Sample app: keep the screen on while it is open (long recordings, device tests).
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (selfTest && savedInstanceState == null) launchDeviceSelfTest()
         setContent {
             App()
         }
