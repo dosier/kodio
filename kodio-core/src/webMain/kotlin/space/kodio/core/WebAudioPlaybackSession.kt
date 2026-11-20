@@ -46,6 +46,10 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
      */
     private var finiteStartedForEpoch: Long = NO_EPOCH
 
+    /** AudioContext time and media offset the finite source was started at. */
+    private var finiteStartCtxTime: Double = 0.0
+    private var finiteStartOffsetSec: Double = 0.0
+
     override fun useTransportPlayback(): Boolean = true
 
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
@@ -148,6 +152,19 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
         return preparePlayback(format)
     }
 
+    override fun deviceQueuedFrames(): Long {
+        val context = audioContext ?: return 0L
+        val rate = context.sampleRate
+        val remainingSec = if (useFiniteAudioBuffer) {
+            val buffer = audioBuffer
+            if (!finiteSourcePlaying || buffer == null) 0.0
+            else buffer.duration - (finiteStartOffsetSec + (context.currentTime - finiteStartCtxTime))
+        } else {
+            nextSliceStartTime - context.currentTime
+        }
+        return (remainingSec.coerceAtLeast(0.0) * rate).toLong()
+    }
+
     override suspend fun paceAfterTransportWrite(bytesWritten: Int, format: AudioFormat) {
         val context = audioContext ?: return
         if (useFiniteAudioBuffer) {
@@ -187,7 +204,11 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
             return
         }
 
-        scope.launch { ensureContextRunning(context) }
+        // Seeking while paused must not start audio: the context stays suspended
+        // and the new source begins at the seek position on resume().
+        if (state.value is State.Playing) {
+            scope.launch { ensureContextRunning(context) }
+        }
 
         val source = context.createBufferSource()
         source.buffer = buffer
@@ -198,7 +219,9 @@ class WebAudioPlaybackSession() : BaseAudioPlaybackSession() {
                 finiteSourcePlaying = false
             }
         }
-        source.start(context.currentTime, clamped)
+        finiteStartCtxTime = context.currentTime
+        finiteStartOffsetSec = clamped
+        source.start(finiteStartCtxTime, clamped)
         currentSource = source
         finiteSourcePlaying = true
         logger.debug { "Started finite AudioBufferSourceNode at offset=$clamped gen=$generation" }

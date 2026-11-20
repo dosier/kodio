@@ -13,9 +13,10 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import space.kodio.core.io.convertAudio
 import space.kodio.core.io.encodeToByteArray
 import space.kodio.core.util.namedLogger
@@ -63,8 +64,35 @@ internal class NativeMacosAudioPlaybackSession(
     private var positionJob: Job? = null
     private val completionScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private val wantPlaying = MutableStateFlow(false)
-    private val playEpoch = MutableStateFlow(0)
+    /**
+     * Play generation + user intent in one atomic value (same model as
+     * [BaseAudioPlaybackSession]). Pause/resume only flip [PlayIntent.wantPlaying];
+     * the epoch changes on play/stop so a completion watcher stays valid across
+     * pause/resume and can never clear the intent of a newer play().
+     */
+    private data class PlayIntent(val epoch: Int, val wantPlaying: Boolean)
+
+    private val intent = MutableStateFlow(PlayIntent(epoch = 0, wantPlaying = false))
+
+    private fun beginPlay(): Int =
+        intent.updateAndGet { PlayIntent(epoch = it.epoch + 1, wantPlaying = true) }.epoch
+
+    private fun abandonPlay() {
+        intent.update { PlayIntent(epoch = it.epoch + 1, wantPlaying = false) }
+    }
+
+    private fun setWantPlaying(want: Boolean) {
+        intent.update { it.copy(wantPlaying = want) }
+    }
+
+    /** Atomically ends generation [epoch] if it is still current. */
+    private fun endPlay(epoch: Int): Boolean {
+        while (true) {
+            val current = intent.value
+            if (current.epoch != epoch) return false
+            if (intent.compareAndSet(current, current.copy(wantPlaying = false))) return true
+        }
+    }
 
     override suspend fun load(audioFlow: AudioFlow) {
         _audioFlowHolder.value = audioFlow
@@ -115,9 +143,7 @@ internal class NativeMacosAudioPlaybackSession(
     override suspend fun play() {
         val source = _audioFlowHolder.value ?: return
 
-        val epoch = playEpoch.value + 1
-        playEpoch.value = epoch
-        wantPlaying.value = true
+        val epoch = beginPlay()
 
         completionJob?.cancel()
         completionJob = null
@@ -226,7 +252,8 @@ internal class NativeMacosAudioPlaybackSession(
             val result = NativeMacosLib.macos_playback_session_await_completion
                 .invokeExact(nativeMemSeq) as Int
             ensureActive()
-            if (!isCurrentPlay(epoch)) {
+            // Generation check only: a pause/resume in between keeps the epoch.
+            if (!endPlay(epoch)) {
                 logger.debug { "await_completion ignored stale epoch=$epoch result=$result" }
                 return@launch
             }
@@ -264,7 +291,6 @@ internal class NativeMacosAudioPlaybackSession(
                     "ingestComplete=$ingestComplete position=${_position.value} " +
                     "knownByteCount=${_audioFlowHolder.value?.knownByteCount}"
             }
-            if (result == 0) wantPlaying.value = false
             stopPositionPolling()
             pollTransportClocks()
         }
@@ -288,23 +314,28 @@ internal class NativeMacosAudioPlaybackSession(
         }
 
     override fun pause() {
-        wantPlaying.value = false
-        playEpoch.value = playEpoch.value + 1
+        // Same generation: the completion watcher must survive pause/resume.
+        setWantPlaying(false)
         NativeMacosLib.macos_playback_session_pause.invokeExact(nativeMemSeq)
         _state.value = AudioPlaybackSession.State.Paused
         stopPositionPolling()
     }
 
     override fun resume() {
-        wantPlaying.value = true
+        // After Finished (+ seek → Paused) no completion watcher is running:
+        // restart from the retained native buffer so Finished is reported again.
+        if (completionJob?.isActive != true && streamPrepared && ingestComplete) {
+            replayFromRetainedBuffer(beginPlay())
+            return
+        }
+        setWantPlaying(true)
         NativeMacosLib.macos_playback_session_resume.invokeExact(nativeMemSeq)
         _state.value = AudioPlaybackSession.State.Playing
         startPositionPolling()
     }
 
     override fun stop() {
-        wantPlaying.value = false
-        playEpoch.value = playEpoch.value + 1
+        abandonPlay()
         completionJob?.cancel()
         completionJob = null
         ingestJob?.cancel()
@@ -329,12 +360,9 @@ internal class NativeMacosAudioPlaybackSession(
         if (!streamPrepared) {
             // Pre-play seek: open the native stream so pending-cursor seeks work
             // for known-finite content (ingest starts on play()).
-            runBlocking {
-                val normalized = normalizeForPlayback(source)
-                beginNativeStream(normalized)
-                streamPrepared = true
-                ingestComplete = false
-            }
+            beginNativeStream(normalizeForPlayback(source))
+            streamPrepared = true
+            ingestComplete = false
         }
         val code = NativeMacosLib.macos_playback_session_seek.invokeExact(
             nativeMemSeq,
@@ -345,7 +373,7 @@ internal class NativeMacosAudioPlaybackSession(
             _position.value = position
             when (_state.value) {
                 is AudioPlaybackSession.State.Finished -> {
-                    wantPlaying.value = false
+                    setWantPlaying(false)
                     _state.value = AudioPlaybackSession.State.Paused
                 }
                 else -> Unit
@@ -408,7 +436,7 @@ internal class NativeMacosAudioPlaybackSession(
     private fun startPositionPolling() {
         stopPositionPolling()
         positionJob = completionScope.launch {
-            while (isActive && wantPlaying.value) {
+            while (isActive && intent.value.wantPlaying) {
                 pollTransportClocks()
                 delay(50.milliseconds)
             }
@@ -446,10 +474,10 @@ internal class NativeMacosAudioPlaybackSession(
     }
 
     private fun isCurrentPlay(epoch: Int): Boolean =
-        wantPlaying.value && playEpoch.value == epoch
+        intent.value == PlayIntent(epoch, wantPlaying = true)
 
     private fun ensurePausedIfStillDesired() {
-        if (wantPlaying.value) return
+        if (intent.value.wantPlaying) return
         when (_state.value) {
             is AudioPlaybackSession.State.Idle,
             is AudioPlaybackSession.State.Finished,

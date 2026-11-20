@@ -2,6 +2,7 @@ package space.kodio.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -54,5 +55,13 @@ class PcmSeekTest {
         assertEquals(0.0, pcmSeekOffsetSeconds((-1).seconds, 10.0), absoluteTolerance = 1e-9)
         assertEquals(2.5, pcmSeekOffsetSeconds(2500.milliseconds, 10.0), absoluteTolerance = 1e-9)
         assertEquals(10.0, pcmSeekOffsetSeconds(20.seconds, 10.0), absoluteTolerance = 1e-9)
+    }
+
+    @Test
+    fun pcmSeekByteOffset_openEndedHugePositionDoesNotWrapToZero() {
+        // Frame index fits a Long but frame * bytesPerFrame does not.
+        val offset = pcmSeekByteOffset((5e13).seconds, format, Long.MAX_VALUE)
+        assertTrue(offset > 0L, "expected a far-future offset, got $offset")
+        assertEquals(0L, offset % format.bytesPerFrame)
     }
 }

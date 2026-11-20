@@ -54,6 +54,13 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : BaseAudi
         error("JvmAudioPlaybackSession uses transport playback")
     }
 
+    override fun deviceQueuedFrames(): Long {
+        val line = dataLine ?: return 0L
+        if (!line.isOpen) return 0L
+        val frameSize = line.format.frameSize.coerceAtLeast(1)
+        return ((line.bufferSize - line.available()).coerceAtLeast(0) / frameSize).toLong()
+    }
+
     override fun readDeviceMediaPosition(
         mediaBase: Duration,
         transport: TransportController,

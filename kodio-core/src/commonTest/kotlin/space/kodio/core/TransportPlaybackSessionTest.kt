@@ -259,6 +259,45 @@ class TransportPlaybackSessionTest {
         assertTrue(session.scopeJob.isCancelled)
     }
 
+    /** Finished waits until the device has played what it holds (no cut-off tail). */
+    @Test
+    fun finished_waitsForDeviceDrain() = runRealTimeTest {
+        val session = FakeTransportSession()
+        val pcm = ByteArray(format.bytesPerFrame * 160) { 3 }
+        session.queuedFrames.store(1_000L)
+        session.load(AudioFlow(format, flowOf(pcm), knownByteCount = pcm.size.toLong()))
+        session.play()
+        withTimeout(2_000) { session.firstWrite.await() }
+
+        delay(200) // all PCM fed long ago; device still "playing" its queue
+        assertIs<AudioPlaybackSession.State.Playing>(session.state.value)
+
+        session.queuedFrames.store(0L)
+        withTimeout(2_000) { session.state.first { it is AudioPlaybackSession.State.Finished } }
+        session.release()
+    }
+
+    /** A seek during the end-of-stream drain keeps playing from the new position. */
+    @Test
+    fun seekDuringDrain_keepsPlaying() = runRealTimeTest {
+        val session = FakeTransportSession()
+        val pcm = ByteArray(format.bytesPerFrame * 160) { 4 }
+        session.queuedFrames.store(1_000L)
+        session.load(AudioFlow(format, flowOf(pcm), knownByteCount = pcm.size.toLong()))
+        session.play()
+        withTimeout(2_000) { session.firstWrite.await() }
+        delay(100)
+
+        val writesBefore = session.writeCount.load()
+        assertEquals(SeekResult.Applied, session.seekTo(0.milliseconds))
+        withTimeout(2_000) { while (session.writeCount.load() <= writesBefore) delay(5) }
+        assertIs<AudioPlaybackSession.State.Playing>(session.state.value)
+
+        session.queuedFrames.store(0L)
+        withTimeout(2_000) { session.state.first { it is AudioPlaybackSession.State.Finished } }
+        session.release()
+    }
+
     /** After pause → resume, newly ingested PCM must keep reaching the device. */
     @Test
     fun pauseThenResume_keepsFeedingDevice() = runRealTimeTest {
@@ -306,6 +345,11 @@ private class FakeTransportSession(
     val scopeJob: Job get() = scope.coroutineContext[Job]!!
 
     val writeCount = AtomicInt(0)
+
+    /** Simulated frames still held by the device (see deviceQueuedFrames). */
+    val queuedFrames = kotlin.concurrent.atomics.AtomicLong(0L)
+
+    override fun deviceQueuedFrames(): Long = queuedFrames.load()
 
     override fun useTransportPlayback(): Boolean = true
 

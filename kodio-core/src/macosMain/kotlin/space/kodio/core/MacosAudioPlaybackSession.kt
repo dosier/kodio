@@ -94,6 +94,12 @@ class MacosAudioPlaybackSession(
         error("MacosAudioPlaybackSession uses transport playback")
     }
 
+    override fun deviceQueuedFrames(): Long {
+        if (!::audioQueue.isInitialized) return 0L
+        val bpf = (outputFormat?.bytesPerFrame ?: 1).coerceAtLeast(1)
+        return audioQueue.inFlightBytes / bpf
+    }
+
     override fun readDeviceMediaPosition(
         mediaBase: Duration,
         transport: TransportController,

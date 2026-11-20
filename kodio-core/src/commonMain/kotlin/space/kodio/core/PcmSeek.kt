@@ -56,7 +56,8 @@ fun pcmSeekByteOffset(
 
     val targetFrame = position.toSampleFrame(format.sampleRate)
         .coerceIn(0L, totalFrames)
-    val offset = if (targetFrame == Long.MAX_VALUE) Long.MAX_VALUE else targetFrame * bpf
+    // Open-ended ceiling: targetFrame is only clamped to Long.MAX_VALUE, so guard the multiply.
+    val offset = if (targetFrame > Long.MAX_VALUE / bpf) Long.MAX_VALUE else targetFrame * bpf
     val capped = if (byteCount == Long.MAX_VALUE) offset.coerceAtLeast(0L) else offset.coerceIn(0L, byteCount)
     return capped - (capped % bpf)
 }

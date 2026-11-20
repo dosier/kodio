@@ -1,3 +1,5 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package space.kodio.core
 
 import kotlinx.cinterop.*
@@ -16,6 +18,7 @@ import platform.darwin.noErr
 import platform.posix.memcpy
 import space.kodio.core.util.namedLogger
 import kotlin.concurrent.Volatile
+import kotlin.concurrent.atomics.AtomicLong
 import kotlin.math.max
 
 private val logger = namedLogger("AudioQueue")
@@ -83,7 +86,14 @@ sealed class MacosAudioQueue<S : Any>(
             @Volatile var running: Boolean,
             @Volatile var enqueueEnabled: Boolean = true,
             val availableBuffers: Channel<AudioQueueBufferRef>
-        )
+        ) {
+            /** Bytes enqueued via the transport sink that the queue has not played back yet. */
+            val inFlightBytes = AtomicLong(0L)
+        }
+
+        /** Bytes handed to the queue that it has not finished playing. */
+        val inFlightBytes: Long
+            get() = stateRef.get().inFlightBytes.load().coerceAtLeast(0L)
 
         /**
          * Seek discard path (plan Phase 2): quiesce enqueue → [AudioQueueStop]`(true)`
@@ -120,6 +130,7 @@ sealed class MacosAudioQueue<S : Any>(
                 state.availableBuffers.trySend(bufferRef)
                 return 0
             }
+            state.inFlightBytes.addAndFetch(written.toLong())
             return written
         }
 
@@ -155,6 +166,7 @@ sealed class MacosAudioQueue<S : Any>(
                     runBlocking { delay(1) }
                     continue
                 }
+                state.inFlightBytes.addAndFetch(n.toLong())
                 written += n
             }
             return written
@@ -480,6 +492,7 @@ sealed class MacosAudioQueue<S : Any>(
                             logAb("Output callback after stop/dispose; dropping buffer")
                             return@staticCFunction
                         }
+                        state.inFlightBytes.addAndFetch(-inBuffer.pointed.mAudioDataByteSize.toLong())
                         // Seek-quiesce and normal play: always return buffer to the open pool.
                         logAb("[AudioQueue] Output callback: buffer played, returning to pool")
                         state.availableBuffers

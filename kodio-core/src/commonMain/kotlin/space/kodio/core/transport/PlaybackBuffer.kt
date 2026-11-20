@@ -139,6 +139,10 @@ internal class RingPlaybackBuffer(
             written += n
             cursor += n
         }
+        // The writer never waits for the reader: if it lapped us during the copy,
+        // part of dst holds newer audio. Report nothing so the caller treats it as
+        // eviction (TransportController clamps the cursor and counts an underrun).
+        if (written > 0 && at < bufferedRange.first) return 0
         return written
     }
 

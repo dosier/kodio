@@ -1,8 +1,11 @@
+@file:OptIn(kotlin.concurrent.atomics.ExperimentalAtomicApi::class)
+
 package space.kodio.core
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import platform.AVFAudio.AVAudioConverter
 import platform.AVFAudio.AVAudioEngine
@@ -15,7 +18,10 @@ import space.kodio.core.transport.AudioSink
 import space.kodio.core.transport.TransportController
 import space.kodio.core.util.namedLogger
 import kotlin.concurrent.Volatile
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.AtomicLong
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 private val log = namedLogger("AVAudioPlayback")
@@ -42,6 +48,16 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
     private var completionScheduleEnabled: Boolean = true
 
     private var playbackFormat: AudioFormat? = null
+
+    /**
+     * Frames scheduled on [player] that it has not consumed yet. scheduleBuffer()
+     * never blocks, so this is the transport's only backpressure: without it the
+     * feed loop schedules the whole recording at once and reports EOS immediately.
+     */
+    private val scheduledFrames = AtomicLong(0L)
+
+    /** Bumped on flush so completions of discarded buffers don't skew [scheduledFrames]. */
+    private val scheduleGeneration = AtomicInt(0)
 
     init {
         engine.attachNode(player)
@@ -130,6 +146,16 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
         return mediaBase + (sampleTime.toDouble() / rate).seconds
     }
 
+    override fun deviceQueuedFrames(): Long = scheduledFrames.load().coerceAtLeast(0L)
+
+    override suspend fun paceAfterTransportWrite(bytesWritten: Int, format: AudioFormat) {
+        // Keep roughly LOOKAHEAD of audio scheduled ahead of the render position.
+        val maxQueued = (format.sampleRate * LOOKAHEAD_SEC).toLong().coerceAtLeast(1L)
+        while (scheduledFrames.load() > maxQueued && state.value is AudioPlaybackSession.State.Playing) {
+            delay(5.milliseconds)
+        }
+    }
+
     override fun onTransportSeekApplied(position: Duration) {
         // stop+reschedule is done in sink.flush on the session/API thread.
         log.debug { "onTransportSeekApplied pos=$position" }
@@ -145,6 +171,8 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
 
     override fun onTransportStopped() {
         completionScheduleEnabled = false
+        scheduleGeneration.addAndFetch(1)
+        scheduledFrames.store(0L)
         runCatching {
             if (player.isPlaying()) player.stop()
         }
@@ -185,8 +213,12 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
                 iosAudioBuffer = converter.convertSimple(iosAudioBuffer, standardAVFormat)
             }
 
+            val frames = (length / (playbackFormat?.bytesPerFrame ?: 1).coerceAtLeast(1)).toLong()
+            val generation = scheduleGeneration.load()
+            scheduledFrames.addAndFetch(frames)
             // Completion only hops to session queue — never stop() here.
             player.scheduleBuffer(iosAudioBuffer) {
+                if (scheduleGeneration.load() == generation) scheduledFrames.addAndFetch(-frames)
                 if (completionScheduleEnabled) {
                     scheduleMore.trySend(Unit)
                 }
@@ -199,12 +231,18 @@ abstract class AVAudioPlaybackSession() : BaseAudioPlaybackSession() {
         override fun flush(seekEpoch: Long) {
             // Session/API queue only (seekTo caller thread / Base seek path).
             completionScheduleEnabled = false
+            scheduleGeneration.addAndFetch(1)
             runCatching { player.stop() } // clears schedule; player time → 0
+            scheduledFrames.store(0L)
             completionScheduleEnabled = true
             log.debug { "AvAudioSink.flush epoch=$seekEpoch (stop on session queue)" }
             if (state.value is AudioPlaybackSession.State.Playing) {
                 player.play()
             }
         }
+    }
+
+    private companion object {
+        const val LOOKAHEAD_SEC = 0.25
     }
 }

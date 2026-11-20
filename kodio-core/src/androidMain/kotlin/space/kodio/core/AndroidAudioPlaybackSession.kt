@@ -35,6 +35,10 @@ internal class AndroidAudioPlaybackSession(
     /** Unsigned 32-bit playback head captured at last seek/flush baseline. */
     private var headBaseline: Long = 0L
 
+    /** Frames written to the track since the last flush/open (same baseline as [headBaseline]). */
+    @Volatile
+    private var framesWritten: Long = 0L
+
     override fun useTransportPlayback(): Boolean = true
 
     override suspend fun preparePlayback(format: AudioFormat): AudioFormat {
@@ -85,6 +89,7 @@ internal class AndroidAudioPlaybackSession(
         audioTrack = track
         preparedFormat = format
         headBaseline = unsignedHead(track)
+        framesWritten = 0L
         logger.debug { "preparePlayback: AudioTrack opened format=$format" }
         return format
     }
@@ -105,6 +110,12 @@ internal class AndroidAudioPlaybackSession(
         val rate = preparedFormat.sampleRate
         if (rate <= 0) return mediaBase
         return mediaBase + (delta.toDouble() / rate).seconds
+    }
+
+    override fun deviceQueuedFrames(): Long {
+        val track = audioTrack ?: return 0L
+        val played = unsignedDelta(unsignedHead(track), headBaseline)
+        return (framesWritten - played).coerceAtLeast(0L)
     }
 
     override fun onTransportSeekApplied(position: Duration) {
@@ -150,6 +161,7 @@ internal class AndroidAudioPlaybackSession(
         runCatching { track.release() }
         audioTrack = null
         headBaseline = 0L
+        framesWritten = 0L
     }
 
     private inner class AndroidTrackSink : AudioSink {
@@ -174,13 +186,15 @@ internal class AndroidAudioPlaybackSession(
                         if (n <= 0) break
                         written += n
                     }
+                    framesWritten += written / preparedFormat.bytesPerFrame.coerceAtLeast(1)
                 }
                 is SampleEncoding.PcmFloat -> {
                     if (epochStale()) return
                     require(androidEncoding == AndroidAudioFormat.ENCODING_PCM_FLOAT)
                     val floats = bytesToFloatArrayLE(data, offset, length)
                     if (epochStale()) return
-                    track.write(floats, 0, floats.size, AudioTrack.WRITE_BLOCKING)
+                    val n = track.write(floats, 0, floats.size, AudioTrack.WRITE_BLOCKING)
+                    if (n > 0) framesWritten += n / preparedFormat.channels.count.coerceAtLeast(1)
                 }
             }
         }
@@ -192,6 +206,7 @@ internal class AndroidAudioPlaybackSession(
             runCatching { track.pause() }
             runCatching { track.flush() }
             headBaseline = unsignedHead(track)
+            framesWritten = 0L
             if (wasPlaying && state.value is AudioPlaybackSession.State.Playing) {
                 runCatching { track.play() }
             }

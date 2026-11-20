@@ -150,6 +150,14 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
      */
     internal open suspend fun paceAfterTransportWrite(bytesWritten: Int, format: AudioFormat) = Unit
 
+    /**
+     * Frames already handed to the device that it has not played yet. At end of
+     * stream the session waits for this to reach 0 before reporting
+     * [State.Finished]; otherwise a stop()/release() right after
+     * [Player.awaitComplete] cuts off the tail. Default `0` (no device queue).
+     */
+    internal open fun deviceQueuedFrames(): Long = 0L
+
     // --- Transport runtime (retained across Finished until stop/load) ---
 
     private var transport: TransportController? = null
@@ -455,7 +463,9 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
             val n = controller.feed()
             when {
                 n < 0 -> {
-                    // EOS: ingest complete AND cursor at end.
+                    // EOS: ingest complete AND cursor at end. Let the device play out
+                    // what it holds first; a seek meanwhile reopens the stream.
+                    if (!awaitDeviceDrained(epoch, controller)) continue
                     if (endPlay(epoch)) {
                         val failure = controller.ingestFailure
                         _state.value = if (failure != null) State.Error(failure) else State.Finished
@@ -482,6 +492,38 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
                     publishBufferedRange(controller)
                 }
             }
+        }
+    }
+
+    /**
+     * Waits until the device has played everything written so far.
+     * Returns `false` when a seek reopened the stream (keep feeding), `true` when
+     * drained or the generation was replaced (caller's [endPlay] sorts that out).
+     */
+    private suspend fun awaitDeviceDrained(epoch: Int, controller: TransportController): Boolean {
+        var lastQueued = Long.MAX_VALUE
+        var stalledMs = 0L
+        while (true) {
+            if (!isCurrentGeneration(epoch)) return true
+            if (!controller.isFinished) return false
+            awaitTransportUnpaused()
+            if (!isCurrentGeneration(epoch)) return true
+            if (!controller.isFinished) return false
+            val queued = deviceQueuedFrames()
+            if (queued <= 0L) return true
+            _position.value = readDeviceMediaPosition(mediaBase, controller)
+            // Guard against a device that never reports progress (e.g. stalled route).
+            if (queued < lastQueued) {
+                lastQueued = queued
+                stalledMs = 0L
+            } else {
+                stalledMs += DRAIN_POLL_MS
+                if (stalledMs >= DRAIN_STALL_TIMEOUT_MS) {
+                    log.warn { "device drain stalled with $queued frames queued; finishing anyway" }
+                    return true
+                }
+            }
+            delay(DRAIN_POLL_MS.milliseconds)
         }
     }
 
@@ -644,5 +686,10 @@ abstract class BaseAudioPlaybackSession : AudioPlaybackSession {
             log.error(it) { "State transition to $newState failed: ${it.message}" }
             State.Error(it)
         }
+    }
+
+    private companion object {
+        const val DRAIN_POLL_MS = 10L
+        const val DRAIN_STALL_TIMEOUT_MS = 3_000L
     }
 }
