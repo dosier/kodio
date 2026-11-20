@@ -183,7 +183,12 @@ internal class AndroidAudioPlaybackSession(
                     while (written < length) {
                         if (epochStale()) return
                         val n = track.write(data, offset + written, length - written)
-                        if (n <= 0) break
+                        if (n < 0) break // error code (e.g. dead object)
+                        if (n == 0) {
+                            // Short write: retry so the transport cursor never skips audio.
+                            Thread.sleep(2)
+                            continue
+                        }
                         written += n
                     }
                     framesWritten += written / preparedFormat.bytesPerFrame.coerceAtLeast(1)

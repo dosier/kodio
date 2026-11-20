@@ -123,12 +123,21 @@ class JvmAudioPlaybackSession(private val device: AudioDevice.Output) : BaseAudi
         ) {
             val line = dataLine ?: return
             var written = 0
+            // Must not return before the whole chunk is in the line: the transport
+            // advances its cursor by [length] afterwards, so a short write skips audio.
+            // SourceDataLine.write can return 0 without blocking (e.g. right after
+            // start() following a pause); wait and retry instead of giving up.
             while (written < length) {
                 // Abandon in-flight writes after a seek flush on another thread.
                 val transport = currentTransport()
                 if (transport != null && transport.seekEpoch != seekEpoch) return
+                if (!line.isOpen) return
                 val n = line.write(data, offset + written, length - written)
-                if (n <= 0) break
+                if (n < 0) return
+                if (n == 0) {
+                    Thread.sleep(2)
+                    continue
+                }
                 written += n
             }
         }

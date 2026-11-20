@@ -12,6 +12,8 @@ fun main() {
         minLevel = LogLevel.Debug
         addWriter(platformLogWriter())
     }
+    // KODIO_SELFTEST=1 runs the scripted record/playback timing check (stdout).
+    if (System.getenv("KODIO_SELFTEST") != null) launchDeviceSelfTest()
 
     application {
         FileKit.init(appId = "KodioApp")

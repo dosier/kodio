@@ -31,6 +31,7 @@ import kotlin.time.TimeSource
  *
  * - iOS: launch with env `KODIO_SELFTEST=1`
  *   (`devicectl device process launch --console --environment-variables ...`).
+ * - Desktop: run with env `KODIO_SELFTEST=1` (`./gradlew :kodio-sample-app:desktopRun`).
  * - Android: `adb shell am start -n space.kodio.sample/.MainActivity --es KODIO_SELFTEST 1`,
  *   then `adb logcat -s System.out`.
  */

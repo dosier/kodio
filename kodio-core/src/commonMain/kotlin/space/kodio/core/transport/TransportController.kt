@@ -249,13 +249,19 @@ internal class TransportController(
 
     private fun clampCursorIfEvicted() {
         val range = buffer.bufferedRange
-        val cursor = readCursorAtomic.load()
         if (range.isEmpty()) return
-        if (cursor < range.first) {
-            readCursorAtomic.store(range.first)
-            underrunCountAtomic.fetchAndIncrement()
-            logger.debug {
-                "cursor clamped from $cursor to ${range.first} (ring eviction underrun)"
+        // Called from both the ingest and the feed thread: only ever move the
+        // cursor forward (CAS), or a stale read here would rewind it past audio
+        // the feed thread already sent and replay it.
+        while (true) {
+            val cursor = readCursorAtomic.load()
+            if (cursor >= range.first) return
+            if (readCursorAtomic.compareAndSet(cursor, range.first)) {
+                underrunCountAtomic.fetchAndIncrement()
+                logger.debug {
+                    "cursor clamped from $cursor to ${range.first} (ring eviction underrun)"
+                }
+                return
             }
         }
     }
