@@ -34,8 +34,10 @@ afterEvaluate {
     val kodioVersion = project.findProperty("kodio.version")?.toString() ?: "0.0.1-SNAPSHOT"
     
     mavenPublishing {
-        // Uses Central Portal by default (SonatypeHost was removed in 0.34.0)
-        publishToMavenCentral()
+        // Uses Central Portal by default (SonatypeHost was removed in 0.34.0).
+        // automaticRelease: publish once validation passes instead of leaving a
+        // USER_MANAGED deployment that has to be released by hand in the portal.
+        publishToMavenCentral(automaticRelease = true)
         
         signAllPublications()
         

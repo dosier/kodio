@@ -76,7 +76,7 @@ git push origin vX.Y.Z
 |-----|--------|-------------|
 | `test` | matrix (all CI jobs) | Reuses `.github/workflows/gradle.yml` |
 | `create-release` | ubuntu-latest | Generates changelog via git-cliff, creates GitHub Release |
-| `publish` | macos-latest | Runs `./gradlew publishToMavenCentral` (macOS needed for Apple targets) |
+| `publish` | macos-latest | Runs `./gradlew publishToMavenCentral` (macOS needed for Apple targets); the deployment is released automatically once Central Portal validation passes |
 
 ```bash
 gh run list --limit 5
