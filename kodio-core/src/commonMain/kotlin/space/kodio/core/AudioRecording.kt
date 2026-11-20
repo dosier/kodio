@@ -38,11 +38,32 @@ import kotlin.time.Duration.Companion.milliseconds
 class AudioRecording private constructor(
     /** The audio format of this recording */
     val format: AudioFormat,
-    /** The duration of the recording, if known */
-    val duration: Duration?,
+    /** Duration supplied by the creator (e.g. container metadata), if any. */
+    private val providedDuration: Duration?,
     /** The underlying audio data as chunks (immutable after construction) */
     private val chunks: List<ByteArray>
 ) {
+    /**
+     * The duration of the recording: the one supplied when it was created, or
+     * else computed from the PCM length. `null` only when the format cannot
+     * express a duration (sample rate or frame size of 0).
+     */
+    val duration: Duration?
+        get() = providedDuration ?: pcmLength
+
+    /** Duration from frame count and sample rate; `null` if not computable. */
+    private val pcmLength: Duration? by lazy {
+        if (format.sampleRate <= 0 || format.bytesPerFrame <= 0) {
+            null
+        } else {
+            // Safe calculation to avoid overflow: (frames / rate) * 1000 + remainder
+            val seconds = frameCount / format.sampleRate
+            val remainderFrames = frameCount % format.sampleRate
+            val remainderMs = (remainderFrames * 1000L) / format.sampleRate
+            (seconds * 1000L + remainderMs).milliseconds
+        }
+    }
+
     /**
      * The total size of the audio data in bytes.
      */
@@ -64,19 +85,8 @@ class AudioRecording private constructor(
      * 
      * Uses safe arithmetic to avoid overflow for long recordings.
      */
-    val calculatedDuration: Duration by lazy {
-        duration ?: run {
-            if (format.sampleRate <= 0) {
-                Duration.ZERO
-            } else {
-                // Safe calculation to avoid overflow: (frames / rate) * 1000 + remainder
-                val seconds = frameCount / format.sampleRate
-                val remainderFrames = frameCount % format.sampleRate
-                val remainderMs = (remainderFrames * 1000L) / format.sampleRate
-                (seconds * 1000L + remainderMs).milliseconds
-            }
-        }
-    }
+    val calculatedDuration: Duration
+        get() = duration ?: Duration.ZERO
 
     /**
      * Whether this recording is empty (no audio data).
@@ -178,7 +188,7 @@ class AudioRecording private constructor(
             val chunks = audioFlow.toList()
             return AudioRecording(
                 format = audioFlow.format,
-                duration = duration,
+                providedDuration = duration,
                 chunks = chunks
             )
         }
@@ -190,7 +200,7 @@ class AudioRecording private constructor(
         fun fromPcmBytes(format: AudioFormat, data: ByteArray): AudioRecording {
             return AudioRecording(
                 format = format,
-                duration = null,
+                providedDuration = null,
                 chunks = listOf(data.copyOf())
             )
         }
@@ -202,7 +212,7 @@ class AudioRecording private constructor(
         fun fromChunks(format: AudioFormat, chunks: List<ByteArray>, duration: Duration? = null): AudioRecording {
             return AudioRecording(
                 format = format,
-                duration = duration,
+                providedDuration = duration,
                 chunks = chunks.map { it.copyOf() }
             )
         }
@@ -211,7 +221,7 @@ class AudioRecording private constructor(
          * Creates an empty recording placeholder.
          */
         fun empty(format: AudioFormat = AudioQuality.Default.format): AudioRecording {
-            return AudioRecording(format = format, duration = null, chunks = emptyList())
+            return AudioRecording(format = format, providedDuration = null, chunks = emptyList())
         }
 
         /**
@@ -260,7 +270,9 @@ class AudioRecording private constructor(
                 }
                 source.collect { chunk -> combinedChunks.add(chunk) }
 
-                val d = recording.duration
+                // Only explicitly supplied durations are summed; otherwise the
+                // combined recording computes its exact length from the PCM.
+                val d = recording.providedDuration
                 if (d == null) {
                     allDurationsKnown = false
                 } else {
@@ -276,7 +288,7 @@ class AudioRecording private constructor(
 
             return AudioRecording(
                 format = outputFormat,
-                duration = combinedDuration,
+                providedDuration = combinedDuration,
                 chunks = combinedChunks,
             )
         }
@@ -294,7 +306,7 @@ class AudioRecording private constructor(
         internal fun fromOwnedChunks(format: AudioFormat, chunks: List<ByteArray>, duration: Duration? = null): AudioRecording {
             return AudioRecording(
                 format = format,
-                duration = duration,
+                providedDuration = duration,
                 chunks = chunks
             )
         }

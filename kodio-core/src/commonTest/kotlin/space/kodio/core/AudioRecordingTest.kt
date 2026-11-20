@@ -343,6 +343,19 @@ class AudioRecordingTest {
 
         assertEquals(350.milliseconds, result.duration)
     }
+
+    @Test
+    fun `duration is computed from PCM when not supplied`() {
+        // One second of audio, as a captured recording would hand it over.
+        val oneSecond = ByteArray(testFormat.sampleRate * testFormat.bytesPerFrame)
+        val recording = AudioRecording.fromPcmBytes(testFormat, oneSecond)
+        assertEquals(1.seconds, recording.duration)
+        assertEquals(1.seconds, recording.calculatedDuration)
+    }
+
+    @Test
+    fun `supplied duration wins over the PCM length`() {
+        val recording = AudioRecording.fromChunks(testFormat, listOf(ByteArray(4)), duration = 3.seconds)
+        assertEquals(3.seconds, recording.duration)
+    }
 }
-
-
