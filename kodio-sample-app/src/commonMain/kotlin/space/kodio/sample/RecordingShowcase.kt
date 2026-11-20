@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -24,7 +25,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -49,8 +52,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -308,19 +313,10 @@ private fun CaptureControls(
             SampleErrorBanner(message)
         }
 
-        // Reserved slot above the capture cluster so Grant appearing/disappearing
-        // never shifts device / quality / record controls.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Button(
-                onClick = { recorderState.requestPermission() },
-                enabled = showPermissionUi,
-                modifier = Modifier.alpha(if (showPermissionUi) 1f else 0f),
-            ) {
+        // Only while permission is actually missing (debounced above, so a brief
+        // Unknown during re-init doesn't flash it in and out).
+        if (showPermissionUi) {
+            Button(onClick = { recorderState.requestPermission() }) {
                 Text("Grant permission")
             }
         }
@@ -348,21 +344,23 @@ private fun CaptureControls(
                     onSelect = onSelectQuality,
                     enabled = !recorderActive,
                 )
-                // InputProcessing.Raw: only changes anything on web, where the
-                // browser otherwise applies echo cancellation / noise suppression / AGC.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = rawInput,
-                        onCheckedChange = onRawInputChange,
-                        enabled = !recorderActive,
-                    )
-                    Column {
-                        Text("Raw input", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "No echo cancellation, noise suppression or auto gain (web). Quieter.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                // InputProcessing.Raw only changes anything on web (native capture is
+                // already unprocessed), so only offer it there.
+                if (platformKind == PlatformKind.Web) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = rawInput,
+                            onCheckedChange = onRawInputChange,
+                            enabled = !recorderActive,
                         )
+                        Column {
+                            Text("Raw input", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Turns off the browser's echo cancellation, noise suppression and auto gain. Quieter.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -510,6 +508,9 @@ private fun CompactQualityRow(
                         index = index,
                         count = AudioQuality.entries.size,
                     ),
+                    // The selected fill already marks the choice; a checkmark clips
+                    // the labels on phone-width screens.
+                    icon = {},
                 ) {
                     Text(quality.name, maxLines = 1, style = MaterialTheme.typography.labelMedium)
                 }
@@ -565,9 +566,10 @@ private fun RecordingsPanel(
                 modifier = Modifier.padding(vertical = 12.dp),
             )
         } else if (embedded) {
-            recordings.forEach { recording ->
+            recordings.forEachIndexed { index, recording ->
                 RecordingItem(
                     recording = recording,
+                    number = recordings.size - index,
                     isSelected = recording in selectedRecordings,
                     onSelectedChange = { onSelectedChange(recording, it) },
                     onSave = { onSave(recording) },
@@ -579,9 +581,10 @@ private fun RecordingsPanel(
                 modifier = Modifier.fillMaxWidth().weight(1f, fill = true),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(recordings) { recording ->
+                itemsIndexed(recordings) { index, recording ->
                     RecordingItem(
                         recording = recording,
+                        number = recordings.size - index,
                         isSelected = recording in selectedRecordings,
                         onSelectedChange = { onSelectedChange(recording, it) },
                         onSave = { onSave(recording) },
@@ -646,48 +649,97 @@ internal fun <T : AudioDevice> DeviceSelector(
     }
 }
 
+/**
+ * One take in the session list: play/pause, a two-line summary that never wraps
+ * per character on narrow screens, stitch selection, and an overflow menu.
+ */
 @Composable
 private fun RecordingItem(
     recording: AudioRecording,
+    number: Int,
     isSelected: Boolean,
     onSelectedChange: (Boolean) -> Unit,
     onSave: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val playerState = rememberPlayerState(recording)
+    var menuOpen by remember { mutableStateOf(false) }
+    val showProgress = playerState.isPlaying || playerState.isPaused
 
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = onSelectedChange,
-            )
-            FilledIconButton(
-                onClick = { playerState.toggle() },
-                modifier = Modifier.size(40.dp),
-            ) {
-                Icon(
-                    imageVector = if (playerState.isPlaying) SampleIcons.Pause else SampleIcons.PlayArrow,
-                    contentDescription = if (playerState.isPlaying) "Pause" else "Play",
+        Column(modifier = Modifier.padding(start = 10.dp, end = 2.dp, top = 8.dp, bottom = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilledIconButton(
+                    onClick = { playerState.toggle() },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        imageVector = if (playerState.isPlaying) SampleIcons.Pause else SampleIcons.PlayArrow,
+                        contentDescription = if (playerState.isPlaying) "Pause take $number" else "Play take $number",
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Take $number · ${formatDurationShort(recording.calculatedDuration)}",
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "${recording.format.rateAndChannels} · ${formatFileSize(recording.sizeInBytes)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = onSelectedChange,
+                    modifier = Modifier.semantics { contentDescription = "Select take $number for stitching" },
                 )
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(SampleIcons.MoreVert, contentDescription = "More actions for take $number")
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Save as WAV") },
+                            onClick = {
+                                menuOpen = false
+                                onSave()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                Icon(
+                                    SampleIcons.Delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onDelete()
+                            },
+                        )
+                    }
+                }
             }
-            Column(modifier = Modifier.weight(1f)) {
-                SampleMetaRow("duration", formatDurationShort(recording.calculatedDuration), keyWidth = 72.dp)
-                SampleMetaRow("format", recording.format.label, keyWidth = 72.dp)
-                SampleMetaRow("size", formatFileSize(recording.sizeInBytes), keyWidth = 72.dp)
-            }
-            TextButton(onClick = onSave) { Text("Save") }
-            IconButton(onClick = onDelete) {
-                Icon(SampleIcons.Delete, contentDescription = "Delete")
+            if (showProgress) {
+                LinearProgressIndicator(
+                    progress = { playerState.progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 52.dp, end = 10.dp, top = 6.dp),
+                )
             }
         }
     }

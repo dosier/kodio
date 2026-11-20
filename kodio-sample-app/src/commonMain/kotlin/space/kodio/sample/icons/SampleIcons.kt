@@ -25,6 +25,26 @@ object SampleIcons {
         }.build()
     }
 
+    /** Vertical three-dot overflow menu. */
+    val MoreVert: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "MoreVert",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f
+        ).apply {
+            for (cy in listOf(5f, 12f, 19f)) {
+                path(fill = SolidColor(Color.Black)) {
+                    moveTo(12f, cy - 2f)
+                    arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 12f, y1 = cy + 2f)
+                    arcTo(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, x1 = 12f, y1 = cy - 2f)
+                    close()
+                }
+            }
+        }.build()
+    }
+
     val Pause: ImageVector by lazy {
         ImageVector.Builder(
             name = "Pause",

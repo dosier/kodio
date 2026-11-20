@@ -80,6 +80,12 @@ private suspend fun runSelfTest() {
 
     timed("play to end", expected = toneDur) { player ->
         player.start()
+        delay(1.seconds)
+        val at1 = player.position.value
+        delay(1.seconds)
+        val at2 = player.position.value
+        // Position drives the UI progress bar; it must advance during playback.
+        check("position advances", at1 > 600.milliseconds && at2 > at1 + 600.milliseconds, "at1s=$at1 at2s=$at2")
         player.awaitComplete()
     }
 

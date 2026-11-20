@@ -14,6 +14,11 @@ expect fun getOpenAIApiKey(): String
  */
 expect fun getPlatformName(): String
 
+/** Broad platform family, for platform-specific hints in the sample UI. */
+enum class PlatformKind { Desktop, Mobile, Web }
+
+expect val platformKind: PlatformKind
+
 /**
  * Get the file name from a PlatformFile.
  * This is needed because PlatformFile properties may be accessed differently on some platforms.

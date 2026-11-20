@@ -14,3 +14,5 @@ actual fun getFileName(file: PlatformFile): String {
     // Return a placeholder since file upload doesn't work in browser anyway
     return "audio_file"
 }
+
+actual val platformKind: PlatformKind = PlatformKind.Web

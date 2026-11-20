@@ -12,3 +12,5 @@ actual fun getOpenAIApiKey(): String {
 actual fun getPlatformName(): String = UIDevice.currentDevice.systemName() + " " + UIDevice.currentDevice.systemVersion
 
 actual fun getFileName(file: PlatformFile): String = file.name
+
+actual val platformKind: PlatformKind = PlatformKind.Mobile

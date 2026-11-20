@@ -319,7 +319,11 @@ private fun EmptyDropPane(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    "WAV · AIFF · AU · MP3  ·  drag and drop on desktop",
+                    if (platformKind == PlatformKind.Desktop) {
+                        "WAV · AIFF · AU · MP3  ·  or drag and drop a file here"
+                    } else {
+                        "WAV · AIFF · AU · MP3"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

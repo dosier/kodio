@@ -76,3 +76,12 @@ internal val AudioFormat.label: String
             )
         }
     }
+
+/** Compact rate + channels, e.g. "44.1 kHz · Mono" (fits one line on a phone). */
+internal val AudioFormat.rateAndChannels: String
+    get() {
+        val khz = sampleRate / 1000.0
+        val rate = if (khz % 1.0 == 0.0) "${khz.toInt()}" else formatDecimal(khz, 1)
+        val ch = if (channels == Channels.Mono) "Mono" else "Stereo"
+        return "$rate kHz · $ch"
+    }

@@ -20,3 +20,5 @@ actual fun getPlatformName(): String {
 }
 
 actual fun getFileName(file: PlatformFile): String = file.name
+
+actual val platformKind: PlatformKind = PlatformKind.Desktop

@@ -11,3 +11,5 @@ actual fun getOpenAIApiKey(): String {
 actual fun getPlatformName(): String = "macOS " + NSProcessInfo.processInfo.operatingSystemVersionString
 
 actual fun getFileName(file: PlatformFile): String = file.name
+
+actual val platformKind: PlatformKind = PlatformKind.Desktop
